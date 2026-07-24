@@ -148,6 +148,35 @@ public class CubeProjectServiceTests : IDisposable
     }
 
     [Fact]
+    public void Save_WhitespaceOnlySecondCommand_MatchesLoadCanEditAndSucceeds()
+    {
+        // Un Command dont le <Text> est présent mais blanc ne doit PAS compter comme
+        // une 2e Command "réelle" — Load.CanEdit et Save doivent être d'accord (bug
+        // constaté : Load.CanEdit=true mais Save levait quand même, cf. CommandTexts
+        // qui filtre le blanc vs l'ancien filtre de Save qui ne testait que la présence
+        // du <Text>).
+        string withBlankCommand = SampleCube.Replace("</Commands>", """
+                <Command>
+                  <Text>   </Text>
+                </Command>
+              </Commands>
+            """);
+        string path = WriteFixture(withBlankCommand, "AvecCommandeVide.cube");
+        var svc = new CubeProjectService();
+
+        var loaded = svc.Load(path);
+        Assert.True(loaded.CanEdit);
+
+        svc.Save(path, NewScript); // ne doit pas lever
+
+        var reloaded = svc.Load(path);
+        Assert.Equal(NewScript, reloaded.FullText);
+        string xml = File.ReadAllText(path);
+        Assert.Contains("DiagramLayout", xml);
+        Assert.Contains("<FormatString>'#,##0.00'</FormatString>", xml);
+    }
+
+    [Fact]
     public void Save_TwoCommands_Throws()
     {
         string twoCommands = SampleCube.Replace("</Commands>", """

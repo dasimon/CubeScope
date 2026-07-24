@@ -56,8 +56,10 @@ public sealed class CubeProjectService
     {
         var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
         var (_, script) = FindScript(doc, path);
+        // Même notion de "Command éditable" que Load.CanEdit (CommandTexts) : un
+        // <Text> présent mais blanc ne compte pas comme une Command réelle.
         var commands = script.Element(Ns + "Commands")?.Elements(Ns + "Command")
-            .Where(c => c.Element(Ns + "Text") is not null).ToList() ?? [];
+            .Where(c => !string.IsNullOrWhiteSpace(c.Element(Ns + "Text")?.Value)).ToList() ?? [];
         if (commands.Count != 1)
             throw new InvalidOperationException(
                 $"Édition non supportée : le MdxScript a {commands.Count} Command (v1 = exactement 1).");
