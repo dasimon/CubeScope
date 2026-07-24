@@ -80,6 +80,20 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 3;
                 """);
         }
+        if (version < 4)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS ProfileRun (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Server TEXT NOT NULL, Catalog TEXT NULL, Mdx TEXT NOT NULL,
+                    TotalMs INTEGER NOT NULL, StorageEngineMs INTEGER NOT NULL, FormulaEngineMs INTEGER NOT NULL,
+                    SubcubeCount INTEGER NOT NULL, CacheHits INTEGER NOT NULL, AggregationHits INTEGER NOT NULL,
+                    ExecutedUtc TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS IX_ProfileRun_ExecutedUtc ON ProfileRun (ExecutedUtc DESC);
+                PRAGMA user_version = 4;
+                """);
+        }
     }
 
     public void AddRecentConnection(string server, string? catalog)
@@ -200,6 +214,42 @@ public sealed class StateStore : IDisposable
     }
 
     public void DeleteSnippet(long id) => Exec("DELETE FROM Snippet WHERE Id = $id", ("$id", id));
+
+    public void AddProfileRun(string server, string? catalog, string mdx, long totalMs, long storageEngineMs,
+        long formulaEngineMs, int subcubeCount, int cacheHits, int aggregationHits)
+    {
+        Exec("""
+            INSERT INTO ProfileRun (Server, Catalog, Mdx, TotalMs, StorageEngineMs, FormulaEngineMs,
+                SubcubeCount, CacheHits, AggregationHits, ExecutedUtc)
+            VALUES ($s, $c, $m, $tot, $se, $fe, $sc, $ch, $ah, $t)
+            """,
+            ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$m", mdx),
+            ("$tot", totalMs), ("$se", storageEngineMs), ("$fe", formulaEngineMs),
+            ("$sc", subcubeCount), ("$ch", cacheHits), ("$ah", aggregationHits),
+            ("$t", DateTime.UtcNow.ToString("O")));
+    }
+
+    public IReadOnlyList<ProfileRun> GetProfileRuns(int limit = 50)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Server, Catalog, Mdx, TotalMs, StorageEngineMs, FormulaEngineMs,
+                    SubcubeCount, CacheHits, AggregationHits, ExecutedUtc
+                FROM ProfileRun ORDER BY Id DESC LIMIT $n
+                """;
+            cmd.Parameters.AddWithValue("$n", limit);
+            using var r = cmd.ExecuteReader();
+            var list = new List<ProfileRun>();
+            while (r.Read())
+                list.Add(new ProfileRun(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2),
+                    r.GetString(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6),
+                    (int)r.GetInt64(7), (int)r.GetInt64(8), (int)r.GetInt64(9),
+                    DateTime.Parse(r.GetString(10)).ToUniversalTime()));
+            return list;
+        }
+    }
 
     private void Exec(string sql, params (string Name, object Value)[] args)
     {

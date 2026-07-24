@@ -105,6 +105,9 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
                 await Task.Delay(1000); // les événements de trace arrivent en asynchrone (push XMLA)
                 var events = profiler.DrainSince(profileSession, profileStart);
                 var profile = ProfileAggregator.Aggregate(events, result.DurationMs);
+                store.AddProfileRun(session.Server ?? "?", session.Catalog, req.Mdx, profile.TotalMs,
+                    profile.StorageEngineMs, profile.FormulaEngineMs, profile.SubcubeCount,
+                    profile.CacheHits, profile.AggregationHits);
                 await statsHub.Clients.All.SendAsync("queryProfile", profile);
             }, CancellationToken.None);
         }
@@ -274,6 +277,13 @@ api.MapGet("/stats/status", (PerfmonService perfmon) =>
 // Statut profiler (trace SSAS) — Unavailable si droits admin absents
 api.MapGet("/profiler/status", (ProfilerService profiler) =>
     Results.Ok(new { status = profiler.Status.ToString(), detail = profiler.StatusDetail }));
+
+// Historique des runs profiler (comparaison avant/après)
+api.MapGet("/profiler/history", (StateStore store) =>
+{
+    try { return Results.Ok(store.GetProfileRuns()); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
 
 // Historique des requêtes
 api.MapGet("/history", (StateStore store, [FromQuery] int limit = 100) => Results.Ok(store.GetHistory(limit)));

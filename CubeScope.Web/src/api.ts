@@ -114,6 +114,7 @@ export const api = {
     ),
   statsStatus: () => request<StatsStatus>('GET', '/api/stats/status'),
   profilerStatus: () => request<StatsStatus>('GET', '/api/profiler/status'),
+  profilerHistory: () => request<ProfileRun[]>('GET', '/api/profiler/history'),
   clearCache: () => request<{ databaseId: string; durationMs: number }>('POST', '/api/cache/clear'),
   script: (cube: string, refresh = false) =>
     request<CubeScript>('GET', `/api/script/${encodeURIComponent(cube)}?refresh=${refresh}`),
@@ -209,4 +210,18 @@ export interface QueryProfile {
   cacheHits: number
   aggregationHits: number
   subcubes: SubcubeInfo[]
+}
+
+export interface ProfileRun {
+  id: number
+  server: string
+  catalog: string | null
+  mdx: string
+  totalMs: number
+  storageEngineMs: number
+  formulaEngineMs: number
+  subcubeCount: number
+  cacheHits: number
+  aggregationHits: number
+  executedUtc: string
 }

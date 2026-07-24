@@ -33,3 +33,10 @@ public sealed record DirectoryListing(
 
 /// <summary>Un snippet MDX réutilisable, persisté en SQLite (bibliothèque locale).</summary>
 public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc);
+
+/// <summary>Un run du profiler persisté (métriques scalaires seulement — pas la liste des
+/// sous-cubes) pour permettre une comparaison avant/après entre deux requêtes.</summary>
+public sealed record ProfileRun(
+    long Id, string Server, string? Catalog, string Mdx,
+    long TotalMs, long StorageEngineMs, long FormulaEngineMs,
+    int SubcubeCount, int CacheHits, int AggregationHits, DateTime ExecutedUtc);

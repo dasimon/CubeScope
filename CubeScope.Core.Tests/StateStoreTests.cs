@@ -97,6 +97,35 @@ public class StateStoreTests : IDisposable
         Assert.Equal(id1, only.Id);
     }
 
+    [Fact]
+    public void ProfileRuns_AddAndList()
+    {
+        _store.AddProfileRun("SSAS-SERVER", "CatalogA", "SELECT ... A", 100, 20, 80, 3, 1, 2);
+        _store.AddProfileRun("SSAS-SERVER", "CatalogA", "SELECT ... B", 150, 40, 110, 5, 0, 4);
+
+        var runs = _store.GetProfileRuns();
+
+        Assert.Equal(2, runs.Count);
+        // Newest first
+        Assert.Equal("SELECT ... B", runs[0].Mdx);
+        Assert.Equal(150, runs[0].TotalMs);
+        Assert.Equal(40, runs[0].StorageEngineMs);
+        Assert.Equal(110, runs[0].FormulaEngineMs);
+        Assert.Equal(5, runs[0].SubcubeCount);
+        Assert.Equal(0, runs[0].CacheHits);
+        Assert.Equal(4, runs[0].AggregationHits);
+        Assert.Equal("CatalogA", runs[0].Catalog);
+        Assert.Equal("SSAS-SERVER", runs[0].Server);
+
+        Assert.Equal("SELECT ... A", runs[1].Mdx);
+        Assert.Equal(100, runs[1].TotalMs);
+        Assert.Equal(20, runs[1].StorageEngineMs);
+        Assert.Equal(80, runs[1].FormulaEngineMs);
+        Assert.Equal(3, runs[1].SubcubeCount);
+        Assert.Equal(1, runs[1].CacheHits);
+        Assert.Equal(2, runs[1].AggregationHits);
+    }
+
     public void Dispose()
     {
         _store.Dispose();

@@ -8,6 +8,7 @@ import {
   type CounterDelta,
   type CubeMeta,
   type HistoryEntry,
+  type ProfileRun,
   type QueryProfile,
   type QueryResult,
   type RecentConnection,
@@ -57,6 +58,7 @@ export const store = reactive({
   // Profiler (trace SSAS, poussé par SignalR après chaque requête)
   profile: null as QueryProfile | null,
   profilerStatus: null as StatsStatus | null,
+  profilerHistory: [] as ProfileRun[],
 
   // Panneau IA
   aiConfigured: null as boolean | null,
@@ -156,6 +158,15 @@ export const actions = {
     store.profile = p
     if (store.profilerStatus?.status !== 'Ready') {
       store.profilerStatus = { status: 'Ready', detail: store.profilerStatus?.detail ?? null }
+    }
+    void actions.loadProfilerHistory()
+  },
+
+  async loadProfilerHistory(): Promise<void> {
+    try {
+      store.profilerHistory = await api.profilerHistory()
+    } catch {
+      /* non bloquant */
     }
   },
 
