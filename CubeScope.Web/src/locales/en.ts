@@ -165,6 +165,14 @@ const en: typeof fr = {
     cubeFilesLabel: '.cube files',
     noCubeHere: 'No .cube file in this folder',
   },
+  calcprops: {
+    title: 'Properties',
+    formatString: 'Format string',
+    displayFolder: 'Display folder',
+    description: 'Description',
+    save: 'Save properties',
+    saved: 'Properties saved',
+  },
   snippets: {
     title: 'Snippets',
     saveCurrent: 'Save query as snippet',

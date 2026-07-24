@@ -223,6 +223,30 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     }
 });
 api.MapGet("/project/recent", (StateStore store) => Results.Ok(store.GetRecentProjects()));
+api.MapGet("/project/calcprops", (string path, CubeProjectService projects) =>
+{
+    try
+    {
+        return Results.Ok(projects.GetCalculationProperties(path));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+api.MapPost("/project/calcprops", (CalcPropRequest req, CubeProjectService projects) =>
+{
+    try
+    {
+        projects.SaveCalculationProperty(
+            req.Path, req.Reference, req.FormatString, req.DisplayFolder, req.Description);
+        return Results.Ok();
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
 
 // Bibliothèque de snippets MDX (locale, SQLite)
 api.MapGet("/snippets", (StateStore store) => Results.Ok(store.GetSnippets()));
@@ -331,6 +355,8 @@ internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
 internal sealed record SnippetRequest(string Name, string Mdx);
+internal sealed record CalcPropRequest(
+    string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);
 
 /// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
 internal sealed class StatsHub : Hub;

@@ -76,6 +76,13 @@ export interface DirectoryListing {
   cubeFiles: FileEntry[]
 }
 
+export interface CalculationProp {
+  reference: string
+  formatString: string | null
+  displayFolder: string | null
+  description: string | null
+}
+
 export interface Snippet {
   id: number
   name: string
@@ -133,6 +140,22 @@ export const api = {
   projectDeploy: (path: string, server: string, catalog: string, force: boolean) =>
     request<DeployScriptResult>('POST', '/api/project/deploy', { path, server, catalog, force }),
   projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
+  calcProps: (path: string) =>
+    request<CalculationProp[]>('GET', `/api/project/calcprops?path=${encodeURIComponent(path)}`),
+  saveCalcProp: (
+    path: string,
+    reference: string,
+    formatString: string | null,
+    displayFolder: string | null,
+    description: string | null,
+  ) =>
+    request<void>('POST', '/api/project/calcprops', {
+      path,
+      reference,
+      formatString,
+      displayFolder,
+      description,
+    }),
   fsList: (path?: string) =>
     request<DirectoryListing>('GET', `/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   snippets: () => request<Snippet[]>('GET', '/api/snippets'),

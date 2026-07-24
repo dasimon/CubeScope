@@ -20,6 +20,13 @@ public sealed record DeployScriptResult(
     string? ServerText,
     long DurationMs);
 
+/// <summary>Propriétés de calcul (FormatString, DisplayFolder, Description) d'un membre/set
+/// calculé du MdxScript, lues/écrites via un élément CalculationProperty. Reference =
+/// CalculationReference (ex. "[Measures].[Marge]"). Les champs valent null quand l'élément
+/// enfant correspondant est absent du XML (jamais chaîne vide).</summary>
+public sealed record CalculationProp(
+    string Reference, string? FormatString, string? DisplayFolder, string? Description);
+
 /// <summary>Une entrée du navigateur de fichiers (dossier ou fichier .cube).</summary>
 public sealed record FileEntry(string Name, string Path, bool IsDirectory);
 

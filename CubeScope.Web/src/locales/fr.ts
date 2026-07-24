@@ -163,6 +163,14 @@ export default {
     cubeFilesLabel: 'Fichiers .cube',
     noCubeHere: 'Aucun fichier .cube dans ce dossier',
   },
+  calcprops: {
+    title: 'Propriétés',
+    formatString: 'Format string',
+    displayFolder: "Dossier d'affichage",
+    description: 'Description',
+    save: 'Enregistrer les propriétés',
+    saved: 'Propriétés enregistrées',
+  },
   snippets: {
     title: 'Snippets',
     saveCurrent: 'Enregistrer la requête comme snippet',

@@ -81,6 +81,81 @@ public sealed class CubeProjectService
     }
 
     /// <summary>
+    /// Lit les CalculationProperty du MdxScript (FormatString/DisplayFolder/Description
+    /// d'un membre ou set calculé). N'affecte jamais le disque.
+    /// </summary>
+    public IReadOnlyList<CalculationProp> GetCalculationProperties(string path)
+    {
+        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
+        var (_, script) = FindScript(doc, path);
+        return script.Element(Ns + "CalculationProperties")?
+            .Elements(Ns + "CalculationProperty")
+            .Select(p => new CalculationProp(
+                p.Element(Ns + "CalculationReference")?.Value ?? "",
+                p.Element(Ns + "FormatString")?.Value,
+                p.Element(Ns + "DisplayFolder")?.Value,
+                p.Element(Ns + "Description")?.Value))
+            .ToList() ?? [];
+    }
+
+    /// <summary>
+    /// Crée ou met à jour la CalculationProperty d'un membre/set calculé (FormatString,
+    /// DisplayFolder, Description). Une valeur null ou vide supprime l'élément enfant
+    /// correspondant s'il existe ; une valeur non vide le crée ou le met à jour. Ne
+    /// touche à aucune autre CalculationProperty ni à la Command du MdxScript — le
+    /// reste du document est préservé (LoadOptions.PreserveWhitespace).
+    /// </summary>
+    public void SaveCalculationProperty(
+        string path, string reference, string? formatString, string? displayFolder, string? description)
+    {
+        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
+        var (_, script) = FindScript(doc, path);
+
+        var container = script.Element(Ns + "CalculationProperties");
+        if (container is null)
+        {
+            container = new XElement(Ns + "CalculationProperties");
+            script.Add(container);
+        }
+
+        var prop = container.Elements(Ns + "CalculationProperty")
+            .FirstOrDefault(p => p.Element(Ns + "CalculationReference")?.Value == reference);
+        if (prop is null)
+        {
+            prop = new XElement(Ns + "CalculationProperty",
+                new XElement(Ns + "CalculationReference", reference),
+                new XElement(Ns + "CalculationType", "Member"));
+            container.Add(prop);
+        }
+
+        SetOrRemoveChild(prop, Ns + "FormatString", formatString);
+        SetOrRemoveChild(prop, Ns + "DisplayFolder", displayFolder);
+        SetOrRemoveChild(prop, Ns + "Description", description);
+
+        doc.Save(path);
+    }
+
+    /// <summary>Élément enfant nommé : valeur non vide → créé/mis à jour (ajouté en fin de
+    /// parent si absent, l'ordre n'étant pas validé par SSAS pour ces éléments) ; null ou
+    /// vide → supprimé s'il existe.</summary>
+    private static void SetOrRemoveChild(XElement parent, XName name, string? value)
+    {
+        var existing = parent.Element(name);
+        if (string.IsNullOrEmpty(value))
+        {
+            existing?.Remove();
+        }
+        else if (existing is not null)
+        {
+            existing.Value = value;
+        }
+        else
+        {
+            parent.Add(new XElement(name, value));
+        }
+    }
+
+    /// <summary>
     /// CalculationReference sans CREATE MEMBER/SET correspondant dans le script.
     /// Best effort : comparaison sur le nom normalisé, avertissement seulement.
     /// </summary>

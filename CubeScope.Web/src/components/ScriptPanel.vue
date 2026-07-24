@@ -16,6 +16,7 @@ import { useToast } from 'primevue/usetoast'
 import { monaco } from '../monaco-mdx'
 import {
   api,
+  type CalculationProp,
   type CubeScript,
   type DependencyGraph,
   type DirectoryListing,
@@ -55,6 +56,46 @@ let suppressDirty = false
 let savePromise: Promise<boolean> | null = null
 
 const isProject = computed(() => project.value !== null)
+
+// --- Propriétés de calcul (FormatString/DisplayFolder/Description) du membre sélectionné ---
+// Chargées une fois par projet ouvert (pas par sélection) : select() relit ce cache local.
+const calcProps = ref<CalculationProp[]>([])
+const propFormatString = ref('')
+const propDisplayFolder = ref('')
+const propDescription = ref('')
+const savingProps = ref(false)
+
+const showCalcProps = computed(
+  () => isProject.value && !!project.value?.canEdit && selected.value?.kind === 'CalculatedMember',
+)
+
+async function loadCalcProps(path: string) {
+  try {
+    calcProps.value = await api.calcProps(path)
+  } catch {
+    calcProps.value = []
+  }
+}
+
+async function saveCalcProps() {
+  if (!project.value || !selected.value) return
+  savingProps.value = true
+  try {
+    await api.saveCalcProp(
+      project.value.path,
+      selected.value.name,
+      propFormatString.value.trim() || null,
+      propDisplayFolder.value.trim() || null,
+      propDescription.value.trim() || null,
+    )
+    await loadCalcProps(project.value.path)
+    toast.add({ severity: 'success', summary: t('calcprops.saved'), life: 3000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: e instanceof Error ? e.message : String(e), life: 6000 })
+  } finally {
+    savingProps.value = false
+  }
+}
 
 const commands = computed<ScriptCommand[]>(() =>
   project.value?.commands ?? script.value?.commands ?? [],
@@ -160,6 +201,8 @@ async function openProject(path?: string) {
     openPath.value = p
     ensureEditor()
     setEditorText(proj.fullText, !proj.canEdit)
+    calcProps.value = []
+    if (proj.canEdit) void loadCalcProps(p)
   } catch (e) {
     openError.value = e instanceof Error ? e.message : String(e)
   }
@@ -170,6 +213,7 @@ function closeProject() {
   project.value = null
   dirty.value = false
   warnings.value = []
+  calcProps.value = []
   setEditorText(script.value?.fullText ?? '', true)
 }
 
@@ -325,6 +369,12 @@ async function select(cmd: ScriptCommand) {
   selected.value = cmd
   editor?.revealLineNearTop(cmd.startLine)
   editor?.setPosition({ lineNumber: cmd.startLine, column: 1 })
+  if (cmd.kind === 'CalculatedMember') {
+    const cp = calcProps.value.find((p) => p.reference === cmd.name)
+    propFormatString.value = cp?.formatString ?? ''
+    propDisplayFolder.value = cp?.displayFolder ?? ''
+    propDescription.value = cp?.description ?? ''
+  }
   if (cmd.kind === 'CalculatedMember' || cmd.kind === 'NamedSet') {
     graphLoading.value = true
     graph.value = null
@@ -451,6 +501,15 @@ onBeforeUnmount(() => {
           </div>
           <div v-else class="script-usedby script-hint">{{ t('script.usedByNone') }}</div>
         </template>
+      </div>
+      <div v-if="showCalcProps" class="script-calcprops">
+        <div class="script-deps-title">{{ t('calcprops.title') }}</div>
+        <div class="calcprops-form">
+          <label>{{ t('calcprops.formatString') }}<InputText v-model="propFormatString" size="small" /></label>
+          <label>{{ t('calcprops.displayFolder') }}<InputText v-model="propDisplayFolder" size="small" /></label>
+          <label>{{ t('calcprops.description') }}<InputText v-model="propDescription" size="small" /></label>
+          <Button :label="t('calcprops.save')" size="small" :loading="savingProps" @click="saveCalcProps" />
+        </div>
       </div>
     </div>
     <Dialog v-model:visible="showOpen" :header="t('project.open')" modal :style="{ width: '34rem' }">
@@ -645,6 +704,22 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   padding: 0.05rem 0.4rem;
   margin: 0.15rem 0.2rem 0 0;
+}
+.script-calcprops {
+  border-top: 1px solid var(--p-surface-700);
+  padding-bottom: 0.5rem;
+}
+.calcprops-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.6rem 0.4rem;
+}
+.calcprops-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
 }
 .script-editor {
   flex: 1;
