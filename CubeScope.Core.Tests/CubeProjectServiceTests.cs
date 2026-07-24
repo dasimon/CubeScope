@@ -193,4 +193,11 @@ public class CubeProjectServiceTests : IDisposable
         string path = WriteFixture(twoCommands, "Deux.cube");
         Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Save(path, "CALCULATE;"));
     }
+
+    [Fact]
+    public void Load_Directory_ThrowsClearMessage()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Load(_dir));
+        Assert.Contains("introuvable", ex.Message);
+    }
 }

@@ -18,6 +18,10 @@ public sealed class CubeProjectService
 
     public ProjectScript Load(string path)
     {
+        if (!File.Exists(path))
+            throw new InvalidOperationException(
+                $"Fichier .cube introuvable ou chemin pointant sur un dossier : {path}");
+
         var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
         var (cube, script) = FindScript(doc, path);
         string cubeName = cube.Element(Ns + "Name")?.Value

@@ -31,6 +31,7 @@ builder.Services.AddSingleton<CacheService>();
 builder.Services.AddSingleton<AiService>();
 builder.Services.AddSingleton<ScriptService>();
 builder.Services.AddSingleton<CubeProjectService>();
+builder.Services.AddSingleton<FileBrowserService>();
 builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
@@ -219,6 +220,11 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     }
 });
 api.MapGet("/project/recent", (StateStore store) => Results.Ok(store.GetRecentProjects()));
+api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
+{
+    try { return Results.Ok(fs.List(path)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
 
 // Panneau IA : statut (clé configurée ?) et exécution d'une action sur le MDX courant
 api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured }));
