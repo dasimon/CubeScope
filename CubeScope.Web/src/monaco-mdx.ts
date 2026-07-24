@@ -57,6 +57,119 @@ monaco.languages.setLanguageConfiguration('mdx', {
   },
 })
 
+// Repliement structurel MDX : la config `folding.markers` ne replie QUE les régions
+// #region. Ce fournisseur ajoute le repliement des blocs multi-lignes `{ }` / `( )` et
+// des `SCOPE … END SCOPE` — indispensable pour les gros ensembles (CREATE STATIC SET
+// … AS { … }). Scan caractère à caractère qui saute chaînes, commentaires et
+// [identifiants crochetés] (même logique que le tokenizer serveur), + régions par ligne.
+const isWordChar = (c: string) => /[A-Za-z0-9_]/.test(c)
+function wordAt(text: string, i: number, w: string): boolean {
+  if (text.slice(i, i + w.length).toUpperCase() !== w) return false
+  if (i > 0 && isWordChar(text[i - 1])) return false
+  const end = i + w.length
+  return end >= text.length || !isWordChar(text[end])
+}
+function nextWordIs(text: string, from: number, w: string): boolean {
+  let i = from
+  while (i < text.length && /\s/.test(text[i])) i++
+  return wordAt(text, i, w)
+}
+function prevWordIsEnd(text: string, i: number): boolean {
+  let j = i - 1
+  while (j >= 0 && /\s/.test(text[j])) j--
+  let e = j
+  while (e >= 0 && isWordChar(text[e])) e--
+  return wordAt(text, e + 1, 'END')
+}
+
+monaco.languages.registerFoldingRangeProvider('mdx', {
+  provideFoldingRanges(model) {
+    const text = model.getValue()
+    const ranges: monaco.languages.FoldingRange[] = []
+    const braces: number[] = []
+    const parens: number[] = []
+    const scopes: number[] = []
+    let line = 1
+    let inLineComment = false
+    let inBlockComment = false
+    let inString = false
+    let inBracket = false
+    let stringChar = ''
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]
+      const next = i + 1 < text.length ? text[i + 1] : ''
+      if (c === '\n') {
+        line++
+        inLineComment = false
+        continue
+      }
+      if (inLineComment) continue
+      if (inBlockComment) {
+        if (c === '*' && next === '/') {
+          inBlockComment = false
+          i++
+        }
+        continue
+      }
+      if (inString) {
+        if (c === stringChar) inString = false
+        continue
+      }
+      if (inBracket) {
+        if (c === ']') inBracket = false
+        continue
+      }
+      if ((c === '/' && next === '/') || (c === '-' && next === '-')) {
+        inLineComment = true
+        i++
+        continue
+      }
+      if (c === '/' && next === '*') {
+        inBlockComment = true
+        i++
+        continue
+      }
+      if (c === '"' || c === "'") {
+        inString = true
+        stringChar = c
+        continue
+      }
+      if (c === '[') {
+        inBracket = true
+        continue
+      }
+      if (c === '{') braces.push(line)
+      else if (c === '}') {
+        const s = braces.pop()
+        if (s !== undefined && s < line) ranges.push({ start: s, end: line })
+      } else if (c === '(') parens.push(line)
+      else if (c === ')') {
+        const s = parens.pop()
+        if (s !== undefined && s < line) ranges.push({ start: s, end: line })
+      } else if (isWordChar(c) && (i === 0 || !isWordChar(text[i - 1]))) {
+        if (wordAt(text, i, 'SCOPE') && !prevWordIsEnd(text, i)) scopes.push(line)
+        else if (wordAt(text, i, 'END') && nextWordIs(text, i + 3, 'SCOPE')) {
+          const s = scopes.pop()
+          if (s !== undefined && s < line) ranges.push({ start: s, end: line })
+        }
+      }
+    }
+
+    // Régions #region / #endregion (repliables et repliées par défaut par Monaco)
+    const regions: number[] = []
+    const lines = text.split('\n')
+    for (let ln = 0; ln < lines.length; ln++) {
+      if (/^\s*(?:\/\/|--)\s*#region\b/i.test(lines[ln])) regions.push(ln + 1)
+      else if (/^\s*(?:\/\/|--)\s*#endregion\b/i.test(lines[ln])) {
+        const s = regions.pop()
+        if (s !== undefined) ranges.push({ start: s, end: ln + 1, kind: monaco.languages.FoldingRangeKind.Region })
+      }
+    }
+    return ranges
+  },
+})
+
 monaco.languages.setMonarchTokensProvider('mdx', {
   ignoreCase: true,
   defaultToken: '',
