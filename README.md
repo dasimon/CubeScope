@@ -22,7 +22,8 @@ component to deploy, no cloud.
   (lazy-loaded after `.`), execute with `F5` / `Ctrl+Enter`, cancel in flight.
 - **Results grid** — virtualized grid handling wide crossjoins.
 - **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed);
-  double-click inserts at the cursor.
+  double-click inserts at the cursor. Measure descriptions surface as hover
+  tooltips and in the MDX autocomplete documentation.
 - **Query profiler** — per-query **Formula Engine vs Storage Engine** split from
   SSAS traces, `Query Subcube` breakdown (readable text), cache and aggregation
   hits. *(Requires SSAS admin rights — see Prerequisites.)*
@@ -31,11 +32,12 @@ component to deploy, no cloud.
 - **MDX Script & dependencies** — read the cube's MDX Script, browse calculated
   members / named sets / SCOPEs and their dependency graph; export a Markdown
   doc of the cube.
-- **SSDT project mode** — open the `.cube` file of an SSDT Multidimensional project,
-  edit the MDX Script with `// #region` grouping and folding, save round-trips into
-  the `.cube` (plus a plain-text `.mdxscript.mdx` export for readable Git diffs),
-  and deploy the script alone to a dev cube (BIDS Helper style) without a full
-  project deploy.
+- **SSDT project mode** — open the `.cube` file of an SSDT Multidimensional project
+  (type a path or use the built-in file browser), edit the MDX Script with
+  `// #region` grouping and folding, save round-trips into the `.cube` (plus a
+  plain-text `.mdxscript.mdx` export for readable Git diffs), and deploy the script
+  alone to a dev cube (BIDS Helper style, with a divergence guard and dev-catalog
+  warning) without a full project deploy.
 - **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, powered
   by the Anthropic API (`claude-opus-4-8`), with the relevant cube metadata
   injected into the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
@@ -162,10 +164,12 @@ Key technical choices:
   read from, or written to, disk or config.
 - The Anthropic API key is read from the `ANTHROPIC_API_KEY` environment variable
   only.
-- **Known transitive advisories:** the ADOMD.NET Core client pulls in
-  `Microsoft.Identity.Client` 4.56.0, which carries two low/moderate advisories
-  (NU1901/NU1902). CubeScope does **not** use Entra ID authentication (Integrated
-  Security only), so this code path is not exercised. Tracked, non-blocking.
+- **Transitive advisories (resolved):** the ADOMD.NET Core client used to pull in
+  `Microsoft.Identity.Client` 4.56.0, flagged by NU1901/NU1902 (low/moderate).
+  CubeScope now pins `Microsoft.Identity.Client` 4.86.1 directly, forcing the
+  transitive up to a patched version — `dotnet list --vulnerable` is clean.
+  (CubeScope does not use Entra ID authentication — Integrated Security only — so
+  the affected code path was never exercised anyway.)
 
 ---
 
