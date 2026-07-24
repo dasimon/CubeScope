@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64" Version="19.84.1" />
     <PackageReference Include="Microsoft.AnalysisServices.NetCore.retail.amd64" Version="19.84.1" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.86.1" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
   </ItemGroup>
 

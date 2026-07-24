@@ -114,9 +114,13 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   `Stop()`+`Drop()` en `finally` ; nettoyer les traces orphelines `CubeScope_*`
   en cas de crash.
 - Package `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` 19.84.1 :
-  tire `Microsoft.Identity.Client` 4.56.0 en transitive, avec 2 vulnérabilités
-  connues (NU1901/NU1902, gravité faible/moyenne) — à surveiller, non bloquant
-  (auth Entra non utilisée, on est en Integrated Security).
+  tirait `Microsoft.Identity.Client` 4.56.0 en transitive, avec 2 vulnérabilités
+  connues (NU1901/NU1902, gravité faible/moyenne). **Résolu** : pin direct de
+  `Microsoft.Identity.Client` 4.86.1 dans `CubeScope.Core` et `CubeScope.Spike`
+  (force la transitive vers la version patchée — audit `dotnet list --vulnerable`
+  vide, build 0 warning). MSAL 4.86.1 compatible ADOMD 19.84.1 (auth Entra non
+  utilisée de toute façon, on est en Integrated Security). Resynchroniser ce pin
+  si ADOMD/AMO montent de version.
 - Cibler `net10.0-windows` (pas `net10.0`) : `System.Diagnostics.PerformanceCounter`
   est Windows-only et génère ~30 warnings CA1416 sinon.
 - DMV : **crocheter toutes les colonnes** (`SELECT [HIERARCHY_UNIQUE_NAME] …`) —

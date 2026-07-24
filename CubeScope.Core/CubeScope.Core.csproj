@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64" Version="19.84.1" />
     <PackageReference Include="Microsoft.AnalysisServices.NetCore.retail.amd64" Version="19.84.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.86.1" />
     <!-- Pin explicite : la 2.1.11 tirée en transitive a une vulnérabilité connue (NU1903) -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
