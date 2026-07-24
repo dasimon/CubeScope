@@ -48,6 +48,7 @@ const openPath = ref('')
 const openError = ref('')
 const recentProjects = ref<RecentProject[]>([])
 let suppressDirty = false
+let savePromise: Promise<boolean> | null = null
 
 const isProject = computed(() => project.value !== null)
 
@@ -128,6 +129,7 @@ async function showOpenDialog() {
 }
 
 async function openProject(path?: string) {
+  if (dirty.value && !window.confirm(t('project.discardConfirm'))) return
   const p = (path ?? openPath.value).trim()
   if (!p) return
   openError.value = ''
@@ -145,25 +147,27 @@ async function openProject(path?: string) {
 }
 
 function closeProject() {
+  if (dirty.value && !window.confirm(t('project.discardConfirm'))) return
   project.value = null
   dirty.value = false
   warnings.value = []
   setEditorText(script.value?.fullText ?? '', true)
 }
 
-/** Sauvegarde dans le .cube ; retourne true si OK (ou rien à sauver). */
-async function saveProject(): Promise<boolean> {
-  if (!project.value || !project.value.canEdit || saving.value) return true
-  if (!dirty.value) return true
+/** Corps réel de la sauvegarde (wrappé par saveProject pour dédupliquer les appels concurrents). */
+async function performSaveProject(): Promise<boolean> {
   saving.value = true
   try {
-    const text = editor?.getValue() ?? project.value.fullText
-    const r = await api.projectSave(project.value.path, text)
+    const text = editor?.getValue() ?? project.value!.fullText
+    const r = await api.projectSave(project.value!.path, text)
     warnings.value = r.warnings
     // Recharge la liste des commandes (sections/lignes à jour) sans toucher à l'éditeur
-    const proj = await api.projectOpen(project.value.path)
+    const proj = await api.projectOpen(project.value!.path)
     project.value = proj
-    dirty.value = false
+    // Si l'utilisateur a continué à taper pendant les awaits ci-dessus, `text` n'est plus
+    // le contenu courant de l'éditeur : ne pas effacer le flag dirty dans ce cas.
+    const stillSame = (editor?.getValue() ?? '') === text
+    dirty.value = !stillSame
     toast.add({ severity: 'success', summary: t('project.saved'), life: 3000 })
     return true
   } catch (e) {
@@ -175,6 +179,20 @@ async function saveProject(): Promise<boolean> {
     return false
   } finally {
     saving.value = false
+  }
+}
+
+/** Sauvegarde dans le .cube ; retourne true si OK (ou rien à sauver). Les appels concurrents
+ *  attendent la même sauvegarde en cours plutôt que de renvoyer true immédiatement. */
+async function saveProject(): Promise<boolean> {
+  if (!project.value || !project.value.canEdit) return true
+  if (!dirty.value) return true
+  if (savePromise) return savePromise
+  savePromise = performSaveProject()
+  try {
+    return await savePromise
+  } finally {
+    savePromise = null
   }
 }
 
@@ -225,7 +243,9 @@ watch(
     script.value = null
     selected.value = null
     graph.value = null
-    if (c) void load()
+    // En mode projet SSDT, l'éditeur affiche déjà le contenu du .cube : pas d'aller-retour
+    // réseau vers /api/script.
+    if (c && !isProject.value) void load()
   },
   { immediate: true },
 )
@@ -248,7 +268,7 @@ onBeforeUnmount(() => editor?.dispose())
         <InputText v-model="filter" :placeholder="t('common.filter')" size="small" class="script-filter" />
         <Button icon="pi pi-folder-open" text size="small" :title="t('project.open')" @click="showOpenDialog" />
         <Button v-if="isProject" icon="pi pi-save" text size="small" :disabled="!dirty || !project?.canEdit"
-          :loading="saving" :title="t('project.save')" @click="saveProject" />
+          :loading="saving" :title="dirty ? t('project.dirty') : t('project.save')" @click="saveProject" />
         <Button v-if="isProject" icon="pi pi-times" text size="small" :title="t('project.close')" @click="closeProject" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />

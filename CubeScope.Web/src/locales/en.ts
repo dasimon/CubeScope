@@ -131,6 +131,7 @@ const en: typeof fr = {
     save: 'Save to .cube (Ctrl+S)',
     saved: 'Script saved — .mdxscript.mdx export updated',
     dirty: 'Unsaved changes',
+    discardConfirm: 'You have unsaved changes. Discard them?',
     readOnly: 'Read-only: {reason}',
     noSection: '(no region)',
     warningsTitle: 'Warnings',

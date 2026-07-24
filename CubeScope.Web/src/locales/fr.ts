@@ -129,6 +129,7 @@ export default {
     save: 'Enregistrer dans le .cube (Ctrl+S)',
     saved: 'Script enregistré — export .mdxscript.mdx mis à jour',
     dirty: 'Modifications non enregistrées',
+    discardConfirm: 'Des modifications ne sont pas enregistrées. Les abandonner ?',
     readOnly: 'Lecture seule : {reason}',
     noSection: '(hors région)',
     warningsTitle: 'Avertissements',
