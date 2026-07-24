@@ -18,6 +18,7 @@ import {
   api,
   type CubeScript,
   type DependencyGraph,
+  type DirectoryListing,
   type ProjectScript,
   type RecentProject,
   type ScriptCommand,
@@ -47,6 +48,9 @@ const showOpen = ref(false)
 const openPath = ref('')
 const openError = ref('')
 const recentProjects = ref<RecentProject[]>([])
+const browsing = ref(false)
+const listing = ref<DirectoryListing | null>(null)
+const browseError = ref('')
 let suppressDirty = false
 let savePromise: Promise<boolean> | null = null
 
@@ -121,10 +125,23 @@ function setEditorText(text: string, readOnly: boolean) {
 async function showOpenDialog() {
   openError.value = ''
   showOpen.value = true
+  browsing.value = false
+  listing.value = null
+  browseError.value = ''
   try {
     recentProjects.value = await api.projectRecent()
   } catch {
     recentProjects.value = []
+  }
+}
+
+async function browse(path?: string) {
+  browseError.value = ''
+  try {
+    listing.value = await api.fsList(path)
+    browsing.value = true
+  } catch (e) {
+    browseError.value = e instanceof Error ? e.message : String(e)
   }
 }
 
@@ -217,7 +234,7 @@ const isDevCatalog = computed(() => deployCatalog.value.toLowerCase().includes('
 function showDeployDialog() {
   deployServer.value = store.server
   // Catalogue par défaut = premier catalogue « dev » de la connexion courante
-  deployCatalog.value = store.catalogs.find((c) => c.toLowerCase().includes('dev')) ?? ''
+  deployCatalog.value = store.catalogs.find((c) => c.toLowerCase().includes('dev')) ?? store.catalog ?? ''
   deployDiffers.value = false
   serverText.value = ''
   deployError.value = ''
@@ -382,8 +399,29 @@ onBeforeUnmount(() => {
         <InputText v-model="openPath" :placeholder="t('project.pathPlaceholder')" class="project-path"
           @keydown.enter="openProject()" />
         <Button :label="t('project.openBtn')" size="small" @click="openProject()" />
+        <Button :label="t('project.browse')" size="small" text @click="browse(openPath || undefined)" />
       </div>
       <Message v-if="openError" severity="error">{{ openError }}</Message>
+      <Message v-if="browseError" severity="error">{{ browseError }}</Message>
+      <div v-if="browsing && listing" class="project-browser">
+        <div class="project-browser-path">{{ listing.path }}</div>
+        <div v-if="listing.drives.length" class="project-drives">
+          <Button v-for="d in listing.drives" :key="d" :label="d" size="small" text
+            class="project-drive-btn" @click="browse(d)" />
+        </div>
+        <ul class="script-list project-browser-list">
+          <li v-if="listing.parent" @click="browse(listing.parent!)">
+            <i class="pi pi-arrow-up" />{{ t('project.parentDir') }}
+          </li>
+          <li v-for="d in listing.directories" :key="d.path" @click="browse(d.path)">
+            <i class="pi pi-folder" />{{ d.name }}
+          </li>
+          <li v-for="f in listing.cubeFiles" :key="f.path" @click="openProject(f.path)">
+            <i class="pi pi-file" />{{ f.name }}
+          </li>
+        </ul>
+        <div v-if="!listing.cubeFiles.length" class="script-hint">{{ t('project.noCubeHere') }}</div>
+      </div>
       <div v-if="recentProjects.length" class="project-recent">
         <div class="script-deps-title">{{ t('project.recent') }}</div>
         <ul class="script-list">
@@ -487,6 +525,35 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 .project-recent {
+  max-height: 14rem;
+  overflow: auto;
+}
+.project-browser {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--p-surface-700);
+  border-radius: 4px;
+}
+.project-browser-path {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--p-text-muted-color);
+  border-bottom: 1px solid var(--p-surface-700);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-drives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--p-surface-700);
+}
+.project-drive-btn {
+  padding: 0.15rem 0.5rem;
+}
+.project-browser-list {
   max-height: 14rem;
   overflow: auto;
 }

@@ -145,6 +145,12 @@ const en: typeof fr = {
     deployBtn: 'Deploy',
     overwriteBtn: 'Overwrite server script',
     deployed: 'Script deployed in {ms} ms',
+    browse: 'Browse…',
+    parentDir: 'Parent folder',
+    drives: 'Drives',
+    folders: 'Folders',
+    cubeFilesLabel: '.cube files',
+    noCubeHere: 'No .cube file in this folder',
   },
 }
 

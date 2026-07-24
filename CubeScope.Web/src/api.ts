@@ -62,6 +62,19 @@ export interface CubeMeta {
   dimensions: DimensionMeta[]
 }
 
+export interface FileEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+export interface DirectoryListing {
+  path: string
+  parent: string | null
+  drives: string[]
+  directories: FileEntry[]
+  cubeFiles: FileEntry[]
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -111,6 +124,8 @@ export const api = {
   projectDeploy: (path: string, server: string, catalog: string, force: boolean) =>
     request<DeployScriptResult>('POST', '/api/project/deploy', { path, server, catalog, force }),
   projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
+  fsList: (path?: string) =>
+    request<DirectoryListing>('GET', `/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'

@@ -143,5 +143,11 @@ export default {
     deployBtn: 'Déployer',
     overwriteBtn: 'Écraser le script du serveur',
     deployed: 'Script déployé en {ms} ms',
+    browse: 'Parcourir…',
+    parentDir: 'Dossier parent',
+    drives: 'Lecteurs',
+    folders: 'Dossiers',
+    cubeFilesLabel: 'Fichiers .cube',
+    noCubeHere: 'Aucun fichier .cube dans ce dossier',
   },
 }
