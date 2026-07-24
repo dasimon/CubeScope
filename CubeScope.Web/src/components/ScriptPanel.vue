@@ -196,6 +196,49 @@ async function saveProject(): Promise<boolean> {
   }
 }
 
+// --- Déploiement du script seul (idée BIDS Helper) ---
+const showDeploy = ref(false)
+const deployServer = ref('')
+const deployCatalog = ref('')
+const deployBusy = ref(false)
+const deployDiffers = ref(false)
+const serverText = ref('')
+const deployError = ref('')
+
+const isDevCatalog = computed(() => deployCatalog.value.toLowerCase().includes('dev'))
+
+function showDeployDialog() {
+  deployServer.value = store.server
+  // Catalogue par défaut = premier catalogue « dev » de la connexion courante
+  deployCatalog.value = store.catalogs.find((c) => c.toLowerCase().includes('dev')) ?? ''
+  deployDiffers.value = false
+  serverText.value = ''
+  deployError.value = ''
+  showDeploy.value = true
+}
+
+async function deploy(force = false) {
+  if (!project.value || deployBusy.value) return
+  deployBusy.value = true
+  deployError.value = ''
+  try {
+    if (!(await saveProject())) return // l'état DISQUE est déployé : sauvegarde d'abord
+    const r = await api.projectDeploy(
+      project.value.path, deployServer.value.trim(), deployCatalog.value.trim(), force)
+    if (r.differs && !r.deployed) {
+      deployDiffers.value = true
+      serverText.value = r.serverText ?? ''
+      return
+    }
+    showDeploy.value = false
+    toast.add({ severity: 'success', summary: t('project.deployed', { ms: r.durationMs }), life: 4000 })
+  } catch (e) {
+    deployError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    deployBusy.value = false
+  }
+}
+
 async function select(cmd: ScriptCommand) {
   selected.value = cmd
   editor?.revealLineNearTop(cmd.startLine)
@@ -270,6 +313,8 @@ onBeforeUnmount(() => editor?.dispose())
         <Button v-if="isProject" icon="pi pi-save" text size="small" :disabled="!dirty || !project?.canEdit"
           :loading="saving" :title="dirty ? t('project.dirty') : t('project.save')" @click="saveProject" />
         <Button v-if="isProject" icon="pi pi-times" text size="small" :title="t('project.close')" @click="closeProject" />
+        <Button v-if="isProject" icon="pi pi-cloud-upload" text size="small"
+          :disabled="!project?.canEdit" :title="t('project.deploy')" @click="showDeployDialog" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
       </div>
@@ -326,6 +371,25 @@ onBeforeUnmount(() => editor?.dispose())
           </li>
         </ul>
       </div>
+    </Dialog>
+    <Dialog v-model:visible="showDeploy" :header="t('project.deployTitle')" modal :style="{ width: '40rem' }">
+      <p class="deploy-hint">{{ t('project.deployHint') }}</p>
+      <div class="deploy-form">
+        <label>{{ t('project.server') }}<InputText v-model="deployServer" /></label>
+        <label>{{ t('project.catalog') }}<InputText v-model="deployCatalog" /></label>
+      </div>
+      <Message v-if="!isDevCatalog && deployCatalog" severity="warn">
+        {{ t('project.devWarning', { catalog: deployCatalog }) }}
+      </Message>
+      <Message v-if="deployError" severity="error">{{ deployError }}</Message>
+      <template v-if="deployDiffers">
+        <Message severity="warn">{{ t('project.differs') }}</Message>
+        <div class="script-deps-title">{{ t('project.serverScript') }}</div>
+        <pre class="deploy-server-text">{{ serverText }}</pre>
+        <Button :label="t('project.overwriteBtn')" severity="danger" :loading="deployBusy" @click="deploy(true)" />
+      </template>
+      <Button v-else :label="t('project.deployBtn')" :loading="deployBusy"
+        :disabled="!deployServer.trim() || !deployCatalog.trim()" @click="deploy(false)" />
     </Dialog>
     <div ref="host" class="script-editor" />
   </div>
@@ -435,5 +499,32 @@ onBeforeUnmount(() => editor?.dispose())
 .script-editor {
   flex: 1;
   min-width: 0;
+}
+.deploy-hint {
+  font-size: 0.85rem;
+  color: var(--p-text-muted-color);
+  margin-top: 0;
+}
+.deploy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.deploy-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.deploy-server-text {
+  max-height: 14rem;
+  overflow: auto;
+  background: var(--p-surface-900);
+  border: 1px solid var(--p-surface-700);
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
 }
 </style>
