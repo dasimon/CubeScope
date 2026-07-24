@@ -91,4 +91,72 @@ public class CubeProjectServiceTests : IDisposable
         string noScript = SampleCube[..SampleCube.IndexOf("<MdxScripts>", StringComparison.Ordinal)] + "</Cube>";
         Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Load(WriteFixture(noScript)));
     }
+
+    private const string NewScript = """
+        CALCULATE;
+
+        // #region Rentabilité
+        CREATE MEMBER CURRENTCUBE.[Measures].[Marge]
+         AS [Measures].[CA] - [Measures].[Coûts] - [Measures].[Frais],
+        VISIBLE = 1;
+        // #endregion
+        """;
+
+    [Fact]
+    public void Save_RoundTrip_PreservesRestOfDocument()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        svc.Save(path, NewScript);
+
+        var reloaded = svc.Load(path);
+        Assert.Equal(NewScript, reloaded.FullText);
+        // Le reste du document est intact (annotations designer, propriétés de calcul)
+        string xml = File.ReadAllText(path);
+        Assert.Contains("DiagramLayout", xml);
+        Assert.Contains("<FormatString>'#,##0.00'</FormatString>", xml);
+    }
+
+    [Fact]
+    public void Save_CreatesBackupOncePerSession_AndExportsMdx()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        svc.Save(path, NewScript);
+
+        string bak = path + ".bak";
+        Assert.True(File.Exists(bak));
+        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // texte d'origine
+
+        svc.Save(path, NewScript + "\n-- v2");
+        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // .bak PAS écrasé
+
+        string mdx = Path.Combine(_dir, "Portefeuilles.mdxscript.mdx");
+        Assert.True(File.Exists(mdx));
+        Assert.EndsWith("-- v2", File.ReadAllText(mdx).TrimEnd());
+    }
+
+    [Fact]
+    public void Save_ReportsOrphanCalculationProperties()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        // NewScript ne définit plus [Measures].[Disparu] (qui a une CalculationProperty)
+        var warnings = svc.Save(path, NewScript);
+        Assert.Contains(warnings, w => w.Contains("[Measures].[Disparu]"));
+        Assert.DoesNotContain(warnings, w => w.Contains("[Measures].[Marge]"));
+    }
+
+    [Fact]
+    public void Save_TwoCommands_Throws()
+    {
+        string twoCommands = SampleCube.Replace("</Commands>", """
+                <Command>
+                  <Text>CREATE SET CURRENTCUBE.[Deuxième] AS [D].[H].Members;</Text>
+                </Command>
+              </Commands>
+            """);
+        string path = WriteFixture(twoCommands, "Deux.cube");
+        Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Save(path, "CALCULATE;"));
+    }
 }
