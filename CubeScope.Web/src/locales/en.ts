@@ -46,6 +46,10 @@ const en: typeof fr = {
   results: {
     running: 'Running…',
     hint: 'Execute a query (F5 or Ctrl+Enter) to display results.',
+    exportCsv: 'Export CSV',
+    copy: 'Copy',
+    copied: 'Results copied to clipboard',
+    copyFailed: 'Copy failed',
   },
   explorer: {
     measures: 'Measures ({n})',

@@ -44,6 +44,10 @@ export default {
   results: {
     running: 'Exécution…',
     hint: 'Exécutez une requête (F5 ou Ctrl+Entrée) pour afficher les résultats.',
+    exportCsv: 'Exporter CSV',
+    copy: 'Copier',
+    copied: 'Résultats copiés dans le presse-papiers',
+    copyFailed: 'Échec de la copie',
   },
   explorer: {
     measures: 'Mesures ({n})',
