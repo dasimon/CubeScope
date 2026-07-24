@@ -20,9 +20,11 @@ component to deploy, no cloud.
 - **MDX editor** — Monaco with a hand-written MDX grammar (syntax highlighting,
   reference detection), autocompletion of measures, hierarchies and members
   (lazy-loaded after `.`), structural folding of `{ }` / `( )` / `SCOPE` blocks
-  and `// #region` sections, execute with `F5` / `Ctrl+Enter`, cancel in flight.
+  and `// #region` sections, function signatures on hover, execute with `F5` /
+  `Ctrl+Enter` (the whole editor or just the selected text), cancel in flight.
 - **Results grid** — virtualized grid handling wide crossjoins; export to CSV
-  or copy to the clipboard (Excel-friendly).
+  or copy to the clipboard (Excel-friendly); recent results kept in closeable
+  tabs, and `DRILLTHROUGH` a query to view its source rows.
 - **Productivity helpers** — a reusable MDX **snippets** library (save / insert /
   delete) and a **calculated-member scaffold** (WITH MEMBER / CREATE MEMBER).
 - **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed);
@@ -35,8 +37,8 @@ component to deploy, no cloud.
 - **Perfmon stats** — per-query perfmon counter deltas (MDX / cache / storage
   engine), streamed live over SignalR.
 - **MDX Script & dependencies** — read the cube's MDX Script, browse calculated
-  members / named sets / SCOPEs and their dependency graph; export a Markdown
-  doc of the cube.
+  members / named sets / SCOPEs and their dependency graph, full-text search and
+  find-references across the script; export a Markdown doc of the cube.
 - **SSDT project mode** — open the `.cube` file of an SSDT Multidimensional project
   (type a path or use the built-in file browser), edit the MDX Script with
   `// #region` grouping and folding, save round-trips into the `.cube` (plus a
@@ -45,7 +47,8 @@ component to deploy, no cloud.
   warning) without a full project deploy. On divergence a side-by-side Monaco diff
   shows server vs project before you overwrite; you can also edit a calculated
   member's properties (format string, display folder, description) with round-trip
-  writeback into the `.cube`.
+  writeback into the `.cube`, safely rename a calculated member across the whole
+  script (definition + references), and every deploy is kept in an audit log.
 - **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, powered
   by the Anthropic API (`claude-opus-4-8`), with the relevant cube metadata
   injected into the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
