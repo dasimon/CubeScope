@@ -31,6 +31,11 @@ component to deploy, no cloud.
 - **MDX Script & dependencies** — read the cube's MDX Script, browse calculated
   members / named sets / SCOPEs and their dependency graph; export a Markdown
   doc of the cube.
+- **SSDT project mode** — open the `.cube` file of an SSDT Multidimensional project,
+  edit the MDX Script with `// #region` grouping and folding, save round-trips into
+  the `.cube` (plus a plain-text `.mdxscript.mdx` export for readable Git diffs),
+  and deploy the script alone to a dev cube (BIDS Helper style) without a full
+  project deploy.
 - **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, powered
   by the Anthropic API (`claude-opus-4-8`), with the relevant cube metadata
   injected into the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*

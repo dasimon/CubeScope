@@ -173,6 +173,19 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   vieux binaire, pas de bug front).
 - Nom "MDX" pollué par Markdown+JSX dans l'écosystème npm/GitHub : ne pas
   nommer de packages `mdx-*` côté frontend.
+- Round-trip `.cube` (mode projet SSDT) : `XDocument.Load` doit utiliser
+  `LoadOptions.PreserveWhitespace`, sinon l'indentation XML est reformatée en
+  silence à l'enregistrement.
+- `Save` et `Load` (`CubeProjectService`) doivent s'accorder sur la définition
+  d'un `Command` éditable — un `<Text>` composé uniquement d'espaces ne compte
+  pas comme du contenu, sinon `CanEdit` (calculé au `Load`) et la garde de
+  sauvegarde (recomptée au `Save`) divergent.
+- Pliage Monaco par régions (`// #region` / `// #endregion`) : se déclare via
+  `folding.markers` (regex) dans la config de langage `monaco-mdx.ts`, la
+  contribution folding elle-même est déjà importée par `monaco-core.ts`.
+- `en.ts` typé `typeof fr` impose la complétude des clés i18n à la
+  compilation : une clé manquante devient une erreur TypeScript, pas un texte
+  vide silencieux en prod.
 
 ## Conventions de travail
 
@@ -191,6 +204,21 @@ historique ; panneau IA (API Anthropic, `claude-opus-4-8`) ; MDX Script +
 graphe de dépendances + doc Markdown exportable ; publication GitHub (MIT,
 CI + Release GitHub Actions). Extras post-MVP : **Profiler** (découpage
 Formula/Storage Engine par requête via trace SSAS), **i18n FR/EN**.
+
+**Mode projet SSDT : TERMINÉ (2026-07-24)** — ouverture/édition du fichier
+`.cube` d'un projet SSDT Multidimensional (`CubeProjectService`,
+`CubeScope.Core/Project/`) : lecture XML `PreserveWhitespace`, script
+éditable seulement si exactement 1 `Command` non vide (`CanEdit`), régions
+`// #region` / `// #endregion` (parsées par `ScriptParser`, pliage Monaco
+assorti), sauvegarde round-trip dans le `.cube` + export texte
+`<nom>.mdxscript.mdx` (diffs Git lisibles) + `.bak` une fois par session,
+rapport des `CalculationProperty` orphelines (référence à un membre/set
+calculé disparu — signalé, jamais supprimé automatiquement). Déploiement du
+script seul vers un cube de dev via AMO façon BIDS Helper
+(`ScriptDeployService`) avec garde de divergence (compare serveur vs projet,
+refuse sans `force` si différent) et garde catalogue dev (nom contenant
+« dev »). StateStore v2 (`RecentProject(Path, LastUsedUtc)`,
+`PRAGMA user_version = 2`).
 
 `cubescope.exe` est un single-file self-contained : SPA et DLL natives sont
 embarquées dans l'assembly (voir `EmbeddedSpaFileProvider` + la cible `EmbedSpa`
