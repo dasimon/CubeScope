@@ -52,4 +52,21 @@ public class ScriptParserRegionTests
         var cmds = ScriptParser.Parse("-- #endregion\nCREATE SET CURRENTCUBE.[S] AS [D].[H].Members;");
         Assert.Null(cmds.Single().Section);
     }
+
+    [Fact]
+    public void Section_FirstStatement_WithLeadingBlankLines_UsesRegion()
+    {
+        // Script commençant par des lignes blanches AVANT le premier #region : le
+        // premier statement doit quand même se voir attribuer la bonne région.
+        var cmds = ScriptParser.Parse("\n\n// #region X\nCREATE SET CURRENTCUBE.[S] AS [D].[H].Members;");
+        Assert.Equal("X", cmds.Single().Section);
+    }
+
+    [Fact]
+    public void Section_FirstStatement_WithLeadingBlankLines_OutsideRegion_IsNull()
+    {
+        // Même scénario mais sans aucune région dans le script : doit rester null.
+        var cmds = ScriptParser.Parse("\n\nCREATE SET CURRENTCUBE.[S] AS [D].[H].Members;");
+        Assert.Null(cmds.Single().Section);
+    }
 }

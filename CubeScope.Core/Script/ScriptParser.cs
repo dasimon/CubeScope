@@ -143,6 +143,13 @@ public static partial class ScriptParser
         bool inString = false, inBracket = false, inLineComment = false, inBlockComment = false;
         char stringChar = '"';
 
+        // Même peek-forward que celui utilisé après chaque ';' (voir plus bas) : le tout
+        // premier statement doit lui aussi voir son stmtStartLine avancer au-delà des
+        // éventuelles lignes blanches de tête du script, sinon ContentLine (qui soustrait
+        // ces mêmes lignes blanches) part d'une valeur jamais ajustée et sous-évalue la ligne.
+        for (int j = stmtStart; j < script.Length && char.IsWhiteSpace(script[j]); j++)
+            if (script[j] == '\n') stmtStartLine++;
+
         for (int i = 0; i < script.Length; i++)
         {
             char c = script[i];
