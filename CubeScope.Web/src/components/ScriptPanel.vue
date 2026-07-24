@@ -141,6 +141,8 @@ async function browse(path?: string) {
     listing.value = await api.fsList(path)
     browsing.value = true
   } catch (e) {
+    // Navigation échouée : on garde le dossier courant affiché (l'utilisateur reste
+    // où il était et peut réessayer ailleurs), l'erreur s'affiche au-dessus.
     browseError.value = e instanceof Error ? e.message : String(e)
   }
 }
@@ -413,9 +415,11 @@ onBeforeUnmount(() => {
           <li v-if="listing.parent" @click="browse(listing.parent!)">
             <i class="pi pi-arrow-up" />{{ t('project.parentDir') }}
           </li>
+          <li v-if="listing.directories.length" class="script-group">{{ t('project.folders') }}</li>
           <li v-for="d in listing.directories" :key="d.path" @click="browse(d.path)">
             <i class="pi pi-folder" />{{ d.name }}
           </li>
+          <li class="script-group">{{ t('project.cubeFilesLabel') }}</li>
           <li v-for="f in listing.cubeFiles" :key="f.path" @click="openProject(f.path)">
             <i class="pi pi-file" />{{ f.name }}
           </li>
