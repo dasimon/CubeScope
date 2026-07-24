@@ -17,7 +17,7 @@ const KEYWORDS = [
   'non', 'empty', 'nonempty', 'having', 'subcube', 'case', 'when', 'then', 'else', 'end',
   'and', 'or', 'not', 'xor', 'is', 'in', 'existing', 'scope', 'this', 'calculate',
   'freeze', 'if', 'drillthrough', 'maxrows', 'firstrowset', 'return', 'refresh', 'cube',
-  'create', 'alter', 'session', 'null', 'visible', 'hidden', 'solve_order', 'format_string',
+  'create', 'alter', 'session', 'static', 'dynamic', 'null', 'visible', 'hidden', 'solve_order', 'format_string',
 ]
 
 const FUNCTIONS = [

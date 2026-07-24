@@ -14,7 +14,7 @@ public static partial class ScriptParser
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CreateMember();
 
-    [GeneratedRegex(@"^\s*CREATE\s+(HIDDEN\s+|DYNAMIC\s+|SESSION\s+)*SET\s+(?:CURRENTCUBE\s*\.\s*)?(?<name>(\[(?:[^\]]|\]\])+\]\s*\.\s*)*\[(?:[^\]]|\]\])+\])\s+AS\b",
+    [GeneratedRegex(@"^\s*CREATE\s+(HIDDEN\s+|DYNAMIC\s+|STATIC\s+|SESSION\s+)*SET\s+(?:CURRENTCUBE\s*\.\s*)?(?<name>(\[(?:[^\]]|\]\])+\]\s*\.\s*)*\[(?:[^\]]|\]\])+\])\s+AS\b",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CreateSet();
 

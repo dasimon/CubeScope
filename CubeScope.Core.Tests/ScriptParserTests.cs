@@ -80,6 +80,21 @@ public class ScriptParserTests
         Assert.Equal(lines.OrderBy(l => l).ToList(), lines);
         Assert.True(lines.First() >= 1);
     }
+
+    [Theory]
+    [InlineData("STATIC")]
+    [InlineData("DYNAMIC")]
+    [InlineData("")] // CREATE SET nu
+    public void Parse_CreateSet_RecognizesSetModifiers(string modifier)
+    {
+        // STATIC est même le type de set par défaut en MDX : un CREATE STATIC SET
+        // doit être classé NamedSet, pas "Autre" (constaté sur un vrai cube).
+        string mdx = $"CREATE {modifier} SET CURRENTCUBE.[Ensemble géré] " +
+                     "AS {[Dim].[Hier].[A], [Dim].[Hier].[B]};";
+        var cmd = ScriptParser.Parse(mdx).Single();
+        Assert.Equal("NamedSet", cmd.Kind);
+        Assert.Equal("[Ensemble géré]", cmd.Name);
+    }
 }
 
 public class DependencyServiceTests
