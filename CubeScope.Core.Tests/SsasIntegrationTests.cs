@@ -113,5 +113,34 @@ public class SsasIntegrationTests : IDisposable
             $"attendu : dizaines de membres calculés, obtenu {script.Commands.Count(c => c.Kind == "CalculatedMember")}");
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void DeployScript_Idempotent_OnDevCatalog()
+    {
+        // Lit le script actuel du cube de DEV puis le redéploie à l'identique :
+        // aucune divergence attendue (force=false suffit), et l'état final = l'état initial.
+        string text;
+        using (var amo = new Microsoft.AnalysisServices.Server())
+        {
+            amo.Connect($"Data Source={TestTarget.Server};Integrated Security=SSPI;");
+            try
+            {
+                var cube = amo.Databases.GetByName(TestTarget.CatalogDev).Cubes.FindByName(TestTarget.Cube)
+                    ?? throw new InvalidOperationException($"Cube introuvable : {TestTarget.Cube}");
+                text = string.Join("\n\n", cube.MdxScripts[0].Commands
+                    .Cast<Microsoft.AnalysisServices.Command>()
+                    .Select(c => c.Text?.Trim())
+                    .Where(t => !string.IsNullOrWhiteSpace(t)));
+            }
+            finally { amo.Disconnect(); }
+        }
+
+        var result = new CubeScope.Core.Project.ScriptDeployService()
+            .Deploy(TestTarget.Server, TestTarget.CatalogDev, TestTarget.Cube, text, force: false);
+
+        Assert.True(result.Deployed);
+        Assert.False(result.Differs);
+    }
+
     public void Dispose() => _session.Dispose();
 }
