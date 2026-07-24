@@ -10,6 +10,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import Panel from 'primevue/panel'
 import Tree from 'primevue/tree'
 import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
@@ -19,11 +20,13 @@ import {
   type CalculationProp,
   type CubeScript,
   type DependencyGraph,
+  type DeployLogEntry,
   type DirectoryListing,
   type ProjectScript,
   type RecentProject,
   type ScriptCommand,
 } from '../api'
+import type { RenameResult } from '../api'
 import { store } from '../store'
 
 const { t } = useI18n()
@@ -36,6 +39,63 @@ const filter = ref('')
 const selected = ref<ScriptCommand | null>(null)
 const graph = ref<DependencyGraph | null>(null)
 const graphLoading = ref(false)
+
+// --- Recherche plein texte dans le script (distincte du filtre de la liste des commandes,
+// qui ne filtre que par NOM). Balaie tout le texte (expressions de membres, corps SCOPE,
+// commentaires) ligne par ligne, insensible à la casse, plafonnée pour rester réactive
+// sur un script de plusieurs milliers de lignes. ---
+const textSearch = ref('')
+const SEARCH_HITS_CAP = 200
+
+const fullScriptText = computed(() => project.value?.fullText ?? script.value?.fullText ?? '')
+
+interface SearchHit {
+  line: number
+  text: string
+}
+
+const searchHits = computed<SearchHit[]>(() => {
+  const q = textSearch.value.trim().toLowerCase()
+  if (!q) return []
+  const hits: SearchHit[] = []
+  const lines = fullScriptText.value.split(/\r\n|\r|\n/)
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes(q)) {
+      hits.push({ line: i + 1, text: lines[i].trim() })
+      if (hits.length >= SEARCH_HITS_CAP) break
+    }
+  }
+  return hits
+})
+
+const searchCapped = computed(() => searchHits.value.length >= SEARCH_HITS_CAP)
+
+/** Va à la ligne dans Monaco et sélectionne l'occurrence recherchée sur cette ligne quand
+ *  on peut la retrouver (le texte peut avoir bougé depuis le calcul des hits, cas rare). */
+function goToLine(line: number) {
+  if (!editor) return
+  editor.revealLineNearTop(line)
+  editor.setPosition({ lineNumber: line, column: 1 })
+  const q = textSearch.value.trim()
+  const model = editor.getModel()
+  if (q && model && line >= 1 && line <= model.getLineCount()) {
+    const content = model.getLineContent(line)
+    const idx = content.toLowerCase().indexOf(q.toLowerCase())
+    if (idx >= 0) {
+      const range = new monaco.Range(line, idx + 1, line, idx + 1 + q.length)
+      editor.setSelection(range)
+      editor.revealRangeNearTop(range)
+    }
+  }
+  editor.focus()
+}
+
+/** Références textuelles brutes du membre/set sélectionné (complémentaire du graphe
+ *  sémantique usedBy déjà affiché) : réutilise la recherche plein texte ci-dessus. */
+function findReferences() {
+  if (!selected.value) return
+  textSearch.value = selected.value.name
+}
 
 const host = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -94,6 +154,69 @@ async function saveCalcProps() {
     toast.add({ severity: 'error', summary: e instanceof Error ? e.message : String(e), life: 6000 })
   } finally {
     savingProps.value = false
+  }
+}
+
+// --- Renommage sûr d'un membre calculé / set nommé (définition + toutes les références
+// textuelles), via /api/script/rename (MemberRenamer côté serveur). Aperçu = appel serveur
+// sans toucher l'éditeur ; Appliquer = même appel (texte courant, potentiellement modifié
+// depuis l'aperçu) puis remplace le contenu de l'éditeur — le listener onDidChangeModelContent
+// marque alors le projet dirty naturellement (pas de setEditorText, qui force dirty=false). ---
+const showRename = ref(false)
+const renameNewName = ref('')
+const renamePreview = ref<RenameResult | null>(null)
+const renameBusy = ref(false)
+const renameError = ref('')
+
+const canRename = computed(
+  () =>
+    isProject.value &&
+    !!project.value?.canEdit &&
+    (selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet'),
+)
+
+const renameApplyDisabled = computed(() => {
+  const n = renameNewName.value.trim()
+  return !n || n === selected.value?.name
+})
+
+function openRename() {
+  if (!selected.value) return
+  renameNewName.value = selected.value.name
+  renamePreview.value = null
+  renameError.value = ''
+  showRename.value = true
+}
+
+async function previewRename() {
+  if (!selected.value || renameApplyDisabled.value) return
+  renameError.value = ''
+  renameBusy.value = true
+  try {
+    const text = editor?.getValue() ?? project.value?.fullText ?? ''
+    renamePreview.value = await api.renameMember(text, selected.value.name, renameNewName.value.trim())
+  } catch (e) {
+    renameError.value = e instanceof Error ? e.message : String(e)
+    renamePreview.value = null
+  } finally {
+    renameBusy.value = false
+  }
+}
+
+async function applyRename() {
+  if (!selected.value || renameApplyDisabled.value) return
+  renameError.value = ''
+  renameBusy.value = true
+  try {
+    const text = editor?.getValue() ?? project.value?.fullText ?? ''
+    const r = await api.renameMember(text, selected.value.name, renameNewName.value.trim())
+    editor?.setValue(r.newScript) // déclenche onDidChangeModelContent → dirty = true
+    showRename.value = false
+    toast.add({ severity: 'success', summary: t('rename.done', { n: r.occurrences }), life: 4000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: e instanceof Error ? e.message : String(e), life: 6000 })
+  } finally {
+    renameBusy.value = false
   }
 }
 
@@ -274,6 +397,15 @@ const deployBusy = ref(false)
 const deployDiffers = ref(false)
 const serverText = ref('')
 const deployError = ref('')
+const deployLog = ref<DeployLogEntry[]>([])
+
+async function loadDeployLog() {
+  try {
+    deployLog.value = await api.deployLog()
+  } catch {
+    deployLog.value = []
+  }
+}
 
 const isDevCatalog = computed(() => deployCatalog.value.toLowerCase().includes('dev'))
 
@@ -341,6 +473,7 @@ function showDeployDialog() {
   serverText.value = ''
   deployError.value = ''
   showDeploy.value = true
+  void loadDeployLog()
 }
 
 async function deploy(force = false) {
@@ -358,6 +491,7 @@ async function deploy(force = false) {
     }
     showDeploy.value = false
     toast.add({ severity: 'success', summary: t('project.deployed', { ms: r.durationMs }), life: 4000 })
+    void loadDeployLog()
   } catch (e) {
     deployError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -462,6 +596,8 @@ onBeforeUnmount(() => {
         <Button v-if="isProject" icon="pi pi-times" text size="small" :title="t('project.close')" @click="closeProject" />
         <Button v-if="isProject" icon="pi pi-cloud-upload" text size="small"
           :disabled="!project?.canEdit" :title="t('project.deploy')" @click="showDeployDialog" />
+        <Button v-if="canRename" icon="pi pi-pencil" text size="small" :label="t('rename.button')"
+          :title="t('rename.button')" @click="openRename" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
       </div>
@@ -471,25 +607,56 @@ onBeforeUnmount(() => {
       <Message v-for="w in warnings" :key="w" severity="warn" class="script-msg">{{ w }}</Message>
       <Message v-if="error && !isProject" severity="error" class="script-msg">{{ error }}</Message>
       <div v-else-if="!store.cube && !isProject" class="script-hint">{{ t('script.needConnect') }}</div>
-      <ul v-else class="script-list">
-        <template v-for="g in groupedCommands" :key="g.section">
-          <li v-if="hasSections" class="script-group">
-            {{ g.section === '' ? t('project.noSection') : g.section }}
-          </li>
-          <li
-            v-for="c in g.items"
-            :key="c.kind + c.name + c.startLine"
-            :class="{ selected: selected === c }"
-            :title="t('script.lineTitle', { kind: t('script.kind.' + c.kind), line: c.startLine })"
-            @click="select(c)"
-          >
-            <i
-              :class="c.kind === 'CalculatedMember' ? 'pi pi-percentage' : c.kind === 'NamedSet' ? 'pi pi-list' : 'pi pi-code'"
-            />
-            {{ c.name }}
-          </li>
-        </template>
-      </ul>
+      <template v-else>
+        <div class="script-search-bar">
+          <InputText
+            v-model="textSearch"
+            :placeholder="t('script.searchPlaceholder')"
+            size="small"
+            class="script-search-input"
+          />
+          <Button
+            v-if="selected"
+            icon="pi pi-search-plus"
+            text
+            size="small"
+            :label="t('script.findRefs')"
+            :title="t('script.findRefs')"
+            @click="findReferences"
+          />
+        </div>
+        <div v-if="textSearch.trim()" class="script-search-results">
+          <div class="script-search-summary">
+            {{ searchCapped ? t('script.searchCapped', { n: searchHits.length }) : t('script.searchResults', { n: searchHits.length }) }}
+          </div>
+          <div v-if="!searchHits.length" class="script-hint">{{ t('script.searchNone') }}</div>
+          <ul v-else class="script-list script-search-list">
+            <li v-for="h in searchHits" :key="h.line" :title="h.text" @click="goToLine(h.line)">
+              <span class="search-hit-line">{{ h.line }}</span>
+              <span class="search-hit-text">{{ h.text }}</span>
+            </li>
+          </ul>
+        </div>
+        <ul v-else class="script-list">
+          <template v-for="g in groupedCommands" :key="g.section">
+            <li v-if="hasSections" class="script-group">
+              {{ g.section === '' ? t('project.noSection') : g.section }}
+            </li>
+            <li
+              v-for="c in g.items"
+              :key="c.kind + c.name + c.startLine"
+              :class="{ selected: selected === c }"
+              :title="t('script.lineTitle', { kind: t('script.kind.' + c.kind), line: c.startLine })"
+              @click="select(c)"
+            >
+              <i
+                :class="c.kind === 'CalculatedMember' ? 'pi pi-percentage' : c.kind === 'NamedSet' ? 'pi pi-list' : 'pi pi-code'"
+              />
+              {{ c.name }}
+            </li>
+          </template>
+        </ul>
+      </template>
       <div v-if="selected && (graphLoading || graph)" class="script-deps">
         <div class="script-deps-title">{{ t('script.deps', { name: selected.name }) }}</div>
         <div v-if="graphLoading" class="script-hint">{{ t('script.analyzing') }}</div>
@@ -570,6 +737,47 @@ onBeforeUnmount(() => {
       </template>
       <Button v-else :label="t('project.deployBtn')" :loading="deployBusy"
         :disabled="!deployServer.trim() || !deployCatalog.trim()" @click="deploy(false)" />
+      <Panel v-if="deployLog.length" :header="t('deploylog.title')" toggleable collapsed class="deploy-log-panel">
+        <table class="deploy-log-table">
+          <thead>
+            <tr>
+              <th>{{ t('deploylog.when') }}</th>
+              <th>{{ t('project.catalog') }}</th>
+              <th></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="entry in deployLog" :key="entry.id">
+              <td>{{ new Date(entry.deployedUtc).toLocaleString() }}</td>
+              <td>{{ entry.catalog ?? entry.server }}</td>
+              <td>{{ entry.cubeName }} · {{ entry.scriptChars }} {{ t('deploylog.chars') }}</td>
+              <td>
+                <span v-if="entry.forced" class="deploy-log-forced">{{ t('deploylog.forced') }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </Panel>
+    </Dialog>
+    <Dialog v-model:visible="showRename" :header="t('rename.title')" modal :style="{ width: '32rem' }">
+      <div class="rename-form">
+        <label class="rename-field">
+          {{ t('rename.newName') }}
+          <InputText v-model="renameNewName" autofocus @keydown.enter="previewRename" />
+        </label>
+      </div>
+      <Message v-if="renameError" severity="error">{{ renameError }}</Message>
+      <Message v-if="renamePreview" severity="info">
+        {{ t('rename.occurrences', { n: renamePreview.occurrences }) }}
+      </Message>
+      <template #footer>
+        <Button :label="t('common.cancel')" severity="secondary" text @click="showRename = false" />
+        <Button :label="t('rename.preview')" severity="secondary" :loading="renameBusy"
+          :disabled="renameApplyDisabled" @click="previewRename" />
+        <Button :label="t('rename.apply')" icon="pi pi-check" :loading="renameBusy"
+          :disabled="renameApplyDisabled" @click="applyRename" />
+      </template>
     </Dialog>
     <div ref="host" class="script-editor" />
   </div>
@@ -636,6 +844,48 @@ onBeforeUnmount(() => {
   color: var(--p-text-muted-color);
   cursor: default;
   padding-top: 0.5rem;
+}
+.script-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem 0.3rem;
+}
+.script-search-input {
+  flex: 1;
+}
+.script-search-results {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.script-search-summary {
+  padding: 0.2rem 0.6rem 0.4rem;
+  font-size: 0.78rem;
+  color: var(--p-text-muted-color);
+}
+.script-search-list {
+  flex: 1;
+}
+.script-search-list li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.search-hit-line {
+  flex-shrink: 0;
+  min-width: 2.2em;
+  color: var(--p-text-muted-color);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+.search-hit-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
 }
 .project-open {
   display: flex;
@@ -742,6 +992,18 @@ onBeforeUnmount(() => {
   gap: 0.2rem;
   font-size: 0.85rem;
 }
+.rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.rename-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
 .deploy-diff-hint {
   font-size: 0.78rem;
   color: var(--p-text-muted-color);
@@ -753,5 +1015,45 @@ onBeforeUnmount(() => {
   border: 1px solid var(--p-surface-700);
   border-radius: 4px;
   margin-bottom: 0.75rem;
+}
+.deploy-log-panel {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+}
+.deploy-log-table {
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  display: block;
+  border-collapse: collapse;
+}
+.deploy-log-table thead,
+.deploy-log-table tbody {
+  display: block;
+}
+.deploy-log-table tr {
+  display: flex;
+  gap: 0.5rem;
+}
+.deploy-log-table th,
+.deploy-log-table td {
+  flex: 1;
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deploy-log-table th {
+  color: var(--p-text-muted-color);
+  font-weight: 600;
+}
+.deploy-log-forced {
+  background: var(--p-orange-900, #7c2d12);
+  color: var(--p-orange-100, #ffedd5);
+  border-radius: 3px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.72rem;
 }
 </style>

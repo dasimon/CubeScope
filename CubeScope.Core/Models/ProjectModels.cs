@@ -47,3 +47,9 @@ public sealed record ProfileRun(
     long Id, string Server, string? Catalog, string Mdx,
     long TotalMs, long StorageEngineMs, long FormulaEngineMs,
     int SubcubeCount, int CacheHits, int AggregationHits, DateTime ExecutedUtc);
+
+/// <summary>Une entrée du journal d'audit des déploiements de MDX Script réussis
+/// (persisté en SQLite) — enregistrée uniquement quand le déploiement a réellement eu lieu.</summary>
+public sealed record DeployLogEntry(
+    long Id, string Server, string? Catalog, string CubeName, string ProjectPath,
+    int ScriptChars, bool Forced, DateTime DeployedUtc);

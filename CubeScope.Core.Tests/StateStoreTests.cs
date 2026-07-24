@@ -126,6 +126,30 @@ public class StateStoreTests : IDisposable
         Assert.Equal(2, runs[1].AggregationHits);
     }
 
+    [Fact]
+    public void DeployLog_AddAndList()
+    {
+        _store.AddDeployLog("SSAS-SERVER", "DemoDbDev", "DemoCube", @"C:\proj\Cube1.cube", 1234, false);
+        _store.AddDeployLog("SSAS-SERVER", null, "DemoDb", @"C:\proj\Cube2.cube", 5678, true);
+
+        var log = _store.GetDeployLog();
+
+        Assert.Equal(2, log.Count);
+        // Newest first
+        Assert.Equal("DemoDb", log[0].CubeName);
+        Assert.Null(log[0].Catalog);
+        Assert.True(log[0].Forced);
+        Assert.Equal(5678, log[0].ScriptChars);
+        Assert.Equal(@"C:\proj\Cube2.cube", log[0].ProjectPath);
+        Assert.Equal("SSAS-SERVER", log[0].Server);
+
+        Assert.Equal("DemoCube", log[1].CubeName);
+        Assert.Equal("DemoDbDev", log[1].Catalog);
+        Assert.False(log[1].Forced);
+        Assert.Equal(1234, log[1].ScriptChars);
+        Assert.Equal(@"C:\proj\Cube1.cube", log[1].ProjectPath);
+    }
+
     public void Dispose()
     {
         _store.Dispose();

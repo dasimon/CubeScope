@@ -125,6 +125,25 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
     }
 });
 
+// DRILLTHROUGH de la requête courante — enveloppe le MDX et retourne le rowset source.
+// Limitation connue : pas de drillthrough précis par cellule, uniquement la requête entière
+// (typiquement une requête à une cellule ; voir QueryService.ExecuteDrillthroughAsync).
+api.MapPost("/drillthrough", async (DrillthroughRequest req, QueryService queries, CancellationToken ct) =>
+{
+    try
+    {
+        return Results.Ok(await queries.ExecuteDrillthroughAsync(req.Mdx, req.MaxRows, ct));
+    }
+    catch (OperationCanceledException)
+    {
+        throw; // client parti : rien à répondre
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+
 // ClearCache du catalogue courant (DatabaseID résolu via AMO — la confirmation est côté UI)
 api.MapPost("/cache/clear", async (CacheService cache, CancellationToken ct) =>
 {
@@ -208,13 +227,15 @@ api.MapPost("/project/save", (ProjectSaveRequest req, CubeProjectService project
     }
 });
 api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectService projects,
-    ScriptDeployService deploy, CancellationToken ct) =>
+    ScriptDeployService deploy, StateStore store, CancellationToken ct) =>
 {
     try
     {
         var script = projects.Load(req.Path); // toujours l'état DISQUE du projet (l'UI sauvegarde avant)
         var result = await Task.Run(
             () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText, req.Force), ct);
+        if (result.Deployed)
+            store.AddDeployLog(req.Server, req.Catalog, script.CubeName, req.Path, script.FullText.Length, req.Force);
         return Results.Ok(result);
     }
     catch (Exception ex)
@@ -223,6 +244,11 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     }
 });
 api.MapGet("/project/recent", (StateStore store) => Results.Ok(store.GetRecentProjects()));
+api.MapGet("/project/deploylog", (StateStore store) =>
+{
+    try { return Results.Ok(store.GetDeployLog()); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
 api.MapGet("/project/calcprops", (string path, CubeProjectService projects) =>
 {
     try
@@ -241,6 +267,21 @@ api.MapPost("/project/calcprops", (CalcPropRequest req, CubeProjectService proje
         projects.SaveCalculationProperty(
             req.Path, req.Reference, req.FormatString, req.DisplayFolder, req.Description);
         return Results.Ok();
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+
+// Renommage sûr d'un membre calculé / set nommé : réécrit la définition + toutes les
+// références textuelles dans le MDX Script (mode projet — le texte à réécrire est celui
+// de l'éditeur, jamais lu depuis le disque côté serveur).
+api.MapPost("/script/rename", (RenameRequest req) =>
+{
+    try
+    {
+        return Results.Ok(MemberRenamer.Rename(req.Script, req.OldName, req.NewName));
     }
     catch (Exception ex)
     {
@@ -350,6 +391,7 @@ app.Run();
 internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
+internal sealed record DrillthroughRequest(string Mdx, int MaxRows);
 internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
@@ -357,6 +399,7 @@ internal sealed record ProjectDeployRequest(string Path, string Server, string C
 internal sealed record SnippetRequest(string Name, string Mdx);
 internal sealed record CalcPropRequest(
     string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);
+internal sealed record RenameRequest(string Script, string OldName, string NewName);
 
 /// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
 internal sealed class StatsHub : Hub;

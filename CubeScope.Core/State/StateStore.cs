@@ -94,6 +94,18 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 4;
                 """);
         }
+        if (version < 5)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS DeployLog (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Server TEXT NOT NULL, Catalog TEXT NULL, CubeName TEXT NOT NULL, ProjectPath TEXT NOT NULL,
+                    ScriptChars INTEGER NOT NULL, Forced INTEGER NOT NULL, DeployedUtc TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS IX_DeployLog_DeployedUtc ON DeployLog (DeployedUtc DESC);
+                PRAGMA user_version = 5;
+                """);
+        }
     }
 
     public void AddRecentConnection(string server, string? catalog)
@@ -247,6 +259,37 @@ public sealed class StateStore : IDisposable
                     r.GetString(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6),
                     (int)r.GetInt64(7), (int)r.GetInt64(8), (int)r.GetInt64(9),
                     DateTime.Parse(r.GetString(10)).ToUniversalTime()));
+            return list;
+        }
+    }
+
+    public void AddDeployLog(string server, string? catalog, string cubeName, string projectPath,
+        int scriptChars, bool forced)
+    {
+        Exec("""
+            INSERT INTO DeployLog (Server, Catalog, CubeName, ProjectPath, ScriptChars, Forced, DeployedUtc)
+            VALUES ($s, $c, $cube, $p, $n, $f, $t)
+            """,
+            ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$cube", cubeName), ("$p", projectPath),
+            ("$n", scriptChars), ("$f", forced ? 1 : 0), ("$t", DateTime.UtcNow.ToString("O")));
+    }
+
+    public IReadOnlyList<DeployLogEntry> GetDeployLog(int limit = 100)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Server, Catalog, CubeName, ProjectPath, ScriptChars, Forced, DeployedUtc
+                FROM DeployLog ORDER BY Id DESC LIMIT $n
+                """;
+            cmd.Parameters.AddWithValue("$n", limit);
+            using var r = cmd.ExecuteReader();
+            var list = new List<DeployLogEntry>();
+            while (r.Read())
+                list.Add(new DeployLogEntry(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2),
+                    r.GetString(3), r.GetString(4), (int)r.GetInt64(5), r.GetInt64(6) != 0,
+                    DateTime.Parse(r.GetString(7)).ToUniversalTime()));
             return list;
         }
     }

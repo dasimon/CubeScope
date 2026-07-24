@@ -4,6 +4,7 @@
 import { monaco } from './monaco-mdx'
 import { api, type MemberMeta } from './api'
 import { store } from './store'
+import { mdxFunctions } from './mdxFunctions'
 
 const KEYWORD_SUGGESTIONS = [
   'SELECT', 'FROM', 'WHERE', 'ON COLUMNS', 'ON ROWS', 'NON EMPTY', 'WITH MEMBER', 'WITH SET',
@@ -53,6 +54,13 @@ function suggestion(
   return { label, insertText, kind, range, detail, documentation, filterText: `[${label}] ${insertText}` }
 }
 
+/** Suggestion de fonction MDX : signature (detail) + doc courte (documentation) si connue. */
+function functionSuggestion(f: string, range: monaco.IRange): monaco.languages.CompletionItem {
+  const name = f.replace(/\($/, '').toUpperCase()
+  const sig = mdxFunctions[name]
+  return suggestion(f, f, monaco.languages.CompletionItemKind.Function, range, sig?.signature, sig?.doc)
+}
+
 monaco.languages.registerCompletionItemProvider('mdx', {
   triggerCharacters: ['[', '.', '&'],
 
@@ -78,7 +86,7 @@ monaco.languages.registerCompletionItemProvider('mdx', {
         endColumn: position.column,
       }
       const items: monaco.languages.CompletionItem[] = FUNCTION_SUGGESTIONS.map((f) =>
-        suggestion(f, f, monaco.languages.CompletionItemKind.Function, range),
+        functionSuggestion(f, range),
       )
       if (hier) {
         const members = await membersOf(hier.uniqueName)
@@ -133,8 +141,22 @@ monaco.languages.registerCompletionItemProvider('mdx', {
       for (const k of KEYWORD_SUGGESTIONS)
         items.push(suggestion(k, k, monaco.languages.CompletionItemKind.Keyword, range))
       for (const f of FUNCTION_SUGGESTIONS)
-        items.push(suggestion(f, f, monaco.languages.CompletionItemKind.Function, range))
+        items.push(functionSuggestion(f, range))
     }
     return { suggestions: items }
+  },
+})
+
+// Survol d'une fonction MDX connue → signature + doc courte (même source que l'autocomplétion).
+monaco.languages.registerHoverProvider('mdx', {
+  provideHover(model, position) {
+    const word = model.getWordAtPosition(position)
+    if (!word) return null
+    const fn = mdxFunctions[word.word.toUpperCase()]
+    if (!fn) return null
+    return {
+      range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+      contents: [{ value: '```mdx\n' + fn.signature + '\n```' }, { value: fn.doc }],
+    }
   },
 })

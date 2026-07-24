@@ -23,6 +23,12 @@ onMounted(() => {
   editor.onDidChangeModelContent(() => {
     store.mdx = editor!.getValue()
   })
+  // Sélection courante : si non vide, F5/Ctrl+Entrée n'exécutent qu'elle (store.run())
+  editor.onDidChangeCursorSelection(() => {
+    const m = editor!.getModel()
+    const sel = editor!.getSelection()
+    store.selectedMdx = m && sel && !sel.isEmpty() ? m.getValueInRange(sel) : ''
+  })
   // Exécution : Ctrl+Entrée et F5 (le F5 navigateur est intercepté au niveau app)
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void actions.run())
   editor.addCommand(monaco.KeyCode.F5, () => void actions.run())

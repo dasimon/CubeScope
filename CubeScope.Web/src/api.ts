@@ -110,6 +110,8 @@ export const api = {
   setCatalog: (catalog: string) => request<void>('PUT', '/api/connection/catalog', { catalog }),
   recent: () => request<RecentConnection[]>('GET', '/api/connection/recent'),
   query: (mdx: string, signal: AbortSignal) => request<QueryResult>('POST', '/api/query', { mdx }, signal),
+  drillthrough: (mdx: string, maxRows: number, signal: AbortSignal) =>
+    request<QueryResult>('POST', '/api/drillthrough', { mdx, maxRows }, signal),
   history: (limit = 100) => request<HistoryEntry[]>('GET', `/api/history?limit=${limit}`),
   cubes: () => request<string[]>('GET', '/api/metadata/cubes'),
   cubeMeta: (cube: string, refresh = false) =>
@@ -140,6 +142,7 @@ export const api = {
   projectDeploy: (path: string, server: string, catalog: string, force: boolean) =>
     request<DeployScriptResult>('POST', '/api/project/deploy', { path, server, catalog, force }),
   projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
+  deployLog: () => request<DeployLogEntry[]>('GET', '/api/project/deploylog'),
   calcProps: (path: string) =>
     request<CalculationProp[]>('GET', `/api/project/calcprops?path=${encodeURIComponent(path)}`),
   saveCalcProp: (
@@ -161,10 +164,16 @@ export const api = {
   snippets: () => request<Snippet[]>('GET', '/api/snippets'),
   addSnippet: (name: string, mdx: string) => request<{ id: number }>('POST', '/api/snippets', { name, mdx }),
   deleteSnippet: (id: number) => request<void>('DELETE', `/api/snippets/${id}`),
+  renameMember: (script: string, oldName: string, newName: string) =>
+    request<RenameResult>('POST', '/api/script/rename', { script, oldName, newName }),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
 
+export interface RenameResult {
+  newScript: string
+  occurrences: number
+}
 export interface ScriptCommand {
   kind: 'CalculatedMember' | 'NamedSet' | 'Scope' | 'Autre'
   name: string
@@ -194,6 +203,16 @@ export interface DeployScriptResult {
   differs: boolean
   serverText: string | null
   durationMs: number
+}
+export interface DeployLogEntry {
+  id: number
+  server: string
+  catalog: string | null
+  cubeName: string
+  projectPath: string
+  scriptChars: number
+  forced: boolean
+  deployedUtc: string
 }
 export interface DependencyNode {
   name: string

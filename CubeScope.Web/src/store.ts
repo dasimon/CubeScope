@@ -21,6 +21,14 @@ SELECT
 FROM [ ]
 `
 
+export interface ResultTab {
+  id: number
+  label: string
+  result: QueryResult
+}
+
+const MAX_RESULT_TABS = 8
+
 export const store = reactive({
   // Connexion
   server: '',
@@ -41,11 +49,16 @@ export const store = reactive({
   // Éditeur / exécution
   mdx: DEFAULT_MDX,
   mdxRevision: 0, // incrémenté quand le MDX est remplacé de l'extérieur (historique)
+  selectedMdx: '', // sélection courante dans Monaco ; non vide → exécutée en priorité sur store.mdx
   insertText: '', // texte à insérer au curseur (explorateur)
   insertRevision: 0,
   running: false,
   result: null as QueryResult | null,
   queryError: '',
+
+  // Onglets de résultats (derniers runs, fermables)
+  results: [] as ResultTab[],
+  activeResultId: 0,
 
   // Historique
   history: [] as HistoryEntry[],
@@ -71,6 +84,7 @@ export const store = reactive({
 
 let abort: AbortController | null = null
 let aiAbort: AbortController | null = null
+let resultSeq = 0 // compteur monotone d'onglets de résultats (pas de Date.now/Math.random)
 
 export const actions = {
   async loadRecent(): Promise<void> {
@@ -215,12 +229,19 @@ export const actions = {
 
   async run(): Promise<void> {
     if (store.running || !store.connected || !store.catalog) return
+    const mdx = store.selectedMdx.trim() ? store.selectedMdx : store.mdx
     store.running = true
     store.queryError = ''
     store.stats = [] // les deltas de la nouvelle requête arriveront par SignalR
     abort = new AbortController()
     try {
-      store.result = await api.query(store.mdx, abort.signal)
+      const result = await api.query(mdx, abort.signal)
+      const id = ++resultSeq
+      const label = `#${id} · ${result.cellCount} ${t('history.cells')} · ${result.durationMs} ${t('history.ms')}`
+      store.results.unshift({ id, label, result })
+      if (store.results.length > MAX_RESULT_TABS) store.results.length = MAX_RESULT_TABS
+      store.activeResultId = id
+      store.result = result
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         store.queryError = t('errors.queryCanceled')
@@ -236,6 +257,63 @@ export const actions = {
 
   cancel(): void {
     abort?.abort()
+  },
+
+  /**
+   * Enveloppe la requête courante dans DRILLTHROUGH et affiche les lignes sources dans un
+   * nouvel onglet de résultats. Limitation connue : pas de drillthrough précis par cellule
+   * (clic droit) — la requête ENTIÈRE est enveloppée, ce qui n'est « drillthroughable » côté
+   * serveur que pour une requête à une cellule.
+   */
+  async runDrillthrough(maxRows = 1000): Promise<void> {
+    if (store.running || !store.connected || !store.catalog) return
+    const mdx = store.selectedMdx.trim() ? store.selectedMdx : store.mdx
+    store.running = true
+    store.queryError = ''
+    abort = new AbortController()
+    try {
+      const result = await api.drillthrough(mdx, maxRows, abort.signal)
+      const id = ++resultSeq
+      const label = `⤵ ${t('results.drillthrough')} · ${result.rows.length} ${t('history.cells')} · ${result.durationMs} ${t('history.ms')}`
+      store.results.unshift({ id, label, result })
+      if (store.results.length > MAX_RESULT_TABS) store.results.length = MAX_RESULT_TABS
+      store.activeResultId = id
+      store.result = result
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        store.queryError = t('errors.queryCanceled')
+      } else {
+        store.queryError = e instanceof Error ? e.message : String(e)
+      }
+    } finally {
+      store.running = false
+      abort = null
+    }
+  },
+
+  /** Active un onglet de résultats existant (grille = son résultat). */
+  selectResult(id: number): void {
+    const tab = store.results.find((r) => r.id === id)
+    if (!tab) return
+    store.activeResultId = id
+    store.result = tab.result
+  },
+
+  /** Ferme un onglet de résultats ; réactive le plus récent restant si c'était l'actif. */
+  closeResult(id: number): void {
+    const idx = store.results.findIndex((r) => r.id === id)
+    if (idx === -1) return
+    store.results.splice(idx, 1)
+    if (store.activeResultId === id) {
+      const next = store.results[0]
+      if (next) {
+        store.activeResultId = next.id
+        store.result = next.result
+      } else {
+        store.activeResultId = 0
+        store.result = null
+      }
+    }
   },
 
   async loadHistory(): Promise<void> {

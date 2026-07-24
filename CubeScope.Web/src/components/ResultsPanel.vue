@@ -6,7 +6,7 @@ import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Button from 'primevue/button'
 import ResultsGrid from './ResultsGrid.vue'
-import { store } from '../store'
+import { actions, store } from '../store'
 import { toCsv, toTsv, downloadCsv, copyToClipboard } from '../exportResults'
 
 const { t } = useI18n()
@@ -26,13 +26,38 @@ async function copyResults() {
     toast.add({ severity: 'error', summary: t('results.copyFailed'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
   }
 }
+
+function closeTab(e: MouseEvent, id: number) {
+  e.stopPropagation()
+  actions.closeResult(id)
+}
 </script>
 
 <template>
   <div class="results-panel">
+    <div v-if="store.results.length > 0" class="results-tabs">
+      <div
+        v-for="tab in store.results"
+        :key="tab.id"
+        class="results-tab"
+        :class="{ active: tab.id === store.activeResultId }"
+        @click="actions.selectResult(tab.id)"
+      >
+        <span class="results-tab-label">{{ tab.label }}</span>
+        <button
+          type="button"
+          class="results-tab-close"
+          :title="t('results.tabClose')"
+          :aria-label="t('results.tabClose')"
+          @click="closeTab($event, tab.id)"
+        >
+          <i class="pi pi-times" />
+        </button>
+      </div>
+    </div>
     <div v-if="store.running" class="results-center">
       <ProgressSpinner style="width: 40px; height: 40px" />
-      <span>{{ t('results.running') }}</span>
+      <span>{{ store.selectedMdx.trim() ? t('results.runningSelection') : t('results.running') }}</span>
     </div>
     <Message v-else-if="store.queryError" severity="error" class="results-error">
       {{ store.queryError }}
@@ -92,6 +117,49 @@ async function copyResults() {
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
   border-bottom: 1px solid var(--p-content-border-color);
+}
+.results-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.125rem;
+  padding: 0.25rem 0.5rem 0;
+  border-bottom: 1px solid var(--p-content-border-color);
+  overflow-x: auto;
+}
+.results-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--p-content-border-color);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  color: var(--p-text-muted-color);
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.results-tab.active {
+  color: var(--p-text-color);
+  background: var(--p-content-background);
+  border-color: var(--p-content-border-color);
+}
+.results-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.7rem;
+}
+.results-tab-close:hover,
+.results-tab-close:focus-visible {
+  color: var(--p-red-500, #ef4444);
 }
 .results-grid-wrapper {
   flex: 1;

@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { DockviewVue, type DockviewApi, type DockviewReadyEvent, type VueComponent } from 'dockview-vue'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
+import InputNumber from 'primevue/inputnumber'
 import Dialog from 'primevue/dialog'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
@@ -49,6 +50,8 @@ const LANGS = [
   { label: 'FR', value: 'fr' as Locale },
   { label: 'EN', value: 'en' as Locale },
 ]
+
+const drillthroughMaxRows = ref(1000)
 
 // Cast nécessaire : les SFC typés ne satisfont pas l'index générique VueComponent (variance TS)
 const panelComponents: Record<string, VueComponent> = {
@@ -222,6 +225,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @click="actions.run()"
       />
       <Button v-else :label="t('common.cancel')" icon="pi pi-stop" size="small" severity="danger" @click="actions.cancel()" />
+      <InputNumber
+        v-model="drillthroughMaxRows"
+        :min="1"
+        :max="100000"
+        :use-grouping="false"
+        size="small"
+        class="max-rows-input"
+        :title="t('results.maxRows')"
+      />
+      <Button
+        :label="t('results.drillthrough')"
+        icon="pi pi-arrow-down-right"
+        size="small"
+        severity="secondary"
+        :disabled="!store.connected || !store.catalog || store.running"
+        :title="t('results.drillthroughHint')"
+        @click="actions.runDrillthrough(drillthroughMaxRows ?? 1000)"
+      />
     </header>
 
     <!-- Wrapper obligatoire : DockviewVue est multi-root (portals), le CSS scoped
@@ -286,6 +307,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   flex: 1;
 }
 .lang-select {
+  width: 5rem;
+}
+.max-rows-input {
   width: 5rem;
 }
 .dock-host {
