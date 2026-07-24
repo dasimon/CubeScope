@@ -16,7 +16,9 @@ public sealed class FileBrowserService
     /// </summary>
     public DirectoryListing List(string? path)
     {
-        string dir = ResolveDirectory(path);
+        // GetFullPath : garantir un chemin absolu quel que soit l'input (un dossier
+        // existant passé en relatif serait sinon renvoyé tel quel dans DirectoryListing.Path).
+        string dir = System.IO.Path.GetFullPath(ResolveDirectory(path));
 
         var enumOptions = new EnumerationOptions { IgnoreInaccessible = true };
 
