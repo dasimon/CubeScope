@@ -1,6 +1,8 @@
 // i18n (vue-i18n) — FR par défaut (usage quotidien de l'auteur), EN pour la communauté.
-// Choix persisté en localStorage. Ce qui vient du serveur SSAS (erreurs, libellés perfmon)
-// reste dans la langue de l'OS serveur (français) — hors de notre contrôle.
+// Choix persisté en localStorage. La langue est aussi envoyée au connect (Locale Identifier)
+// → les libellés du cube (mesures, membres) reviennent dans cette langue s'il a des
+// traductions. Restent dans la langue de l'OS serveur (hors contrôle) : erreurs SSAS et
+// libellés perfmon. Changer de langue APRÈS connexion ne re-traduit pas le cube (reconnecter).
 import { createI18n } from 'vue-i18n'
 import fr from './locales/fr'
 import en from './locales/en'

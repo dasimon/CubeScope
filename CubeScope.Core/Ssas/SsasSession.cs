@@ -19,8 +19,17 @@ public sealed class SsasSession : IDisposable
     /// <summary>SessionID SSAS de la connexion courante (corrélation avec la trace du profiler).</summary>
     public string? SessionId => _conn?.SessionID;
 
+    // Locale de la connexion = langue de l'UI → les libellés du cube (mesures, membres)
+    // reviennent dans cette langue quand le cube a des traductions. Défaut : locale système.
+    private static string LocaleClause(string? lang) => lang switch
+    {
+        "en" => "Locale Identifier=1033;",
+        "fr" => "Locale Identifier=1036;",
+        _ => "",
+    };
+
     /// <summary>Ouvre (ou remplace) la connexion et retourne la liste des catalogues.</summary>
-    public async Task<IReadOnlyList<string>> ConnectAsync(string server, CancellationToken ct = default)
+    public async Task<IReadOnlyList<string>> ConnectAsync(string server, string? lang = null, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
         try
@@ -28,7 +37,7 @@ public sealed class SsasSession : IDisposable
             return await Task.Run(() =>
             {
                 _conn?.Dispose();
-                _conn = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;");
+                _conn = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;{LocaleClause(lang)}");
                 _conn.Open();
                 Server = server;
                 Catalog = null;

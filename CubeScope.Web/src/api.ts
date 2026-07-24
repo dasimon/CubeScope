@@ -1,5 +1,5 @@
 // Client API CubeScope — miroir des DTO du serveur (System.Text.Json → camelCase).
-import { t } from './i18n'
+import { t, currentLocale } from './i18n'
 
 export interface GridColumn {
   field: string
@@ -78,7 +78,7 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
 
 export const api = {
   connect: (server: string) =>
-    request<{ server: string; catalogs: string[] }>('POST', '/api/connection', { server }),
+    request<{ server: string; catalogs: string[] }>('POST', '/api/connection', { server, lang: currentLocale() }),
   setCatalog: (catalog: string) => request<void>('PUT', '/api/connection/catalog', { catalog }),
   recent: () => request<RecentConnection[]>('GET', '/api/connection/recent'),
   query: (mdx: string, signal: AbortSignal) => request<QueryResult>('POST', '/api/query', { mdx }, signal),

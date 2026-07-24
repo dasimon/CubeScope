@@ -7,7 +7,7 @@ CubeScope is the spiritual successor to MDX Studio: a single self-contained
 executable that launches a local web app in your browser. No install, no server
 component to deploy, no cloud.
 
-![Query and results grid](docs/screenshots/02-query.png)
+![CubeScope in action](docs/screenshots/demo.gif)
 
 > **Scope.** CubeScope targets **SSAS Multidimensional** only. Tabular, Power BI
 > and DAX are permanently out of scope by design — there is no multi-engine
@@ -82,8 +82,6 @@ then:
 It starts Kestrel on a free localhost port and opens your default browser.
 Connect to your SSAS server (a hostname, or `host:port` for a named instance on
 a fixed port), pick a catalog, and start writing MDX.
-
-![Connection dialog](docs/screenshots/01-connect.png)
 
 ---
 

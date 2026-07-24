@@ -54,7 +54,7 @@ var api = app.MapGroup("/api");
 api.MapPost("/connection", async (ConnectRequest req, SsasSession session, StateStore store,
     PerfmonService perfmon, ProfilerService profiler, CancellationToken ct) =>
 {
-    var catalogs = await session.ConnectAsync(req.Server, ct);
+    var catalogs = await session.ConnectAsync(req.Server, req.Lang, ct);
     store.AddRecentConnection(req.Server, null);
     // Découverte perfmon + création de trace en arrière-plan — jamais bloquantes, dégradables
     _ = Task.Run(() => perfmon.Initialize(req.Server));
@@ -243,7 +243,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 app.Run();
 
-internal sealed record ConnectRequest(string Server);
+internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
 internal sealed record AiRequest(string Mdx, string? Lang);
