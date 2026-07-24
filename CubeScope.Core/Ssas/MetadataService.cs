@@ -1,0 +1,128 @@
+using System.Collections.Concurrent;
+using System.Data;
+using CubeScope.Core.Models;
+
+namespace CubeScope.Core.Ssas;
+
+/// <summary>
+/// Métadonnées d'un cube via DMV $SYSTEM.MDSCHEMA_* (décision actée : DMV en voie
+/// principale). Cache mémoire par (serveur, catalogue, cube) — les métadonnées ne
+/// bougent qu'au déploiement, bouton Rafraîchir côté UI pour forcer.
+/// Piège : TOUJOURS crocheter les colonnes DMV (HIERARCHY est un mot réservé MDX).
+/// </summary>
+public sealed class MetadataService(SsasSession session)
+{
+    private readonly ConcurrentDictionary<string, CubeMeta> _cache = new();
+
+    public async Task<IReadOnlyList<string>> GetCubesAsync(CancellationToken ct = default)
+    {
+        var t = await session.ExecuteDmvAsync(
+            "SELECT [CUBE_NAME] FROM $SYSTEM.MDSCHEMA_CUBES WHERE [CUBE_SOURCE] = 1", ct);
+        return t.Rows.Cast<DataRow>().Select(r => (string)r["CUBE_NAME"]).ToList();
+    }
+
+    public async Task<CubeMeta> GetCubeMetaAsync(string cube, bool refresh = false, CancellationToken ct = default)
+    {
+        string key = $"{session.Server}|{session.Catalog}|{cube}";
+        if (!refresh && _cache.TryGetValue(key, out var cached)) return cached;
+
+        string quoted = cube.Replace("'", "''");
+
+        var measures = await session.ExecuteDmvAsync($"""
+            SELECT [MEASURE_NAME], [MEASURE_UNIQUE_NAME], [MEASURE_DISPLAY_FOLDER]
+            FROM $SYSTEM.MDSCHEMA_MEASURES
+            WHERE [CUBE_NAME] = '{quoted}' AND [MEASURE_IS_VISIBLE]
+            """, ct);
+        var dimensions = await session.ExecuteDmvAsync($"""
+            SELECT [DIMENSION_NAME], [DIMENSION_UNIQUE_NAME]
+            FROM $SYSTEM.MDSCHEMA_DIMENSIONS
+            WHERE [CUBE_NAME] = '{quoted}' AND [DIMENSION_IS_VISIBLE] AND [DIMENSION_UNIQUE_NAME] <> '[Measures]'
+            """, ct);
+        var hierarchies = await session.ExecuteDmvAsync($"""
+            SELECT [DIMENSION_UNIQUE_NAME], [HIERARCHY_NAME], [HIERARCHY_UNIQUE_NAME]
+            FROM $SYSTEM.MDSCHEMA_HIERARCHIES
+            WHERE [CUBE_NAME] = '{quoted}' AND [HIERARCHY_IS_VISIBLE]
+            """, ct);
+        var levels = await session.ExecuteDmvAsync($"""
+            SELECT [HIERARCHY_UNIQUE_NAME], [LEVEL_NAME], [LEVEL_UNIQUE_NAME], [LEVEL_NUMBER]
+            FROM $SYSTEM.MDSCHEMA_LEVELS
+            WHERE [CUBE_NAME] = '{quoted}' AND [LEVEL_IS_VISIBLE]
+            """, ct);
+
+        var meta = Build(cube, measures, dimensions, hierarchies, levels);
+        _cache[key] = meta;
+        return meta;
+    }
+
+    /// <summary>
+    /// Membres d'une hiérarchie pour l'autocomplétion — lazy + cache mémoire (décision actée).
+    /// Plafonné : les grosses hiérarchies (titres…) ne doivent pas noyer ni l'UI ni le serveur.
+    /// </summary>
+    public async Task<IReadOnlyList<MemberMeta>> GetMembersAsync(string cube, string hierarchyUniqueName,
+        int limit = 1000, CancellationToken ct = default)
+    {
+        string key = $"m|{session.Server}|{session.Catalog}|{cube}|{hierarchyUniqueName}";
+        if (_memberCache.TryGetValue(key, out var cached)) return cached;
+
+        var t = await session.ExecuteDmvAsync($"""
+            SELECT [MEMBER_CAPTION], [MEMBER_UNIQUE_NAME]
+            FROM $SYSTEM.MDSCHEMA_MEMBERS
+            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
+              AND [HIERARCHY_UNIQUE_NAME] = '{hierarchyUniqueName.Replace("'", "''")}'
+            """, ct);
+        var members = t.Rows.Cast<DataRow>()
+            .Take(limit)
+            .Select(r => new MemberMeta((string)r["MEMBER_CAPTION"], (string)r["MEMBER_UNIQUE_NAME"]))
+            .ToList();
+        _memberCache[key] = members;
+        return members;
+    }
+
+    private readonly ConcurrentDictionary<string, IReadOnlyList<MemberMeta>> _memberCache = new();
+
+    /// <summary>Construction pure du DTO à partir des rowsets (testable sans serveur).</summary>
+    internal static CubeMeta Build(string cube, DataTable measures, DataTable dimensions,
+        DataTable hierarchies, DataTable levels)
+    {
+        var measureFolders = measures.Rows.Cast<DataRow>()
+            .GroupBy(r => r["MEASURE_DISPLAY_FOLDER"] as string ?? "")
+            .OrderBy(g => g.Key)
+            .Select(g => new MeasureFolder(g.Key,
+                g.Select(r => new MeasureMeta((string)r["MEASURE_NAME"], (string)r["MEASURE_UNIQUE_NAME"]))
+                 .OrderBy(m => m.Name).ToList()))
+            .ToList();
+
+        var levelsByHier = levels.Rows.Cast<DataRow>()
+            .GroupBy(r => (string)r["HIERARCHY_UNIQUE_NAME"])
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<LevelMeta>)g
+                    .Select(r => new LevelMeta((string)r["LEVEL_NAME"], (string)r["LEVEL_UNIQUE_NAME"],
+                        Convert.ToInt32(r["LEVEL_NUMBER"])))
+                    .OrderBy(l => l.Number).ToList());
+
+        var hiersByDim = hierarchies.Rows.Cast<DataRow>()
+            .GroupBy(r => (string)r["DIMENSION_UNIQUE_NAME"])
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<HierarchyMeta>)g
+                    .Select(r =>
+                    {
+                        string un = (string)r["HIERARCHY_UNIQUE_NAME"];
+                        return new HierarchyMeta((string)r["HIERARCHY_NAME"], un,
+                            levelsByHier.GetValueOrDefault(un, []));
+                    })
+                    .OrderBy(h => h.Name).ToList());
+
+        var dims = dimensions.Rows.Cast<DataRow>()
+            .Select(r =>
+            {
+                string un = (string)r["DIMENSION_UNIQUE_NAME"];
+                return new DimensionMeta((string)r["DIMENSION_NAME"], un, hiersByDim.GetValueOrDefault(un, []));
+            })
+            .OrderBy(d => d.Name)
+            .ToList();
+
+        return new CubeMeta(cube, measureFolders, dims);
+    }
+}

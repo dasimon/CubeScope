@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (preview)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Restore
+        run: dotnet restore CubeScope.slnx
+
+      - name: Build
+        run: dotnet build CubeScope.slnx -c Release --no-restore
+
+      # Les tests marqués [Trait("Category","Integration")] exigent un SSAS réel
+      # (voir TestTarget + variables CUBESCOPE_TEST_*) et sont exclus en CI.
+      - name: Test (unit only)
+        run: dotnet test CubeScope.Core.Tests -c Release --no-build --filter "Category!=Integration"

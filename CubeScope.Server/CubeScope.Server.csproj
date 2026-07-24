@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CubeScope.Core\CubeScope.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Décision actée : un seul exécutable "cubescope.exe" -->
+    <AssemblyName>cubescope</AssemblyName>
+    <!-- Embarque AUSSI les DLL natives (e_sqlite3, msalruntime…) dans l'exe et les
+         auto-extrait au démarrage → l'exe seul suffit (sinon SQLite/historique plante
+         une fois l'exe déplacé sans ses DLL voisines). -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <!-- Au publish (ou -p:EmbedSpa=true) : build de la SPA Vue puis embarquement du dist
+       comme EmbeddedResource (préfixe logique « spa/ ») DANS l'assembly. Servie au runtime
+       par EmbeddedSpaFileProvider → exe VRAIMENT autonome et déplaçable (le single-file
+       cherchait sinon wwwroot À CÔTÉ de l'exe = ContentRoot = 404 une fois déplacé).
+       `_IsPublishing` couvre `dotnet publish` sans flag. En build/dev normal : rien
+       (pas de npm en CI ; la SPA est servie par Vite via le proxy). Le glob des ressources
+       est fait DANS la cible, après npm, pour que dist existe au moment du CoreCompile. -->
+  <Target Name="EmbedSpa"
+          BeforeTargets="PrepareForBuild"
+          Condition="('$(EmbedSpa)' == 'true' or '$(_IsPublishing)' == 'true') and '$(_SpaEmbedded)' != 'true'">
+    <Exec Command="npm run build" WorkingDirectory="..\CubeScope.Web" />
+    <PropertyGroup>
+      <_SpaEmbedded>true</_SpaEmbedded>
+    </PropertyGroup>
+    <ItemGroup>
+      <!-- *.* : uniquement les fichiers (le glob **\* matcherait aussi les dossiers).
+           Item intermédiaire `_SpaFile` + métadonnée QUALIFIÉE `%(_SpaFile.…)` : sur un
+           Include auto-référencé, `%(Filename)` s'évalue vide → tous les LogicalName
+           deviennent « spa/ » (collision CS1508). Le passage par un item source qualifié
+           expanse correctement le chemin par fichier. -->
+      <_SpaFile Include="..\CubeScope.Web\dist\**\*.*" />
+      <EmbeddedResource Include="@(_SpaFile)">
+        <LogicalName>spa/%(_SpaFile.RecursiveDir)%(_SpaFile.Filename)%(_SpaFile.Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+</Project>

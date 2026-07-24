@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (preview)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Setup Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # La cible EmbedSpa du .csproj lance "npm run build" au publish : les deps
+      # front doivent être installées d'abord.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: CubeScope.Web
+
+      - name: Publish single-file executable
+        run: >
+          dotnet publish CubeScope.Server -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true -o publish
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/cubescope.exe
+          generate_release_notes: true

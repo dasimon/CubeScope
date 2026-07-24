@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- CubeScope — cube isométrique (palette émeraude du thème) -->
+  <g stroke="#022c22" stroke-width="0.8" stroke-linejoin="round">
+    <path fill="#34d399" d="M16 3 L28 9.5 L16 16 L4 9.5 Z"/>
+    <path fill="#059669" d="M4 9.5 L16 16 L16 29 L4 22.5 Z"/>
+    <path fill="#10b981" d="M28 9.5 L16 16 L16 29 L28 22.5 Z"/>
+  </g>
+  <!-- « scope » : petite lentille sur la face haute -->
+  <circle cx="16" cy="9.3" r="2.6" fill="none" stroke="#022c22" stroke-width="1.1" opacity="0.55"/>
+</svg>

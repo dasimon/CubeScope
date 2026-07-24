@@ -1,0 +1,23 @@
+/* Base CubeScope — l'essentiel du style vient de PrimeVue (thème Aura sombre). */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: var(--p-surface-900);
+  color: var(--p-surface-0);
+  overflow: hidden;
+}

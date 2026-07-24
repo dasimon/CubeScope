@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="CubeScope.Core.Tests/CubeScope.Core.Tests.csproj" />
+  <Project Path="CubeScope.Core/CubeScope.Core.csproj" />
+  <Project Path="CubeScope.Server/CubeScope.Server.csproj" />
+  <Project Path="CubeScope.Spike/CubeScope.Spike.csproj" />
+</Solution>

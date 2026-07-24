@@ -1,0 +1,38 @@
+# ─── Build .NET ───────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+publish/
+*.user
+
+# ─── SPA générée (build Vite ; embarquée au publish via la cible EmbedSpa) ───
+CubeScope.Server/wwwroot/
+
+# ─── Node / frontend ──────────────────────────────────────────
+node_modules/
+CubeScope.Web/dist/
+CubeScope.Web/*.tsbuildinfo
+
+# ─── État local (SQLite) ──────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ─── IDE / outillage ──────────────────────────────────────────
+.vs/
+.vscode/
+.idea/
+.playwright-mcp/
+
+# ─── OS ───────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+
+# ─── Outillage perso (hors repo public) ───────────────────────
+.clinerules
+.github/copilot-instructions.md
+
+# ─── Notes internes non caviardées (privé, lu par Claude Code) ──
+CLAUDE.local.md
+
+# ─── Doc interne non tranchée ────────────────────────────────
+docs/PROJET.md
