@@ -7,6 +7,7 @@ using CubeScope.Core.Ai;
 using CubeScope.Core.Models;
 using CubeScope.Core.Perfmon;
 using CubeScope.Core.Profiler;
+using CubeScope.Core.Project;
 using CubeScope.Core.Script;
 using CubeScope.Core.Ssas;
 using CubeScope.Core.State;
@@ -29,6 +30,8 @@ builder.Services.AddSingleton<MetadataService>();
 builder.Services.AddSingleton<CacheService>();
 builder.Services.AddSingleton<AiService>();
 builder.Services.AddSingleton<ScriptService>();
+builder.Services.AddSingleton<CubeProjectService>();
+builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
@@ -175,6 +178,48 @@ api.MapGet("/doc/{cube}", async (string cube, ScriptService scripts, MetadataSer
     }
 });
 
+// Mode projet SSDT : le MDX Script est lu/écrit dans le .cube (source de vérité = projet)
+api.MapPost("/project/open", (ProjectOpenRequest req, CubeProjectService projects, StateStore store) =>
+{
+    try
+    {
+        var script = projects.Load(req.Path);
+        store.AddRecentProject(req.Path);
+        return Results.Ok(script);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+api.MapPost("/project/save", (ProjectSaveRequest req, CubeProjectService projects) =>
+{
+    try
+    {
+        return Results.Ok(new { warnings = projects.Save(req.Path, req.FullText) });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectService projects,
+    ScriptDeployService deploy, CancellationToken ct) =>
+{
+    try
+    {
+        var script = projects.Load(req.Path); // toujours l'état DISQUE du projet (l'UI sauvegarde avant)
+        var result = await Task.Run(
+            () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText, req.Force), ct);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+api.MapGet("/project/recent", (StateStore store) => Results.Ok(store.GetRecentProjects()));
+
 // Panneau IA : statut (clé configurée ?) et exécution d'une action sur le MDX courant
 api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured }));
 api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, CancellationToken ct) =>
@@ -247,6 +292,9 @@ internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
 internal sealed record AiRequest(string Mdx, string? Lang);
+internal sealed record ProjectOpenRequest(string Path);
+internal sealed record ProjectSaveRequest(string Path, string FullText);
+internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
 
 /// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
 internal sealed class StatsHub : Hub;
