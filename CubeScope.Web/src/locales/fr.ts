@@ -132,7 +132,6 @@ export default {
     discardConfirm: 'Des modifications ne sont pas enregistrées. Les abandonner ?',
     readOnly: 'Lecture seule : {reason}',
     noSection: '(hors région)',
-    warningsTitle: 'Avertissements',
     deploy: 'Déployer le script sur…',
     deployTitle: 'Déployer le MDX Script seul',
     deployHint: 'Remplace uniquement le MDX Script du cube cible (pas de redéploiement, pas de process). Les propriétés de calcul du serveur ne sont pas modifiées.',

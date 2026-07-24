@@ -134,7 +134,6 @@ const en: typeof fr = {
     discardConfirm: 'You have unsaved changes. Discard them?',
     readOnly: 'Read-only: {reason}',
     noSection: '(no region)',
-    warningsTitle: 'Warnings',
     deploy: 'Deploy script to…',
     deployTitle: 'Deploy the MDX Script only',
     deployHint: 'Replaces only the MDX Script of the target cube (no full deploy, no processing). Server-side calculation properties are left untouched.',

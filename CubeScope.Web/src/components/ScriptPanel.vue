@@ -4,7 +4,7 @@
 // scopes groupée par région (#region en mode projet), clic = aller à la définition,
 // arbre de dépendances de l'élément sélectionné (double sens), export de la doc
 // Markdown du cube (mode cube live uniquement).
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -157,12 +157,19 @@ function closeProject() {
 /** Corps réel de la sauvegarde (wrappé par saveProject pour dédupliquer les appels concurrents). */
 async function performSaveProject(): Promise<boolean> {
   saving.value = true
+  // Identité du projet visé par CETTE sauvegarde — capturée avant tout await. Si l'utilisateur
+  // ouvre un autre projet (ou ferme) pendant les awaits ci-dessous, `project.value` aura changé
+  // au retour : l'écriture disque pour `savedPath` a quand même eu lieu (c'est ce qui compte),
+  // mais il ne faut alors surtout pas réassigner project.value/dirty/warnings ni toaster —
+  // ça cibleraient/afficheraient l'état du MAUVAIS projet (celui maintenant ouvert à l'écran).
+  const savedPath = project.value!.path
   try {
     const text = editor?.getValue() ?? project.value!.fullText
-    const r = await api.projectSave(project.value!.path, text)
-    warnings.value = r.warnings
+    const r = await api.projectSave(savedPath, text)
     // Recharge la liste des commandes (sections/lignes à jour) sans toucher à l'éditeur
-    const proj = await api.projectOpen(project.value!.path)
+    const proj = await api.projectOpen(savedPath)
+    if (project.value?.path !== savedPath) return true
+    warnings.value = r.warnings
     project.value = proj
     // Si l'utilisateur a continué à taper pendant les awaits ci-dessus, `text` n'est plus
     // le contenu courant de l'éditeur : ne pas effacer le flag dirty dans ce cas.
@@ -301,7 +308,21 @@ function exportDoc() {
   a.click()
 }
 
-onBeforeUnmount(() => editor?.dispose())
+/** Averti le navigateur (prompt natif) en cas de fermeture/rechargement d'onglet avec des
+ *  modifications non enregistrées — le panneau Script est un vrai éditeur d'écriture, pas
+ *  seulement une visionneuse. */
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (dirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  editor?.dispose()
+})
 </script>
 
 <template>
