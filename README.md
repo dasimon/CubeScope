@@ -19,14 +19,19 @@ component to deploy, no cloud.
 
 - **MDX editor** — Monaco with a hand-written MDX grammar (syntax highlighting,
   reference detection), autocompletion of measures, hierarchies and members
-  (lazy-loaded after `.`), execute with `F5` / `Ctrl+Enter`, cancel in flight.
-- **Results grid** — virtualized grid handling wide crossjoins.
+  (lazy-loaded after `.`), structural folding of `{ }` / `( )` / `SCOPE` blocks
+  and `// #region` sections, execute with `F5` / `Ctrl+Enter`, cancel in flight.
+- **Results grid** — virtualized grid handling wide crossjoins; export to CSV
+  or copy to the clipboard (Excel-friendly).
+- **Productivity helpers** — a reusable MDX **snippets** library (save / insert /
+  delete) and a **calculated-member scaffold** (WITH MEMBER / CREATE MEMBER).
 - **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed);
   double-click inserts at the cursor. Measure descriptions surface as hover
   tooltips and in the MDX autocomplete documentation.
 - **Query profiler** — per-query **Formula Engine vs Storage Engine** split from
   SSAS traces, `Query Subcube` breakdown (readable text), cache and aggregation
-  hits. *(Requires SSAS admin rights — see Prerequisites.)*
+  hits, plus a persisted run history with before/after comparison of two runs.
+  *(Requires SSAS admin rights — see Prerequisites.)*
 - **Perfmon stats** — per-query perfmon counter deltas (MDX / cache / storage
   engine), streamed live over SignalR.
 - **MDX Script & dependencies** — read the cube's MDX Script, browse calculated
@@ -37,7 +42,10 @@ component to deploy, no cloud.
   `// #region` grouping and folding, save round-trips into the `.cube` (plus a
   plain-text `.mdxscript.mdx` export for readable Git diffs), and deploy the script
   alone to a dev cube (BIDS Helper style, with a divergence guard and dev-catalog
-  warning) without a full project deploy.
+  warning) without a full project deploy. On divergence a side-by-side Monaco diff
+  shows server vs project before you overwrite; you can also edit a calculated
+  member's properties (format string, display folder, description) with round-trip
+  writeback into the `.cube`.
 - **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, powered
   by the Anthropic API (`claude-opus-4-8`), with the relevant cube metadata
   injected into the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
