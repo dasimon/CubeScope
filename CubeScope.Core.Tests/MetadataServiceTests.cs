@@ -17,10 +17,10 @@ public class MetadataServiceBuildTests
     public void Build_GroupsMeasuresByFolder_AndSorts()
     {
         var measures = Table(
-            ["MEASURE_NAME", "MEASURE_UNIQUE_NAME", "MEASURE_DISPLAY_FOLDER"],
-            ["Sales", "[Measures].[Sales]", "Perf"],
-            ["Total", "[Measures].[Total]", ""],
-            ["Alpha", "[Measures].[Alpha]", "Perf"]);
+            ["MEASURE_NAME", "MEASURE_UNIQUE_NAME", "MEASURE_DISPLAY_FOLDER", "DESCRIPTION"],
+            ["Sales", "[Measures].[Sales]", "Perf", ""],
+            ["Total", "[Measures].[Total]", "", ""],
+            ["Alpha", "[Measures].[Alpha]", "Perf", ""]);
         var empty = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME"]);
         var emptyH = Table(["DIMENSION_UNIQUE_NAME", "HIERARCHY_NAME", "HIERARCHY_UNIQUE_NAME"]);
         var emptyL = Table(["HIERARCHY_UNIQUE_NAME", "LEVEL_NAME", "LEVEL_UNIQUE_NAME", "LEVEL_NUMBER"]);
@@ -31,6 +31,24 @@ public class MetadataServiceBuildTests
         Assert.Equal("", meta.MeasureFolders[0].Folder); // racine d'abord (tri alpha)
         Assert.Equal("Perf", meta.MeasureFolders[1].Folder);
         Assert.Equal(["Alpha", "Sales"], meta.MeasureFolders[1].Measures.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void Build_MapsMeasureDescription_AndDefaultsDbNullToEmpty()
+    {
+        var measures = Table(
+            ["MEASURE_NAME", "MEASURE_UNIQUE_NAME", "MEASURE_DISPLAY_FOLDER", "DESCRIPTION"],
+            ["Sales", "[Measures].[Sales]", "", "Chiffre d'affaires total"],
+            ["Total", "[Measures].[Total]", "", DBNull.Value]);
+        var empty = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME"]);
+        var emptyH = Table(["DIMENSION_UNIQUE_NAME", "HIERARCHY_NAME", "HIERARCHY_UNIQUE_NAME"]);
+        var emptyL = Table(["HIERARCHY_UNIQUE_NAME", "LEVEL_NAME", "LEVEL_UNIQUE_NAME", "LEVEL_NUMBER"]);
+
+        var meta = MetadataService.Build("C", measures, empty, emptyH, emptyL);
+
+        var byName = meta.MeasureFolders.Single().Measures.ToDictionary(m => m.Name);
+        Assert.Equal("Chiffre d'affaires total", byName["Sales"].Description);
+        Assert.Equal("", byName["Total"].Description);
     }
 
     [Fact]

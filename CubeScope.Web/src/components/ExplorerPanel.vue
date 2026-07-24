@@ -25,6 +25,7 @@ const nodes = computed<TreeNode[]>(() => {
       label: m.name,
       icon: 'pi pi-calculator',
       data: m.uniqueName,
+      title: m.description || undefined,
       leaf: true,
     })),
   }))
@@ -101,7 +102,10 @@ function onNodeDblClick(node: TreeNode) {
       :pt="{ nodeLabel: { style: 'user-select: none' } }"
     >
       <template #default="{ node }">
-        <span :title="typeof node.data === 'string' ? node.data : ''" @dblclick="onNodeDblClick(node)">
+        <span
+          :title="(node as any).title || (typeof node.data === 'string' ? node.data : '')"
+          @dblclick="onNodeDblClick(node)"
+        >
           {{ node.label }}
         </span>
       </template>

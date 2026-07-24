@@ -9,7 +9,7 @@ public sealed record CubeMeta(
 /// <summary>Groupe de mesures par dossier d'affichage ("" = racine).</summary>
 public sealed record MeasureFolder(string Folder, IReadOnlyList<MeasureMeta> Measures);
 
-public sealed record MeasureMeta(string Name, string UniqueName);
+public sealed record MeasureMeta(string Name, string UniqueName, string Description = "");
 
 public sealed record DimensionMeta(string Name, string UniqueName, IReadOnlyList<HierarchyMeta> Hierarchies);
 

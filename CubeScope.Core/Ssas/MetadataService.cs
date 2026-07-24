@@ -29,7 +29,7 @@ public sealed class MetadataService(SsasSession session)
         string quoted = cube.Replace("'", "''");
 
         var measures = await session.ExecuteDmvAsync($"""
-            SELECT [MEASURE_NAME], [MEASURE_UNIQUE_NAME], [MEASURE_DISPLAY_FOLDER]
+            SELECT [MEASURE_NAME], [MEASURE_UNIQUE_NAME], [MEASURE_DISPLAY_FOLDER], [DESCRIPTION]
             FROM $SYSTEM.MDSCHEMA_MEASURES
             WHERE [CUBE_NAME] = '{quoted}' AND [MEASURE_IS_VISIBLE]
             """, ct);
@@ -88,7 +88,8 @@ public sealed class MetadataService(SsasSession session)
             .GroupBy(r => r["MEASURE_DISPLAY_FOLDER"] as string ?? "")
             .OrderBy(g => g.Key)
             .Select(g => new MeasureFolder(g.Key,
-                g.Select(r => new MeasureMeta((string)r["MEASURE_NAME"], (string)r["MEASURE_UNIQUE_NAME"]))
+                g.Select(r => new MeasureMeta((string)r["MEASURE_NAME"], (string)r["MEASURE_UNIQUE_NAME"],
+                        r["DESCRIPTION"] as string ?? ""))
                  .OrderBy(m => m.Name).ToList()))
             .ToList();
 

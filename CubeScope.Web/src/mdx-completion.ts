@@ -46,10 +46,11 @@ function suggestion(
   kind: monaco.languages.CompletionItemKind,
   range: monaco.IRange,
   detail?: string,
+  documentation?: string,
 ): monaco.languages.CompletionItem {
   // filterText couvre le nom crocheté ET l'unique name : taper "[Sales" doit matcher
   // la mesure "Sales Amount" (insérée comme [Measures].[Sales Amount])
-  return { label, insertText, kind, range, detail, filterText: `[${label}] ${insertText}` }
+  return { label, insertText, kind, range, detail, documentation, filterText: `[${label}] ${insertText}` }
 }
 
 monaco.languages.registerCompletionItemProvider('mdx', {
@@ -109,7 +110,14 @@ monaco.languages.registerCompletionItemProvider('mdx', {
       for (const f of meta.measureFolders)
         for (const m of f.measures)
           items.push(
-            suggestion(m.name, m.uniqueName, monaco.languages.CompletionItemKind.Value, range, m.uniqueName),
+            suggestion(
+              m.name,
+              m.uniqueName,
+              monaco.languages.CompletionItemKind.Value,
+              range,
+              m.uniqueName,
+              m.description || undefined,
+            ),
           )
       for (const d of meta.dimensions) {
         items.push(

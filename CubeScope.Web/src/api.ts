@@ -36,6 +36,7 @@ export interface RecentConnection {
 export interface MeasureMeta {
   name: string
   uniqueName: string
+  description: string
 }
 export interface MeasureFolder {
   folder: string
