@@ -18,6 +18,12 @@ public static partial class ScriptParser
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CreateSet();
 
+    [GeneratedRegex(@"^\s*(?://|--)\s*#region\b[ \t]*(?<name>.*?)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex RegionStart();
+
+    [GeneratedRegex(@"^\s*(?://|--)\s*#endregion\b", RegexOptions.IgnoreCase)]
+    private static partial Regex RegionEnd();
+
     // Propriétés qui terminent l'expression d'un CREATE MEMBER (virgule niveau 0 + mot-clé)
     private static readonly string[] MemberProperties =
     [
@@ -28,34 +34,40 @@ public static partial class ScriptParser
 
     public static IReadOnlyList<ScriptCommand> Parse(string script)
     {
+        var sections = SectionsPerLine(script);
         var commands = new List<ScriptCommand>();
         foreach (var (text, startLine) in SplitStatements(script))
         {
-            string trimmed = StripLeadingComments(text).Trim();
+            string afterComments = StripLeadingComments(text);
+            string trimmed = afterComments.Trim();
             if (trimmed.Length == 0) continue;
+            int contentLine = ContentLine(text, afterComments, startLine);
+            string? section = sections.Count == 0
+                ? null
+                : sections[Math.Clamp(contentLine, 1, sections.Count) - 1];
 
             var m = CreateMember().Match(trimmed);
             if (m.Success)
             {
                 commands.Add(new ScriptCommand("CalculatedMember", Normalize(m.Groups["name"].Value),
-                    ExtractMemberExpression(trimmed[(m.Index + m.Length)..]), startLine));
+                    ExtractMemberExpression(trimmed[(m.Index + m.Length)..]), startLine, section));
                 continue;
             }
             var s = CreateSet().Match(trimmed);
             if (s.Success)
             {
                 commands.Add(new ScriptCommand("NamedSet", Normalize(s.Groups["name"].Value),
-                    trimmed[(s.Index + s.Length)..].Trim(), startLine));
+                    trimmed[(s.Index + s.Length)..].Trim(), startLine, section));
                 continue;
             }
             if (trimmed.StartsWith("SCOPE", StringComparison.OrdinalIgnoreCase))
             {
                 string firstLine = trimmed.Split('\n')[0].Trim();
-                commands.Add(new ScriptCommand("Scope", firstLine, trimmed, startLine));
+                commands.Add(new ScriptCommand("Scope", firstLine, trimmed, startLine, section));
                 continue;
             }
             if (trimmed.StartsWith("CALCULATE", StringComparison.OrdinalIgnoreCase)) continue; // le CALCULATE; racine
-            commands.Add(new ScriptCommand("Autre", trimmed.Split('\n')[0].Trim(), trimmed, startLine));
+            commands.Add(new ScriptCommand("Autre", trimmed.Split('\n')[0].Trim(), trimmed, startLine, section));
         }
         return commands;
     }
@@ -198,5 +210,65 @@ public static partial class ScriptParser
         while (j >= 0 && char.IsWhiteSpace(s[j])) j--;
         while (j >= 0 && char.IsLetterOrDigit(s[j])) j--;
         return j + 1;
+    }
+
+    /// <summary>
+    /// Section (chemin de régions imbriquées) de chaque ligne, index 0 = ligne 1.
+    /// La ligne #region ouvre la région ; la ligne #endregion n'en fait plus partie.
+    /// Un #endregion sans #region est ignoré ; une région non fermée court jusqu'au bout.
+    /// </summary>
+    internal static IReadOnlyList<string?> SectionsPerLine(string script)
+    {
+        var lines = script.Split('\n');
+        var stack = new Stack<string>();
+        var result = new string?[lines.Length];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var start = RegionStart().Match(lines[i]);
+            if (start.Success)
+            {
+                string name = start.Groups["name"].Value.Trim();
+                stack.Push(name.Length == 0 ? "#region" : name);
+            }
+            else if (RegionEnd().IsMatch(lines[i]) && stack.Count > 0)
+            {
+                stack.Pop();
+            }
+            result[i] = stack.Count == 0 ? null : string.Join(" / ", stack.Reverse());
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Ligne du premier contenu réel d'un statement (les commentaires/blancs de tête,
+    /// dont les marqueurs de région, appartiennent au statement mais pas à son contenu).
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="startLine"/> pointe déjà sur la 1ʳᵉ ligne non blanche de <paramref name="raw"/>
+    /// (<see cref="SplitStatements"/> saute les lignes blanches de tête en le calculant, sans pour
+    /// autant retirer ces caractères de <paramref name="raw"/> lui-même). <see cref="StripLeadingComments"/>
+    /// ne garantit d'être un suffixe que de <paramref name="raw"/> tel quel (pas de sa version
+    /// tronquée : sans commentaire de tête elle renvoie <paramref name="raw"/> intact, avec ses
+    /// éventuels blancs de tête). On recalcule donc d'abord la ligne réelle du tout premier
+    /// caractère de <paramref name="raw"/> en soustrayant ses propres sauts de ligne blancs de tête,
+    /// puis on recompte à partir de là sur <paramref name="raw"/> non tronqué.
+    /// </remarks>
+    private static int ContentLine(string raw, string afterComments, int startLine)
+    {
+        int leadingBlankNewlines = 0;
+        foreach (char c in raw)
+        {
+            if (!char.IsWhiteSpace(c)) break;
+            if (c == '\n') leadingBlankNewlines++;
+        }
+        int line = startLine - leadingBlankNewlines;
+        foreach (char c in raw.AsSpan(0, raw.Length - afterComments.Length))
+            if (c == '\n') line++;
+        foreach (char c in afterComments)
+        {
+            if (c == '\n') line++;
+            else if (!char.IsWhiteSpace(c)) break;
+        }
+        return line;
     }
 }

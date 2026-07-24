@@ -8,13 +8,15 @@ public sealed record CubeScript(
 
 /// <summary>
 /// Une commande repérée dans le script. Kind : CalculatedMember, NamedSet, Scope, Autre.
-/// StartLine (1-based) permet la navigation dans l'éditeur.
+/// StartLine (1-based) permet la navigation dans l'éditeur. Section = chemin de la
+/// région `// #region` englobante ("A / B" si imbriquée), null hors région.
 /// </summary>
 public sealed record ScriptCommand(
     string Kind,
     string Name,
     string Expression,
-    int StartLine);
+    int StartLine,
+    string? Section = null);
 
 /// <summary>Nœud du graphe de dépendances d'un membre calculé / set.</summary>
 public sealed record DependencyNode(
