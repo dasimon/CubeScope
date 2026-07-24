@@ -155,4 +155,14 @@ export default {
     cubeFilesLabel: 'Fichiers .cube',
     noCubeHere: 'Aucun fichier .cube dans ce dossier',
   },
+  snippets: {
+    title: 'Snippets',
+    saveCurrent: 'Enregistrer la requête comme snippet',
+    name: 'Nom',
+    empty: 'Aucun snippet',
+    saved: 'Snippet enregistré',
+    inserted: 'Snippet inséré',
+    deleteTitle: 'Supprimer',
+    save: 'Enregistrer',
+  },
 }

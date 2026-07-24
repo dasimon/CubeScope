@@ -30,3 +30,6 @@ public sealed record DirectoryListing(
     IReadOnlyList<string> Drives,
     IReadOnlyList<FileEntry> Directories,
     IReadOnlyList<FileEntry> CubeFiles);
+
+/// <summary>Un snippet MDX réutilisable, persisté en SQLite (bibliothèque locale).</summary>
+public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc);

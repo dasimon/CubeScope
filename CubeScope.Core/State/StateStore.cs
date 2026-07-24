@@ -68,6 +68,18 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 2;
                 """);
         }
+        if (version < 3)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS Snippet (
+                    Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name       TEXT NOT NULL,
+                    Mdx        TEXT NOT NULL,
+                    CreatedUtc TEXT NOT NULL
+                );
+                PRAGMA user_version = 3;
+                """);
+        }
     }
 
     public void AddRecentConnection(string server, string? catalog)
@@ -150,6 +162,44 @@ public sealed class StateStore : IDisposable
             return list;
         }
     }
+
+    /// <summary>Insère un snippet et retourne son Id généré. INSERT + last_insert_rowid() sous
+    /// le même verrou (et la même connexion SQLite, jamais poolée) pour éviter qu'une écriture
+    /// concurrente ne s'intercale entre les deux appels.</summary>
+    public long AddSnippet(string name, string mdx)
+    {
+        lock (_lock)
+        {
+            using (var insert = _db.CreateCommand())
+            {
+                insert.CommandText = "INSERT INTO Snippet (Name, Mdx, CreatedUtc) VALUES ($n, $m, $t)";
+                insert.Parameters.AddWithValue("$n", name);
+                insert.Parameters.AddWithValue("$m", mdx);
+                insert.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                insert.ExecuteNonQuery();
+            }
+            using var scalar = _db.CreateCommand();
+            scalar.CommandText = "SELECT last_insert_rowid()";
+            return (long)scalar.ExecuteScalar()!;
+        }
+    }
+
+    public IReadOnlyList<Snippet> GetSnippets()
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT Id, Name, Mdx, CreatedUtc FROM Snippet ORDER BY Name COLLATE NOCASE";
+            using var r = cmd.ExecuteReader();
+            var list = new List<Snippet>();
+            while (r.Read())
+                list.Add(new Snippet(r.GetInt64(0), r.GetString(1), r.GetString(2),
+                    DateTime.Parse(r.GetString(3)).ToUniversalTime()));
+            return list;
+        }
+    }
+
+    public void DeleteSnippet(long id) => Exec("DELETE FROM Snippet WHERE Id = $id", ("$id", id));
 
     private void Exec(string sql, params (string Name, object Value)[] args)
     {

@@ -70,6 +70,33 @@ public class StateStoreTests : IDisposable
         Assert.Equal(@"C:\proj\Cube1.cube", list[0].Path);
     }
 
+    [Fact]
+    public void Snippets_AddListDelete()
+    {
+        var id1 = _store.AddSnippet("Ventes par devise", "SELECT { [Measures].[Ventes] } ON 0 FROM [Cube]");
+        var id2 = _store.AddSnippet("Alpha", "SELECT { [Measures].[Alpha] } ON 0 FROM [Cube]");
+
+        Assert.True(id1 > 0);
+        Assert.True(id2 > 0);
+        Assert.NotEqual(id1, id2);
+
+        var list = _store.GetSnippets();
+        Assert.Equal(2, list.Count);
+        // ORDER BY Name COLLATE NOCASE : "Alpha" avant "Ventes par devise"
+        Assert.Equal("Alpha", list[0].Name);
+        Assert.Equal("SELECT { [Measures].[Alpha] } ON 0 FROM [Cube]", list[0].Mdx);
+        Assert.Equal("Ventes par devise", list[1].Name);
+        Assert.Equal(id2, list[0].Id);
+        Assert.Equal(id1, list[1].Id);
+
+        _store.DeleteSnippet(id2);
+
+        var remaining = _store.GetSnippets();
+        var only = Assert.Single(remaining);
+        Assert.Equal("Ventes par devise", only.Name);
+        Assert.Equal(id1, only.Id);
+    }
+
     public void Dispose()
     {
         _store.Dispose();

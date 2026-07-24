@@ -220,6 +220,25 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     }
 });
 api.MapGet("/project/recent", (StateStore store) => Results.Ok(store.GetRecentProjects()));
+
+// Bibliothèque de snippets MDX (locale, SQLite)
+api.MapGet("/snippets", (StateStore store) => Results.Ok(store.GetSnippets()));
+api.MapPost("/snippets", (SnippetRequest req, StateStore store) =>
+{
+    try
+    {
+        return Results.Ok(new { id = store.AddSnippet(req.Name, req.Mdx) });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+api.MapDelete("/snippets/{id:long}", (long id, StateStore store) =>
+{
+    store.DeleteSnippet(id);
+    return Results.Ok();
+});
 api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
 {
     try { return Results.Ok(fs.List(path)); }
@@ -301,6 +320,7 @@ internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
+internal sealed record SnippetRequest(string Name, string Mdx);
 
 /// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
 internal sealed class StatsHub : Hub;

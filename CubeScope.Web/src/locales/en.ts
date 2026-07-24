@@ -157,6 +157,16 @@ const en: typeof fr = {
     cubeFilesLabel: '.cube files',
     noCubeHere: 'No .cube file in this folder',
   },
+  snippets: {
+    title: 'Snippets',
+    saveCurrent: 'Save query as snippet',
+    name: 'Name',
+    empty: 'No snippets',
+    saved: 'Snippet saved',
+    inserted: 'Snippet inserted',
+    deleteTitle: 'Delete',
+    save: 'Save',
+  },
 }
 
 export default en

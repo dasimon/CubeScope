@@ -20,6 +20,7 @@ import AiPanel from './components/AiPanel.vue'
 import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
+import SnippetsMenu from './components/SnippetsMenu.vue'
 import { startStatsHub } from './stats'
 import { actions, store } from './store'
 
@@ -198,6 +199,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         :title="t('toolbar.clearCacheTitle', { catalog: store.catalog })"
         @click="confirmClear = true"
       />
+      <SnippetsMenu />
       <span class="toolbar-spacer" />
       <Select
         :model-value="locale"

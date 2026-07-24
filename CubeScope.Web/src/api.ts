@@ -76,6 +76,13 @@ export interface DirectoryListing {
   cubeFiles: FileEntry[]
 }
 
+export interface Snippet {
+  id: number
+  name: string
+  mdx: string
+  createdUtc: string
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -127,6 +134,9 @@ export const api = {
   projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
   fsList: (path?: string) =>
     request<DirectoryListing>('GET', `/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+  snippets: () => request<Snippet[]>('GET', '/api/snippets'),
+  addSnippet: (name: string, mdx: string) => request<{ id: number }>('POST', '/api/snippets', { name, mdx }),
+  deleteSnippet: (id: number) => request<void>('DELETE', `/api/snippets/${id}`),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
