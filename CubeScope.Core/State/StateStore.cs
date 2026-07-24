@@ -1,3 +1,4 @@
+using CubeScope.Core.Models;
 using Microsoft.Data.Sqlite;
 
 namespace CubeScope.Core.State;
@@ -57,6 +58,16 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 1;
                 """);
         }
+        if (version < 2)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS RecentProject (
+                    Path        TEXT NOT NULL PRIMARY KEY,
+                    LastUsedUtc TEXT NOT NULL
+                );
+                PRAGMA user_version = 2;
+                """);
+        }
     }
 
     public void AddRecentConnection(string server, string? catalog)
@@ -80,6 +91,30 @@ public sealed class StateStore : IDisposable
             while (r.Read())
                 list.Add(new RecentConnection(r.GetString(0), r.GetString(1) is "" ? null : r.GetString(1),
                     DateTime.Parse(r.GetString(2)).ToUniversalTime()));
+            return list;
+        }
+    }
+
+    public void AddRecentProject(string path)
+    {
+        Exec("""
+            INSERT INTO RecentProject (Path, LastUsedUtc) VALUES ($p, $t)
+            ON CONFLICT (Path) DO UPDATE SET LastUsedUtc = $t
+            """,
+            ("$p", path), ("$t", DateTime.UtcNow.ToString("O")));
+    }
+
+    public IReadOnlyList<RecentProject> GetRecentProjects(int limit = 10)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT Path, LastUsedUtc FROM RecentProject ORDER BY LastUsedUtc DESC LIMIT $n";
+            cmd.Parameters.AddWithValue("$n", limit);
+            using var r = cmd.ExecuteReader();
+            var list = new List<RecentProject>();
+            while (r.Read())
+                list.Add(new RecentProject(r.GetString(0), DateTime.Parse(r.GetString(1)).ToUniversalTime()));
             return list;
         }
     }

@@ -58,6 +58,18 @@ public class StateStoreTests : IDisposable
         Assert.Single(second.GetRecentConnections());
     }
 
+    [Fact]
+    public void RecentProjects_UpsertAndOrderByLastUsed()
+    {
+        using var store = new StateStore(Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db"));
+        store.AddRecentProject(@"C:\proj\Cube1.cube");
+        store.AddRecentProject(@"C:\proj\Cube2.cube");
+        store.AddRecentProject(@"C:\proj\Cube1.cube"); // ré-ouverture → remonte en tête
+        var list = store.GetRecentProjects();
+        Assert.Equal(2, list.Count);
+        Assert.Equal(@"C:\proj\Cube1.cube", list[0].Path);
+    }
+
     public void Dispose()
     {
         _store.Dispose();
