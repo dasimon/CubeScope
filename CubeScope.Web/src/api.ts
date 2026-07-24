@@ -105,6 +105,12 @@ export const api = {
   aiStatus: () => request<{ configured: boolean }>('GET', '/api/ai/status'),
   ai: (action: AiAction, mdx: string, lang: string, signal: AbortSignal) =>
     request<{ text: string; durationMs: number }>('POST', `/api/ai/${action}`, { mdx, lang }, signal),
+  projectOpen: (path: string) => request<ProjectScript>('POST', '/api/project/open', { path }),
+  projectSave: (path: string, fullText: string) =>
+    request<{ warnings: string[] }>('POST', '/api/project/save', { path, fullText }),
+  projectDeploy: (path: string, server: string, catalog: string, force: boolean) =>
+    request<DeployScriptResult>('POST', '/api/project/deploy', { path, server, catalog, force }),
+  projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
@@ -114,11 +120,30 @@ export interface ScriptCommand {
   name: string
   expression: string
   startLine: number
+  section: string | null
 }
 export interface CubeScript {
   cubeName: string
   fullText: string
   commands: ScriptCommand[]
+}
+export interface ProjectScript {
+  path: string
+  cubeName: string
+  fullText: string
+  commands: ScriptCommand[]
+  canEdit: boolean
+  readOnlyReason: string | null
+}
+export interface RecentProject {
+  path: string
+  lastUsedUtc: string
+}
+export interface DeployScriptResult {
+  deployed: boolean
+  differs: boolean
+  serverText: string | null
+  durationMs: number
 }
 export interface DependencyNode {
   name: string

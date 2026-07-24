@@ -122,6 +122,30 @@ const en: typeof fr = {
   editor: {
     defaultComment: 'CubeScope: execute with F5 or Ctrl+Enter',
   },
+  project: {
+    open: 'Open an SSDT project',
+    pathPlaceholder: 'Full path to the .cube file…',
+    openBtn: 'Open',
+    recent: 'Recent projects',
+    close: 'Close project',
+    save: 'Save to .cube (Ctrl+S)',
+    saved: 'Script saved — .mdxscript.mdx export updated',
+    dirty: 'Unsaved changes',
+    readOnly: 'Read-only: {reason}',
+    noSection: '(no region)',
+    warningsTitle: 'Warnings',
+    deploy: 'Deploy script to…',
+    deployTitle: 'Deploy the MDX Script only',
+    deployHint: 'Replaces only the MDX Script of the target cube (no full deploy, no processing). Server-side calculation properties are left untouched.',
+    server: 'Server',
+    catalog: 'Catalog',
+    devWarning: 'Warning: “{catalog}” does not look like a dev catalog.',
+    differs: 'The server script differs from the project — a live change would be overwritten. Review below before forcing.',
+    serverScript: 'Script currently on the server',
+    deployBtn: 'Deploy',
+    overwriteBtn: 'Overwrite server script',
+    deployed: 'Script deployed in {ms} ms',
+  },
 }
 
 export default en

@@ -49,6 +49,12 @@ monaco.languages.setLanguageConfiguration('mdx', {
     { open: "'", close: "'" },
     { open: '"', close: '"' },
   ],
+  folding: {
+    markers: {
+      start: /^\s*(?:\/\/|--)\s*#region\b/,
+      end: /^\s*(?:\/\/|--)\s*#endregion\b/,
+    },
+  },
 })
 
 monaco.languages.setMonarchTokensProvider('mdx', {

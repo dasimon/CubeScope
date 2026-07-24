@@ -1,19 +1,31 @@
 <script setup lang="ts">
-// Panneau Script : MDX Script du cube (Monaco lecture seule), liste des membres
-// calculés / sets / scopes (clic = aller à la définition), arbre de dépendances de
-// l'élément sélectionné (double sens), export de la doc Markdown du cube.
+// Panneau Script : MDX Script du cube (Monaco) — lecture seule en mode cube live,
+// lecture/écriture en mode projet SSDT (.cube). Liste des membres calculés / sets /
+// scopes groupée par région (#region en mode projet), clic = aller à la définition,
+// arbre de dépendances de l'élément sélectionné (double sens), export de la doc
+// Markdown du cube (mode cube live uniquement).
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Tree from 'primevue/tree'
 import type { TreeNode } from 'primevue/treenode'
+import { useToast } from 'primevue/usetoast'
 import { monaco } from '../monaco-mdx'
-import { api, type CubeScript, type DependencyGraph, type ScriptCommand } from '../api'
+import {
+  api,
+  type CubeScript,
+  type DependencyGraph,
+  type ProjectScript,
+  type RecentProject,
+  type ScriptCommand,
+} from '../api'
 import { store } from '../store'
 
 const { t } = useI18n()
+const toast = useToast()
 
 const script = ref<CubeScript | null>(null)
 const loading = ref(false)
@@ -26,11 +38,43 @@ const graphLoading = ref(false)
 const host = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
+// --- Mode projet SSDT (édition) vs cube live (lecture seule) ---
+const project = ref<ProjectScript | null>(null)
+const dirty = ref(false)
+const saving = ref(false)
+const warnings = ref<string[]>([])
+const showOpen = ref(false)
+const openPath = ref('')
+const openError = ref('')
+const recentProjects = ref<RecentProject[]>([])
+let suppressDirty = false
+
+const isProject = computed(() => project.value !== null)
+
+const commands = computed<ScriptCommand[]>(() =>
+  project.value?.commands ?? script.value?.commands ?? [],
+)
+
 const filteredCommands = computed(() => {
-  const list = script.value?.commands ?? []
   const f = filter.value.trim().toLowerCase()
-  return f ? list.filter((c) => c.name.toLowerCase().includes(f)) : list
+  return f ? commands.value.filter((c) => c.name.toLowerCase().includes(f)) : commands.value
 })
+
+/** Liste groupée par section (#region) — les commandes hors région en dernier. */
+const groupedCommands = computed(() => {
+  const groups = new Map<string, ScriptCommand[]>()
+  for (const c of filteredCommands.value) {
+    const key = c.section ?? ''
+    const list = groups.get(key)
+    if (list) list.push(c)
+    else groups.set(key, [c])
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : 0))
+    .map(([section, items]) => ({ section, items }))
+})
+
+const hasSections = computed(() => groupedCommands.value.some((g) => g.section !== ''))
 
 async function load(refresh = false) {
   if (!store.cube) return
@@ -39,7 +83,7 @@ async function load(refresh = false) {
   try {
     script.value = await api.script(store.cube, refresh)
     ensureEditor()
-    editor?.setValue(script.value.fullText)
+    if (!isProject.value) setEditorText(script.value.fullText, true)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     script.value = null
@@ -59,6 +103,79 @@ function ensureEditor() {
     minimap: { enabled: true },
     fontSize: 13,
   })
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveProject())
+  editor.onDidChangeModelContent(() => {
+    if (!suppressDirty && isProject.value && project.value?.canEdit) dirty.value = true
+  })
+}
+
+function setEditorText(text: string, readOnly: boolean) {
+  suppressDirty = true
+  editor?.updateOptions({ readOnly })
+  editor?.setValue(text)
+  suppressDirty = false
+  dirty.value = false
+}
+
+async function showOpenDialog() {
+  openError.value = ''
+  showOpen.value = true
+  try {
+    recentProjects.value = await api.projectRecent()
+  } catch {
+    recentProjects.value = []
+  }
+}
+
+async function openProject(path?: string) {
+  const p = (path ?? openPath.value).trim()
+  if (!p) return
+  openError.value = ''
+  try {
+    const proj = await api.projectOpen(p)
+    project.value = proj
+    warnings.value = []
+    showOpen.value = false
+    openPath.value = p
+    ensureEditor()
+    setEditorText(proj.fullText, !proj.canEdit)
+  } catch (e) {
+    openError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function closeProject() {
+  project.value = null
+  dirty.value = false
+  warnings.value = []
+  setEditorText(script.value?.fullText ?? '', true)
+}
+
+/** Sauvegarde dans le .cube ; retourne true si OK (ou rien à sauver). */
+async function saveProject(): Promise<boolean> {
+  if (!project.value || !project.value.canEdit || saving.value) return true
+  if (!dirty.value) return true
+  saving.value = true
+  try {
+    const text = editor?.getValue() ?? project.value.fullText
+    const r = await api.projectSave(project.value.path, text)
+    warnings.value = r.warnings
+    // Recharge la liste des commandes (sections/lignes à jour) sans toucher à l'éditeur
+    const proj = await api.projectOpen(project.value.path)
+    project.value = proj
+    dirty.value = false
+    toast.add({ severity: 'success', summary: t('project.saved'), life: 3000 })
+    return true
+  } catch (e) {
+    toast.add({
+      severity: 'error',
+      summary: e instanceof Error ? e.message : String(e),
+      life: 6000,
+    })
+    return false
+  } finally {
+    saving.value = false
+  }
 }
 
 async function select(cmd: ScriptCommand) {
@@ -129,24 +246,37 @@ onBeforeUnmount(() => editor?.dispose())
     <div class="script-side">
       <div class="script-bar">
         <InputText v-model="filter" :placeholder="t('common.filter')" size="small" class="script-filter" />
-        <Button icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
-        <Button icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
+        <Button icon="pi pi-folder-open" text size="small" :title="t('project.open')" @click="showOpenDialog" />
+        <Button v-if="isProject" icon="pi pi-save" text size="small" :disabled="!dirty || !project?.canEdit"
+          :loading="saving" :title="t('project.save')" @click="saveProject" />
+        <Button v-if="isProject" icon="pi pi-times" text size="small" :title="t('project.close')" @click="closeProject" />
+        <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
+        <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
       </div>
-      <Message v-if="error" severity="error" class="script-msg">{{ error }}</Message>
-      <div v-else-if="!store.cube" class="script-hint">{{ t('script.needConnect') }}</div>
+      <Message v-if="isProject && !project!.canEdit" severity="warn" class="script-msg">
+        {{ t('project.readOnly', { reason: project!.readOnlyReason ?? '' }) }}
+      </Message>
+      <Message v-for="w in warnings" :key="w" severity="warn" class="script-msg">{{ w }}</Message>
+      <Message v-if="error && !isProject" severity="error" class="script-msg">{{ error }}</Message>
+      <div v-else-if="!store.cube && !isProject" class="script-hint">{{ t('script.needConnect') }}</div>
       <ul v-else class="script-list">
-        <li
-          v-for="c in filteredCommands"
-          :key="c.kind + c.name + c.startLine"
-          :class="{ selected: selected === c }"
-          :title="t('script.lineTitle', { kind: t('script.kind.' + c.kind), line: c.startLine })"
-          @click="select(c)"
-        >
-          <i
-            :class="c.kind === 'CalculatedMember' ? 'pi pi-percentage' : c.kind === 'NamedSet' ? 'pi pi-list' : 'pi pi-code'"
-          />
-          {{ c.name }}
-        </li>
+        <template v-for="g in groupedCommands" :key="g.section">
+          <li v-if="hasSections" class="script-group">
+            {{ g.section === '' ? t('project.noSection') : g.section }}
+          </li>
+          <li
+            v-for="c in g.items"
+            :key="c.kind + c.name + c.startLine"
+            :class="{ selected: selected === c }"
+            :title="t('script.lineTitle', { kind: t('script.kind.' + c.kind), line: c.startLine })"
+            @click="select(c)"
+          >
+            <i
+              :class="c.kind === 'CalculatedMember' ? 'pi pi-percentage' : c.kind === 'NamedSet' ? 'pi pi-list' : 'pi pi-code'"
+            />
+            {{ c.name }}
+          </li>
+        </template>
       </ul>
       <div v-if="selected && (graphLoading || graph)" class="script-deps">
         <div class="script-deps-title">{{ t('script.deps', { name: selected.name }) }}</div>
@@ -161,6 +291,22 @@ onBeforeUnmount(() => editor?.dispose())
         </template>
       </div>
     </div>
+    <Dialog v-model:visible="showOpen" :header="t('project.open')" modal :style="{ width: '34rem' }">
+      <div class="project-open">
+        <InputText v-model="openPath" :placeholder="t('project.pathPlaceholder')" class="project-path"
+          @keydown.enter="openProject()" />
+        <Button :label="t('project.openBtn')" size="small" @click="openProject()" />
+      </div>
+      <Message v-if="openError" severity="error">{{ openError }}</Message>
+      <div v-if="recentProjects.length" class="project-recent">
+        <div class="script-deps-title">{{ t('project.recent') }}</div>
+        <ul class="script-list">
+          <li v-for="r in recentProjects" :key="r.path" @click="openProject(r.path)">
+            <i class="pi pi-file" />{{ r.path }}
+          </li>
+        </ul>
+      </div>
+    </Dialog>
     <div ref="host" class="script-editor" />
   </div>
 </template>
@@ -220,6 +366,24 @@ onBeforeUnmount(() => editor?.dispose())
 .script-list i {
   margin-right: 0.4rem;
   color: var(--p-primary-color);
+}
+.script-group {
+  font-weight: 600;
+  color: var(--p-text-muted-color);
+  cursor: default;
+  padding-top: 0.5rem;
+}
+.project-open {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.project-path {
+  flex: 1;
+}
+.project-recent {
+  max-height: 14rem;
+  overflow: auto;
 }
 .script-deps {
   border-top: 1px solid var(--p-surface-700);
