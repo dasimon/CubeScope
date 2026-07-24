@@ -4,7 +4,7 @@
 // scopes groupée par région (#region en mode projet), clic = aller à la définition,
 // arbre de dépendances de l'élément sélectionné (double sens), export de la doc
 // Markdown du cube (mode cube live uniquement).
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -233,6 +233,62 @@ const deployError = ref('')
 
 const isDevCatalog = computed(() => deployCatalog.value.toLowerCase().includes('dev'))
 
+const diffHost = ref<HTMLElement | null>(null)
+let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null
+
+/** Crée le diff editor (serveur → projet) si le conteneur est monté et rien n'existe déjà. */
+function mountDiff() {
+  if (diffEditor || !diffHost.value) return
+  diffEditor = monaco.editor.createDiffEditor(diffHost.value, {
+    readOnly: true,
+    automaticLayout: true,
+    theme: 'cubescope-dark',
+    renderSideBySide: true,
+    minimap: { enabled: false },
+    fontSize: 13,
+  })
+  diffEditor.setModel({
+    original: monaco.editor.createModel(serverText.value, 'mdx'),
+    modified: monaco.editor.createModel(project.value?.fullText ?? '', 'mdx'),
+  })
+}
+
+/** Détruit le diff editor et ses modèles — sinon fuite mémoire à chaque déploiement divergent. */
+function disposeDiff() {
+  if (!diffEditor) return
+  const model = diffEditor.getModel()
+  model?.original.dispose()
+  model?.modified.dispose()
+  diffEditor.dispose()
+  diffEditor = null
+}
+
+watch(deployDiffers, async (differs) => {
+  if (differs) {
+    await nextTick()
+    mountDiff()
+  } else {
+    disposeDiff()
+  }
+})
+
+watch(showDeploy, (visible) => {
+  if (!visible) disposeDiff()
+})
+
+// Le serveur peut renvoyer un texte différent d'un essai de déploiement à l'autre (le projet a
+// été sauvegardé entre-temps) : reconstruire les modèles plutôt que de garder l'ancien diff affiché.
+watch(serverText, (text) => {
+  if (!deployDiffers.value || !diffEditor) return
+  const model = diffEditor.getModel()
+  model?.original.dispose()
+  model?.modified.dispose()
+  diffEditor.setModel({
+    original: monaco.editor.createModel(text, 'mdx'),
+    modified: monaco.editor.createModel(project.value?.fullText ?? '', 'mdx'),
+  })
+})
+
 function showDeployDialog() {
   deployServer.value = store.server
   // Catalogue par défaut = premier catalogue « dev » de la connexion courante
@@ -341,6 +397,7 @@ onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   editor?.dispose()
+  disposeDiff()
 })
 </script>
 
@@ -448,7 +505,8 @@ onBeforeUnmount(() => {
       <template v-if="deployDiffers">
         <Message severity="warn">{{ t('project.differs') }}</Message>
         <div class="script-deps-title">{{ t('project.serverScript') }}</div>
-        <pre class="deploy-server-text">{{ serverText }}</pre>
+        <div class="deploy-diff-hint">{{ t('project.diffHint') }}</div>
+        <div ref="diffHost" class="deploy-diff"></div>
         <Button :label="t('project.overwriteBtn')" severity="danger" :loading="deployBusy" @click="deploy(true)" />
       </template>
       <Button v-else :label="t('project.deployBtn')" :loading="deployBusy"
@@ -609,14 +667,16 @@ onBeforeUnmount(() => {
   gap: 0.2rem;
   font-size: 0.85rem;
 }
-.deploy-server-text {
-  max-height: 14rem;
-  overflow: auto;
-  background: var(--p-surface-900);
+.deploy-diff-hint {
+  font-size: 0.78rem;
+  color: var(--p-text-muted-color);
+  margin-bottom: 0.3rem;
+}
+.deploy-diff {
+  height: 300px;
+  width: 100%;
   border: 1px solid var(--p-surface-700);
   border-radius: 4px;
-  padding: 0.5rem;
-  font-size: 0.78rem;
-  white-space: pre-wrap;
+  margin-bottom: 0.75rem;
 }
 </style>

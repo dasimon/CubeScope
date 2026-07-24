@@ -146,6 +146,7 @@ const en: typeof fr = {
     devWarning: 'Warning: “{catalog}” does not look like a dev catalog.',
     differs: 'The server script differs from the project — a live change would be overwritten. Review below before forcing.',
     serverScript: 'Script currently on the server',
+    diffHint: 'Server (left) → project (right)',
     deployBtn: 'Deploy',
     overwriteBtn: 'Overwrite server script',
     deployed: 'Script deployed in {ms} ms',

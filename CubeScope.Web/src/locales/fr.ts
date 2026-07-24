@@ -144,6 +144,7 @@ export default {
     devWarning: 'Attention : « {catalog} » ne ressemble pas à un catalogue de dev.',
     differs: 'Le script du serveur diffère du projet — une retouche live serait écrasée. Vérifier ci-dessous avant de forcer.',
     serverScript: 'Script actuellement sur le serveur',
+    diffHint: 'Serveur (gauche) → projet (droite)',
     deployBtn: 'Déployer',
     overwriteBtn: 'Écraser le script du serveur',
     deployed: 'Script déployé en {ms} ms',
