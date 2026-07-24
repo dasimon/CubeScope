@@ -102,6 +102,11 @@ public class CubeProjectServiceTests : IDisposable
         // #endregion
         """;
 
+    // XDocument normalise les fins de ligne en LF à l'analyse (spec XML 1.0). Le contrat
+    // testé est la préservation du CONTENU, pas des CRLF : comparer EOL-normalisé — sinon
+    // le test casse selon core.autocrlf du poste (source en CRLF vs round-trip en LF).
+    private static string NoCrlf(string s) => s.Replace("\r\n", "\n");
+
     [Fact]
     public void Save_RoundTrip_PreservesRestOfDocument()
     {
@@ -110,7 +115,7 @@ public class CubeProjectServiceTests : IDisposable
         svc.Save(path, NewScript);
 
         var reloaded = svc.Load(path);
-        Assert.Equal(NewScript, reloaded.FullText);
+        Assert.Equal(NoCrlf(NewScript), NoCrlf(reloaded.FullText));
         // Le reste du document est intact (annotations designer, propriétés de calcul)
         string xml = File.ReadAllText(path);
         Assert.Contains("DiagramLayout", xml);
@@ -170,7 +175,7 @@ public class CubeProjectServiceTests : IDisposable
         svc.Save(path, NewScript); // ne doit pas lever
 
         var reloaded = svc.Load(path);
-        Assert.Equal(NewScript, reloaded.FullText);
+        Assert.Equal(NoCrlf(NewScript), NoCrlf(reloaded.FullText));
         string xml = File.ReadAllText(path);
         Assert.Contains("DiagramLayout", xml);
         Assert.Contains("<FormatString>'#,##0.00'</FormatString>", xml);
