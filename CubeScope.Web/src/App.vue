@@ -21,6 +21,7 @@ import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
+import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
 import { startStatsHub } from './stats'
 import { actions, store } from './store'
 
@@ -200,6 +201,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @click="confirmClear = true"
       />
       <SnippetsMenu />
+      <MemberScaffoldDialog />
       <span class="toolbar-spacer" />
       <Select
         :model-value="locale"

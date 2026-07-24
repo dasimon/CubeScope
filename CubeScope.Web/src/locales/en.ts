@@ -167,6 +167,18 @@ const en: typeof fr = {
     deleteTitle: 'Delete',
     save: 'Save',
   },
+  member: {
+    title: 'New calculated member',
+    name: 'Name',
+    namePlaceholder: 'Member name, without brackets',
+    type: 'Type',
+    with: 'WITH MEMBER (query)',
+    create: 'CREATE MEMBER (script)',
+    formatString: 'Format string',
+    displayFolder: 'Display folder',
+    preview: 'Preview',
+    insert: 'Insert',
+  },
 }
 
 export default en

@@ -165,4 +165,16 @@ export default {
     deleteTitle: 'Supprimer',
     save: 'Enregistrer',
   },
+  member: {
+    title: 'Nouveau membre calculé',
+    name: 'Nom',
+    namePlaceholder: 'Nom du membre, sans crochets',
+    type: 'Type',
+    with: 'WITH MEMBER (requête)',
+    create: 'CREATE MEMBER (script)',
+    formatString: 'Format string',
+    displayFolder: "Dossier d'affichage",
+    preview: 'Aperçu',
+    insert: 'Insérer',
+  },
 }
