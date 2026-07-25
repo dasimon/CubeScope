@@ -20,13 +20,17 @@ component to deploy, no cloud.
 - **MDX editor** — Monaco with a hand-written MDX grammar (syntax highlighting,
   reference detection), autocompletion of measures, hierarchies and members
   (lazy-loaded after `.`), structural folding of `{ }` / `( )` / `SCOPE` blocks
-  and `// #region` sections, function signatures on hover, execute with `F5` /
-  `Ctrl+Enter` (the whole editor or just the selected text), cancel in flight.
+  and `// #region` sections (with fold-all / unfold-all), function signatures and
+  measure/member captions on hover, execute with `F5` / `Ctrl+Enter` (the whole
+  editor or just the selected text), cancel in flight.
 - **Results grid** — virtualized grid handling wide crossjoins; export to CSV
   or copy to the clipboard (Excel-friendly); recent results kept in closeable
   tabs, and `DRILLTHROUGH` a query to view its source rows.
 - **Productivity helpers** — a reusable MDX **snippets** library (save / insert /
   delete) and a **calculated-member scaffold** (WITH MEMBER / CREATE MEMBER).
+- **Regression harness** — capture queries with their current results as a
+  baseline, then re-run them after a script change and flag any changed value
+  (per-cell diff) — "did my calculation change silently break a value?".
 - **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed);
   double-click inserts at the cursor. Measure descriptions surface as hover
   tooltips and in the MDX autocomplete documentation.
@@ -38,14 +42,16 @@ component to deploy, no cloud.
   engine), streamed live over SignalR.
 - **MDX Script & dependencies** — read the cube's MDX Script, browse calculated
   members / named sets / SCOPEs and their dependency graph, full-text search and
-  find-references across the script; export a Markdown doc of the cube.
+  find-references across the script, and an AI "explain this calculation" tracer
+  that walks a member's dependency chain; export a Markdown doc of the cube.
 - **SSDT project mode** — open the `.cube` file of an SSDT Multidimensional project
   (type a path or use the built-in file browser), edit the MDX Script with
   `// #region` grouping and folding, save round-trips into the `.cube` (plus a
   plain-text `.mdxscript.mdx` export for readable Git diffs), and deploy the script
   alone to a dev cube (BIDS Helper style, with a divergence guard and dev-catalog
   warning) without a full project deploy. On divergence a side-by-side Monaco diff
-  shows server vs project before you overwrite; you can also edit a calculated
+  shows server vs project before you overwrite, with a change-impact analysis
+  listing which downstream members a change affects; you can also edit a calculated
   member's properties (format string, display folder, description) with round-trip
   writeback into the `.cube`, safely rename a calculated member across the whole
   script (definition + references), and every deploy is kept in an audit log.
