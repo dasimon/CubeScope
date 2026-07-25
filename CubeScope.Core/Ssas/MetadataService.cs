@@ -107,6 +107,16 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     /// (invalidé une fois par session si le cube a été reprocessé), les manquants résolus par
     /// lookup ciblé MDSCHEMA_MEMBERS puis persistés. Valeur null pour un membre introuvable.
     /// </summary>
+    // uniqueName d'une hiérarchie = 2 premiers segments crochetés ([Dim].[Hier]) d'un membre.
+    private static readonly System.Text.RegularExpressions.Regex HierRe =
+        new(@"^\s*(\[(?:[^\]]|\]\])*\]\s*\.\s*\[(?:[^\]]|\]\])*\])",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static string? HierarchyOf(string memberUniqueName)
+    {
+        var m = HierRe.Match(memberUniqueName);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
     public async Task<IReadOnlyDictionary<string, string?>> GetMemberCaptionsAsync(
         string cube, IReadOnlyList<string> names, CancellationToken ct = default)
     {
@@ -130,37 +140,43 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
         var found = new Dictionary<string, string>();
         string cubeQ = cube.Replace("'", "''");
-        // Résolution GROUPÉE : une seule DMV `MEMBER_UNIQUE_NAME IN (…)` par paquet (≈100,
-        // pour borner la longueur de requête) au lieu d'une DMV par membre — sinon 150 DMV
-        // séquentielles gèlent la barre de progression et bloquent la connexion. Repli par
-        // membre si la DMV ne supporte pas `IN`.
-        const int inChunk = 100;
-        for (int off = 0; off < misses.Count; off += inChunk)
+        // CLÉ DE PERFORMANCE : restreindre par HIERARCHY_UNIQUE_NAME. Sans ça, MDSCHEMA_MEMBERS
+        // filtré seulement par MEMBER_UNIQUE_NAME scanne TOUT l'espace des membres du cube
+        // (des millions pour une dimension titres) → chaque lookup rame/gèle. On groupe les
+        // membres manquants par hiérarchie (2 premiers segments) et on interroge hiérarchie par
+        // hiérarchie, en paquets de ≈100 via `IN` (repli membre par membre si `IN` non supporté).
+        foreach (var grp in misses.GroupBy(HierarchyOf))
         {
-            var slice = misses.Skip(off).Take(inChunk).ToList();
-            try
+            string hierClause = grp.Key is { Length: > 0 } h
+                ? $"AND [HIERARCHY_UNIQUE_NAME] = '{h.Replace("'", "''")}' "
+                : "";
+            var members = grp.ToList();
+            const int inChunk = 100;
+            for (int off = 0; off < members.Count; off += inChunk)
             {
-                string inList = string.Join(", ", slice.Select(n => $"'{n.Replace("'", "''")}'"));
-                var t = await session.ExecuteDmvAsync($"""
-                    SELECT [MEMBER_UNIQUE_NAME], [MEMBER_CAPTION]
-                    FROM $SYSTEM.MDSCHEMA_MEMBERS
-                    WHERE [CUBE_NAME] = '{cubeQ}' AND [MEMBER_UNIQUE_NAME] IN ({inList})
-                    """, ct);
-                foreach (DataRow r in t.Rows)
-                    found[(string)r["MEMBER_UNIQUE_NAME"]] = (string)r["MEMBER_CAPTION"];
-            }
-            catch
-            {
-                // `IN` non supporté par la DMV → repli membre par membre pour ce paquet
-                foreach (var name in slice)
+                var slice = members.Skip(off).Take(inChunk).ToList();
+                try
                 {
+                    string inList = string.Join(", ", slice.Select(n => $"'{n.Replace("'", "''")}'"));
                     var t = await session.ExecuteDmvAsync($"""
-                        SELECT [MEMBER_CAPTION]
+                        SELECT [MEMBER_UNIQUE_NAME], [MEMBER_CAPTION]
                         FROM $SYSTEM.MDSCHEMA_MEMBERS
-                        WHERE [CUBE_NAME] = '{cubeQ}' AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
+                        WHERE [CUBE_NAME] = '{cubeQ}' {hierClause}AND [MEMBER_UNIQUE_NAME] IN ({inList})
                         """, ct);
-                    var cap = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
-                    if (cap is not null) found[name] = cap;
+                    foreach (DataRow r in t.Rows)
+                        found[(string)r["MEMBER_UNIQUE_NAME"]] = (string)r["MEMBER_CAPTION"];
+                }
+                catch
+                {
+                    foreach (var name in slice)
+                    {
+                        var t = await session.ExecuteDmvAsync($"""
+                            SELECT [MEMBER_CAPTION] FROM $SYSTEM.MDSCHEMA_MEMBERS
+                            WHERE [CUBE_NAME] = '{cubeQ}' {hierClause}AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
+                            """, ct);
+                        var cap = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
+                        if (cap is not null) found[name] = cap;
+                    }
                 }
             }
         }
