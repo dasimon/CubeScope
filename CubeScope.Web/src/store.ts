@@ -215,6 +215,31 @@ export const actions = {
     }
   },
 
+  /** Génère du MDX depuis une demande en langage naturel + les métadonnées du cube. */
+  async generateMdx(question: string): Promise<void> {
+    if (store.aiRunning) return
+    if (!store.cube || !question.trim()) return
+    store.aiRunning = true
+    store.aiAction = 'generate-mdx'
+    store.aiResult = ''
+    store.aiError = ''
+    aiAbort = new AbortController()
+    try {
+      const r = await api.generateMdx(store.cube, question.trim(), currentLocale(), aiAbort.signal)
+      store.aiResult = r.text
+      store.aiDurationMs = r.durationMs
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        store.aiError = t('errors.aiCanceled')
+      } else {
+        store.aiError = e instanceof Error ? e.message : String(e)
+      }
+    } finally {
+      store.aiRunning = false
+      aiAbort = null
+    }
+  },
+
   /** Optimisation IA adossée au profil d'exécution réel (nécessite un profil capturé). */
   async runAiOptimizeProfile(): Promise<void> {
     if (store.aiRunning) return

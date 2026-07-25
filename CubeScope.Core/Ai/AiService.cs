@@ -12,6 +12,7 @@ public enum AiAction
     Formater,
     Tracer,
     OptimiserProfil,
+    GenererMdx,
 }
 
 /// <summary>
@@ -78,6 +79,19 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             - beaucoup de sous-cubes → granularité de requête trop fine / crossjoins à filtrer.
             Cite les chiffres du profil dans ta justification. Si utile, propose une réécriture
             dans un bloc ```mdx. NE DONNE PAS de conseils génériques déconnectés du profil.
+            """,
+        [AiAction.GenererMdx] = """
+            Tâche : GÉNÉRER DU MDX à partir d'une demande en langage naturel. On te donne les
+            métadonnées du cube (mesures, dimensions, hiérarchies, niveaux) et une demande en
+            français. Écris UNE requête MDX qui y répond, en n'utilisant QUE les mesures /
+            dimensions / hiérarchies listées (jamais de membre, mesure ou hiérarchie inventé).
+            Conventions : mesures sur COLUMNS, la dimension d'analyse sur ROWS (souvent
+            `.Members` ou `.Children` du bon niveau), `NON EMPTY` sur les axes, `FROM [cube]`,
+            filtres dans la clause `WHERE`. Pour une date/période non déterminable précisément,
+            fais une hypothèse raisonnable (ex. dernier membre de la hiérarchie de dates) et
+            SIGNALE-la. Réponds avec la requête dans un bloc ```mdx, suivie d'une courte phrase
+            expliquant les choix et les hypothèses. Si la demande est trop ambiguë pour choisir
+            une mesure ou une dimension, demande la précision manquante au lieu de deviner.
             """,
         [AiAction.Tracer] = """
             Tâche : TRACER LE CALCUL. On te donne un membre calculé (ou un named set), son

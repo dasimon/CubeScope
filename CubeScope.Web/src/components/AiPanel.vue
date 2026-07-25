@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // Panneau IA : expliquer / optimiser / anti-patterns / formater le MDX courant,
 // avec les métadonnées du cube injectées côté serveur. Rendu Markdown (marked).
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import { marked } from 'marked'
@@ -11,6 +12,7 @@ import type { AiAction } from '../api'
 import { actions, store } from '../store'
 
 const { t } = useI18n()
+const question = ref('')
 
 const ACTIONS: { action: AiAction; labelKey: string; icon: string }[] = [
   { action: 'expliquer', labelKey: 'ai.explain', icon: 'pi pi-question-circle' },
@@ -37,6 +39,24 @@ const runningLabel = computed(() => {
     <Message v-if="store.aiConfigured === false" severity="warn" class="ai-msg">
       {{ t('ai.keyMissing', { var: 'ANTHROPIC_API_KEY' }) }}
     </Message>
+
+    <div class="ai-nl">
+      <InputText
+        v-model="question"
+        :placeholder="t('ai.nlPlaceholder')"
+        size="small"
+        class="ai-nl-input"
+        :disabled="store.aiRunning || store.aiConfigured === false || !store.cube"
+        @keydown.enter="actions.generateMdx(question)"
+      />
+      <Button
+        :label="t('ai.generate')"
+        icon="pi pi-sparkles"
+        size="small"
+        :disabled="store.aiRunning || store.aiConfigured === false || !store.cube || !question.trim()"
+        @click="actions.generateMdx(question)"
+      />
+    </div>
 
     <div class="ai-toolbar">
       <Button
@@ -100,6 +120,15 @@ const runningLabel = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.ai-nl {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.5rem 0;
+}
+.ai-nl-input {
+  flex: 1;
 }
 .ai-toolbar {
   display: flex;

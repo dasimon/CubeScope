@@ -86,6 +86,8 @@ export default {
     format: 'Formater',
     optimizeProfile: 'Optimiser (profil)',
     needProfile: "Exécute d'abord une requête pour capturer son profil",
+    generate: 'Générer le MDX',
+    nlPlaceholder: 'Décris ce que tu veux (ex. VL par fonds sur le dernier mois)…',
     keyMissing: "Clé API absente : définir la variable d'environnement {var} puis relancer CubeScope.",
     apply: "Appliquer à l'éditeur",
     running: '{action}… (claude-opus-4-8 réfléchit, jusqu\'à ~1 min)',

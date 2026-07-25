@@ -507,6 +507,41 @@ api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiServi
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Génération de MDX depuis une demande en langage naturel : métadonnées du cube (mesures,
+// dimensions, hiérarchies) + la demande, injectées dans le prompt GenererMdx.
+api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService meta, AiService ai, CancellationToken ct) =>
+{
+    if (!AiService.IsConfigured)
+        return Results.BadRequest(new { error = "ANTHROPIC_API_KEY non configurée" });
+    try
+    {
+        var m = await meta.GetCubeMetaAsync(req.Cube, ct: ct);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"MÉTADONNÉES DU CUBE [{m.CubeName}]");
+        sb.AppendLine("MESURES :");
+        foreach (var f in m.MeasureFolders)
+            foreach (var mes in f.Measures)
+                sb.AppendLine($"- {mes.UniqueName}{(string.IsNullOrEmpty(f.Folder) ? "" : $"  (dossier {f.Folder})")}");
+        sb.AppendLine("DIMENSIONS :");
+        foreach (var d in m.Dimensions)
+        {
+            sb.AppendLine($"- {d.UniqueName} :");
+            foreach (var h in d.Hierarchies)
+                sb.AppendLine($"    - {h.UniqueName}  (niveaux : {string.Join(" > ", h.Levels.Select(l => l.Name))})");
+        }
+        // Borne le contexte métadonnées pour ne pas exploser le prompt sur un gros cube.
+        const int maxMeta = 12000;
+        string metaCtx = sb.Length > maxMeta ? sb.ToString(0, maxMeta) + "\n… (métadonnées tronquées)" : sb.ToString();
+        string context = $"{metaCtx}\n\nDEMANDE : {req.Question}";
+
+        var sw = Stopwatch.StartNew();
+        string text = await ai.RunAsync(AiAction.GenererMdx, context, req.Lang ?? "fr", ct);
+        return Results.Ok(new { text, durationMs = sw.ElapsedMilliseconds });
+    }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
 // Statut perfmon (l'UI affiche pourquoi les stats sont absentes le cas échéant)
 api.MapGet("/stats/status", (PerfmonService perfmon) =>
     Results.Ok(new { status = perfmon.Status.ToString(), detail = perfmon.StatusDetail }));
@@ -585,6 +620,7 @@ internal sealed record QueryRequest(string Mdx);
 internal sealed record DrillthroughRequest(string Mdx, int MaxRows);
 internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record AiOptimizeProfileRequest(string Mdx, QueryProfile Profile, string? Lang);
+internal sealed record GenerateMdxRequest(string Cube, string Question, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);

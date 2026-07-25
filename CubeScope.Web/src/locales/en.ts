@@ -88,6 +88,8 @@ const en: typeof fr = {
     format: 'Format',
     optimizeProfile: 'Optimize (profile)',
     needProfile: 'Run a query first to capture its profile',
+    generate: 'Generate MDX',
+    nlPlaceholder: 'Describe what you want (e.g. NAV by fund for last month)…',
     keyMissing: 'API key missing: set the {var} environment variable, then restart CubeScope.',
     apply: 'Apply to editor',
     running: '{action}… (claude-opus-4-8 is thinking, up to ~1 min)',

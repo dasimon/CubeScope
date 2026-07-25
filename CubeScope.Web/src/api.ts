@@ -172,6 +172,13 @@ export const api = {
       { mdx, profile, lang },
       signal,
     ),
+  generateMdx: (cube: string, question: string, lang: string, signal: AbortSignal) =>
+    request<{ text: string; durationMs: number }>(
+      'POST',
+      '/api/ai/generate-mdx',
+      { cube, question, lang },
+      signal,
+    ),
   projectOpen: (path: string) => request<ProjectScript>('POST', '/api/project/open', { path }),
   projectSave: (path: string, fullText: string) =>
     request<{ warnings: string[] }>('POST', '/api/project/save', { path, fullText }),
@@ -219,7 +226,13 @@ export const api = {
     request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
 }
 
-export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater' | 'optimize-profile'
+export type AiAction =
+  | 'expliquer'
+  | 'optimiser'
+  | 'antipatterns'
+  | 'formater'
+  | 'optimize-profile'
+  | 'generate-mdx'
 
 export interface RenameResult {
   newScript: string
