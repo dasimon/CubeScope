@@ -295,7 +295,7 @@ export async function prefetchMemberCaptions(
   // Lookup GROUPÉ : au lieu de ~400 appels HTTP unitaires, on découpe en tranches de 150 et
   // on résout chaque tranche en un seul POST. Concurrence basse (2) : laisser des connexions
   // à l'UI et ne pas marteler SSAS. Best effort, les échecs sont ignorés.
-  const CHUNK = 150
+  const CHUNK = 50
   const CONCURRENCY = 2
   const cube = store.cube
   const chunks: string[][] = []

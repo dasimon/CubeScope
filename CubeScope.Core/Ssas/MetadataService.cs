@@ -129,16 +129,40 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         var misses = names.Where(n => !cached.ContainsKey(n)).ToList();
 
         var found = new Dictionary<string, string>();
-        foreach (var name in misses)
+        string cubeQ = cube.Replace("'", "''");
+        // Résolution GROUPÉE : une seule DMV `MEMBER_UNIQUE_NAME IN (…)` par paquet (≈100,
+        // pour borner la longueur de requête) au lieu d'une DMV par membre — sinon 150 DMV
+        // séquentielles gèlent la barre de progression et bloquent la connexion. Repli par
+        // membre si la DMV ne supporte pas `IN`.
+        const int inChunk = 100;
+        for (int off = 0; off < misses.Count; off += inChunk)
         {
-            var t = await session.ExecuteDmvAsync($"""
-                SELECT [MEMBER_CAPTION]
-                FROM $SYSTEM.MDSCHEMA_MEMBERS
-                WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
-                  AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
-                """, ct);
-            string? caption = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
-            if (caption is not null) found[name] = caption;
+            var slice = misses.Skip(off).Take(inChunk).ToList();
+            try
+            {
+                string inList = string.Join(", ", slice.Select(n => $"'{n.Replace("'", "''")}'"));
+                var t = await session.ExecuteDmvAsync($"""
+                    SELECT [MEMBER_UNIQUE_NAME], [MEMBER_CAPTION]
+                    FROM $SYSTEM.MDSCHEMA_MEMBERS
+                    WHERE [CUBE_NAME] = '{cubeQ}' AND [MEMBER_UNIQUE_NAME] IN ({inList})
+                    """, ct);
+                foreach (DataRow r in t.Rows)
+                    found[(string)r["MEMBER_UNIQUE_NAME"]] = (string)r["MEMBER_CAPTION"];
+            }
+            catch
+            {
+                // `IN` non supporté par la DMV → repli membre par membre pour ce paquet
+                foreach (var name in slice)
+                {
+                    var t = await session.ExecuteDmvAsync($"""
+                        SELECT [MEMBER_CAPTION]
+                        FROM $SYSTEM.MDSCHEMA_MEMBERS
+                        WHERE [CUBE_NAME] = '{cubeQ}' AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
+                        """, ct);
+                    var cap = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
+                    if (cap is not null) found[name] = cap;
+                }
+            }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
 
