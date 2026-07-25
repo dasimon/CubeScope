@@ -177,7 +177,7 @@ public class StateStoreTests : IDisposable
     [Fact]
     public void MemberCaption_CacheStampAndInvalidate()
     {
-        const string srv = "SSAS-SERVER", cat = "CatalogA", cube = "Portefeuilles";
+        const string srv = "SSAS-SERVER", cat = "CatalogA", cube = "DemoCube";
 
         // Put + read back, unknown name omitted
         _store.PutCachedCaptions(srv, cat, cube, new Dictionary<string, string>
