@@ -90,6 +90,27 @@ export interface Snippet {
   createdUtc: string
 }
 
+export interface RegressionCase {
+  id: number
+  name: string
+  mdx: string
+  createdUtc: string
+}
+export interface RegressionDiff {
+  row: number
+  column: string
+  expected: string | null
+  actual: string | null
+}
+export interface RegressionRunResult {
+  id: number
+  name: string
+  match: boolean
+  summary: string | null
+  diffCount: number
+  diffs: RegressionDiff[]
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -164,6 +185,12 @@ export const api = {
   snippets: () => request<Snippet[]>('GET', '/api/snippets'),
   addSnippet: (name: string, mdx: string) => request<{ id: number }>('POST', '/api/snippets', { name, mdx }),
   deleteSnippet: (id: number) => request<void>('DELETE', `/api/snippets/${id}`),
+  regressionSave: (name: string, mdx: string, expected: QueryResult) =>
+    request<{ id: number }>('POST', '/api/regression', { name, mdx, expected }),
+  regressionList: () => request<RegressionCase[]>('GET', '/api/regression'),
+  regressionRun: (signal?: AbortSignal) =>
+    request<RegressionRunResult[]>('POST', '/api/regression/run', undefined, signal),
+  regressionDelete: (id: number) => request<void>('DELETE', `/api/regression/${id}`),
   renameMember: (script: string, oldName: string, newName: string) =>
     request<RenameResult>('POST', '/api/script/rename', { script, oldName, newName }),
   explainCalc: (cube: string, name: string, lang: string, signal?: AbortSignal) =>

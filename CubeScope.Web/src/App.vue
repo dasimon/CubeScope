@@ -23,6 +23,7 @@ import ProfilerPanel from './components/ProfilerPanel.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
+import RegressionDialog from './components/RegressionDialog.vue'
 import { startStatsHub } from './stats'
 import { actions, store } from './store'
 
@@ -205,6 +206,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       />
       <SnippetsMenu />
       <MemberScaffoldDialog />
+      <RegressionDialog />
       <span class="toolbar-spacer" />
       <Select
         :model-value="locale"

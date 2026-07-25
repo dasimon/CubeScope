@@ -150,6 +150,30 @@ public class StateStoreTests : IDisposable
         Assert.Equal(@"C:\proj\Cube1.cube", log[1].ProjectPath);
     }
 
+    [Fact]
+    public void Regression_AddListDelete()
+    {
+        var id1 = _store.AddRegressionCase("Ventes", "SELECT ... V", "{\"cellCount\":4}");
+        var id2 = _store.AddRegressionCase("Alpha", "SELECT ... A", "{\"cellCount\":2}");
+
+        Assert.True(id1 > 0);
+        Assert.NotEqual(id1, id2);
+
+        var list = _store.GetRegressionCases();
+        Assert.Equal(2, list.Count);
+        // ORDER BY Name COLLATE NOCASE : "Alpha" avant "Ventes"
+        Assert.Equal("Alpha", list[0].Name);
+        Assert.Equal("{\"cellCount\":2}", list[0].ExpectedJson);
+        Assert.Equal(id2, list[0].Id);
+        Assert.Equal("Ventes", list[1].Name);
+
+        _store.DeleteRegressionCase(id2);
+
+        var only = Assert.Single(_store.GetRegressionCases());
+        Assert.Equal("Ventes", only.Name);
+        Assert.Equal(id1, only.Id);
+    }
+
     public void Dispose()
     {
         _store.Dispose();

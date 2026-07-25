@@ -106,6 +106,19 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 5;
                 """);
         }
+        if (version < 6)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS RegressionCase (
+                    Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name         TEXT NOT NULL,
+                    Mdx          TEXT NOT NULL,
+                    ExpectedJson TEXT NOT NULL,
+                    CreatedUtc   TEXT NOT NULL
+                );
+                PRAGMA user_version = 6;
+                """);
+        }
     }
 
     public void AddRecentConnection(string server, string? catalog)
@@ -226,6 +239,47 @@ public sealed class StateStore : IDisposable
     }
 
     public void DeleteSnippet(long id) => Exec("DELETE FROM Snippet WHERE Id = $id", ("$id", id));
+
+    /// <summary>Insère un cas de non-régression et retourne son Id généré (INSERT +
+    /// last_insert_rowid() sous le même verrou, comme <see cref="AddSnippet"/>).</summary>
+    public long AddRegressionCase(string name, string mdx, string expectedJson)
+    {
+        lock (_lock)
+        {
+            using (var insert = _db.CreateCommand())
+            {
+                insert.CommandText =
+                    "INSERT INTO RegressionCase (Name, Mdx, ExpectedJson, CreatedUtc) VALUES ($n, $m, $j, $t)";
+                insert.Parameters.AddWithValue("$n", name);
+                insert.Parameters.AddWithValue("$m", mdx);
+                insert.Parameters.AddWithValue("$j", expectedJson);
+                insert.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                insert.ExecuteNonQuery();
+            }
+            using var scalar = _db.CreateCommand();
+            scalar.CommandText = "SELECT last_insert_rowid()";
+            return (long)scalar.ExecuteScalar()!;
+        }
+    }
+
+    public IReadOnlyList<RegressionCase> GetRegressionCases()
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText =
+                "SELECT Id, Name, Mdx, ExpectedJson, CreatedUtc FROM RegressionCase ORDER BY Name COLLATE NOCASE";
+            using var r = cmd.ExecuteReader();
+            var list = new List<RegressionCase>();
+            while (r.Read())
+                list.Add(new RegressionCase(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3),
+                    DateTime.Parse(r.GetString(4)).ToUniversalTime()));
+            return list;
+        }
+    }
+
+    public void DeleteRegressionCase(long id) =>
+        Exec("DELETE FROM RegressionCase WHERE Id = $id", ("$id", id));
 
     public void AddProfileRun(string server, string? catalog, string mdx, long totalMs, long storageEngineMs,
         long formulaEngineMs, int subcubeCount, int cacheHits, int aggregationHits)

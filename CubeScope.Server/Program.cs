@@ -3,11 +3,13 @@
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using CubeScope.Core.Ai;
 using CubeScope.Core.Models;
 using CubeScope.Core.Perfmon;
 using CubeScope.Core.Profiler;
 using CubeScope.Core.Project;
+using CubeScope.Core.Regression;
 using CubeScope.Core.Script;
 using CubeScope.Core.Ssas;
 using CubeScope.Core.State;
@@ -386,6 +388,69 @@ api.MapDelete("/snippets/{id:long}", (long id, StateStore store) =>
     store.DeleteSnippet(id);
     return Results.Ok();
 });
+
+// Non-régression MDX : baseline (requête + résultat courant) puis relance/diff après un
+// changement de script. On sérialise le QueryResult courant tel quel comme référence.
+api.MapPost("/regression", (RegressionSaveRequest req, StateStore store) =>
+{
+    try
+    {
+        var json = JsonSerializer.Serialize(req.Expected);
+        return Results.Ok(new { id = store.AddRegressionCase(req.Name, req.Mdx, json) });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+
+// Liste légère : on ne renvoie PAS l'ExpectedJson (lourd), seulement l'identité des cas.
+api.MapGet("/regression", (StateStore store) =>
+    Results.Ok(store.GetRegressionCases().Select(c => new { c.Id, c.Name, c.Mdx, c.CreatedUtc })));
+
+// Relance tous les cas et compare à la baseline. Nécessite une connexion SSAS vive.
+// Crux JSON : on re-sérialise le résultat vivant (« actual ») pour que ses cellules soient des
+// JsonElement, comme la baseline désérialisée → comparaison .ToString() symétrique et stable.
+// Un cas qui plante n'échoue pas toute la relance : il est reporté match=false + message.
+api.MapPost("/regression/run", async (StateStore store, QueryService queries, CancellationToken ct) =>
+{
+    var cases = store.GetRegressionCases();
+    var results = new List<object>(cases.Count);
+    foreach (var c in cases)
+    {
+        try
+        {
+            var expected = JsonSerializer.Deserialize<QueryResult>(c.ExpectedJson)!;
+            var live = await queries.ExecuteAsync(c.Mdx, ct);
+            var actual = JsonSerializer.Deserialize<QueryResult>(JsonSerializer.Serialize(live))!;
+            var cmp = ResultComparer.Compare(expected, actual);
+            results.Add(new
+            {
+                id = c.Id, name = c.Name, match = cmp.Match, summary = cmp.Summary,
+                diffCount = cmp.Diffs.Count, diffs = cmp.Diffs.Take(20).ToList(),
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // client parti : on abandonne toute la relance
+        }
+        catch (Exception ex)
+        {
+            results.Add(new
+            {
+                id = c.Id, name = c.Name, match = false, summary = ex.GetBaseException().Message,
+                diffCount = 0, diffs = new List<CellDiff>(),
+            });
+        }
+    }
+    return Results.Ok(results);
+});
+
+api.MapDelete("/regression/{id:long}", (long id, StateStore store) =>
+{
+    store.DeleteRegressionCase(id);
+    return Results.Ok();
+});
 api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
 {
     try { return Results.Ok(fs.List(path)); }
@@ -476,6 +541,7 @@ internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
 internal sealed record SnippetRequest(string Name, string Mdx);
+internal sealed record RegressionSaveRequest(string Name, string Mdx, QueryResult Expected);
 internal sealed record CalcPropRequest(
     string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);
 internal sealed record RenameRequest(string Script, string OldName, string NewName);

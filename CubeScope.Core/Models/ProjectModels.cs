@@ -41,6 +41,11 @@ public sealed record DirectoryListing(
 /// <summary>Un snippet MDX réutilisable, persisté en SQLite (bibliothèque locale).</summary>
 public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc);
 
+/// <summary>Un cas de non-régression MDX : une requête + son résultat de référence (baseline)
+/// sérialisé en JSON (ExpectedJson = un QueryResult). Relancé après un changement de script pour
+/// détecter toute valeur qui change.</summary>
+public sealed record RegressionCase(long Id, string Name, string Mdx, string ExpectedJson, DateTime CreatedUtc);
+
 /// <summary>Un run du profiler persisté (métriques scalaires seulement — pas la liste des
 /// sous-cubes) pour permettre une comparaison avant/après entre deux requêtes.</summary>
 public sealed record ProfileRun(
