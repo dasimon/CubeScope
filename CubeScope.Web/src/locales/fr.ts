@@ -84,6 +84,8 @@ export default {
     optimize: 'Optimiser',
     antipatterns: 'Anti-patterns',
     format: 'Formater',
+    optimizeProfile: 'Optimiser (profil)',
+    needProfile: "Exécute d'abord une requête pour capturer son profil",
     keyMissing: "Clé API absente : définir la variable d'environnement {var} puis relancer CubeScope.",
     apply: "Appliquer à l'éditeur",
     running: '{action}… (claude-opus-4-8 réfléchit, jusqu\'à ~1 min)',

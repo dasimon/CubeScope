@@ -11,6 +11,7 @@ public enum AiAction
     AntiPatterns,
     Formater,
     Tracer,
+    OptimiserProfil,
 }
 
 /// <summary>
@@ -63,6 +64,20 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             espaces par niveau d'imbrication, clauses WITH/SELECT/FROM/WHERE alignées à
             gauche, virgules en fin de ligne. Réponds UNIQUEMENT avec le MDX formaté dans
             un bloc ```mdx, sans aucune explication.
+            """,
+        [AiAction.OptimiserProfil] = """
+            Tâche : OPTIMISER À PARTIR DU PROFIL D'EXÉCUTION. On te donne une requête MDX ET
+            son profil d'exécution réel (découpage Formula Engine / Storage Engine, nombre de
+            sous-cubes scannés, hits cache et agrégation, sous-cubes les plus coûteux). Propose
+            des optimisations CONCRÈTES et spécifiques à CETTE requête, chaque suggestion
+            JUSTIFIÉE par les chiffres du profil :
+            - Storage Engine dominant + peu de hits cache/agrégation → agrégations à concevoir,
+              ou NON_EMPTY/EXISTS/NonEmpty mal placés qui forcent des scans larges ;
+            - Formula Engine dominant → calculs coûteux à revoir (IIF imbriqués, ensembles
+              recalculés, SCOPE, cellules en cascade) ;
+            - beaucoup de sous-cubes → granularité de requête trop fine / crossjoins à filtrer.
+            Cite les chiffres du profil dans ta justification. Si utile, propose une réécriture
+            dans un bloc ```mdx. NE DONNE PAS de conseils génériques déconnectés du profil.
             """,
         [AiAction.Tracer] = """
             Tâche : TRACER LE CALCUL. On te donne un membre calculé (ou un named set), son

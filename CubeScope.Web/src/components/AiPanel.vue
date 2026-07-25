@@ -49,6 +49,15 @@ const runningLabel = computed(() => {
         :disabled="store.aiRunning || store.aiConfigured === false"
         @click="actions.runAi(a.action)"
       />
+      <Button
+        :label="t('ai.optimizeProfile')"
+        icon="pi pi-gauge"
+        size="small"
+        severity="secondary"
+        :disabled="store.aiRunning || store.aiConfigured === false || !store.profile"
+        :title="!store.profile ? t('ai.needProfile') : t('ai.optimizeProfile')"
+        @click="actions.runAiOptimizeProfile()"
+      />
       <span class="ai-spacer" />
       <Button
         v-if="store.aiRunning"

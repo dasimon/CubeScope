@@ -215,6 +215,36 @@ export const actions = {
     }
   },
 
+  /** Optimisation IA adossée au profil d'exécution réel (nécessite un profil capturé). */
+  async runAiOptimizeProfile(): Promise<void> {
+    if (store.aiRunning) return
+    if (!store.profile) {
+      store.aiAction = 'optimize-profile'
+      store.aiResult = ''
+      store.aiError = t('ai.needProfile')
+      return
+    }
+    store.aiRunning = true
+    store.aiAction = 'optimize-profile'
+    store.aiResult = ''
+    store.aiError = ''
+    aiAbort = new AbortController()
+    try {
+      const r = await api.aiOptimizeProfile(store.mdx, store.profile, currentLocale(), aiAbort.signal)
+      store.aiResult = r.text
+      store.aiDurationMs = r.durationMs
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        store.aiError = t('errors.aiCanceled')
+      } else {
+        store.aiError = e instanceof Error ? e.message : String(e)
+      }
+    } finally {
+      store.aiRunning = false
+      aiAbort = null
+    }
+  },
+
   cancelAi(): void {
     aiAbort?.abort()
   },

@@ -86,6 +86,8 @@ const en: typeof fr = {
     optimize: 'Optimize',
     antipatterns: 'Anti-patterns',
     format: 'Format',
+    optimizeProfile: 'Optimize (profile)',
+    needProfile: 'Run a query first to capture its profile',
     keyMissing: 'API key missing: set the {var} environment variable, then restart CubeScope.',
     apply: 'Apply to editor',
     running: '{action}… (claude-opus-4-8 is thinking, up to ~1 min)',

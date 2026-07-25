@@ -165,6 +165,13 @@ export const api = {
   aiStatus: () => request<{ configured: boolean }>('GET', '/api/ai/status'),
   ai: (action: AiAction, mdx: string, lang: string, signal: AbortSignal) =>
     request<{ text: string; durationMs: number }>('POST', `/api/ai/${action}`, { mdx, lang }, signal),
+  aiOptimizeProfile: (mdx: string, profile: QueryProfile, lang: string, signal: AbortSignal) =>
+    request<{ text: string; durationMs: number }>(
+      'POST',
+      '/api/ai/optimize-profile',
+      { mdx, profile, lang },
+      signal,
+    ),
   projectOpen: (path: string) => request<ProjectScript>('POST', '/api/project/open', { path }),
   projectSave: (path: string, fullText: string) =>
     request<{ warnings: string[] }>('POST', '/api/project/save', { path, fullText }),
@@ -212,7 +219,7 @@ export const api = {
     request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
 }
 
-export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
+export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater' | 'optimize-profile'
 
 export interface RenameResult {
   newScript: string

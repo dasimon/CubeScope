@@ -479,6 +479,34 @@ api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, C
     }
 });
 
+// Optimisation IA adossée au PROFIL d'exécution réel (FE/SE, sous-cubes, hits) : contexte
+// = résumé du profil + MDX, injecté dans le prompt OptimiserProfil.
+api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiService ai, CancellationToken ct) =>
+{
+    if (!AiService.IsConfigured)
+        return Results.BadRequest(new { error = "ANTHROPIC_API_KEY non configurée" });
+    try
+    {
+        var p = req.Profile;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"PROFIL D'EXÉCUTION (ms) : total {p.TotalMs}, Formula Engine {p.FormulaEngineMs}, Storage Engine {p.StorageEngineMs}");
+        sb.AppendLine($"Sous-cubes scannés : {p.SubcubeCount} · hits cache : {p.CacheHits} · hits agrégation : {p.AggregationHits}");
+        if (p.Subcubes.Count > 0)
+        {
+            sb.AppendLine("Sous-cubes les plus coûteux :");
+            foreach (var s in p.Subcubes.OrderByDescending(s => s.DurationMs).Take(10))
+                sb.AppendLine($"- {s.DurationMs} ms : {(s.Text.Length > 200 ? s.Text[..200] : s.Text)}");
+        }
+        sb.AppendLine().AppendLine("REQUÊTE MDX :").AppendLine(req.Mdx);
+
+        var swp = Stopwatch.StartNew();
+        string text = await ai.RunAsync(AiAction.OptimiserProfil, sb.ToString(), req.Lang ?? "fr", ct);
+        return Results.Ok(new { text, durationMs = swp.ElapsedMilliseconds });
+    }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
 // Statut perfmon (l'UI affiche pourquoi les stats sont absentes le cas échéant)
 api.MapGet("/stats/status", (PerfmonService perfmon) =>
     Results.Ok(new { status = perfmon.Status.ToString(), detail = perfmon.StatusDetail }));
@@ -556,6 +584,7 @@ internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
 internal sealed record DrillthroughRequest(string Mdx, int MaxRows);
 internal sealed record AiRequest(string Mdx, string? Lang);
+internal sealed record AiOptimizeProfileRequest(string Mdx, QueryProfile Profile, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
