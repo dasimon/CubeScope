@@ -208,7 +208,7 @@ function buildRefLookup(): Map<string, RefEntry> {
 }
 
 /** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé
- *  et les qualificateurs de clé de membre `.&[clé]` (ex. …[Portefeuille].&[PFC019]). */
+ *  et les qualificateurs de clé de membre `.&[clé]` (ex. …[Niveau].&[Clé]). */
 function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
   const re = /\[(?:[^\]]|\]\])*\](?:\s*\.\s*&?\s*\[(?:[^\]]|\]\])*\])*/g
   const col0 = column - 1
