@@ -155,9 +155,34 @@ interface RefEntry {
   kind: string
 }
 
-/** "[Measures] . [X]" → "[Measures].[X]" (espaces autour des points, comme le tokenizer). */
+/** "[Measures] . [X]" → "[Measures].[X]" ; gère aussi la clé "] . & [" → "].&[". */
 function normalizeRef(s: string): string {
-  return s.replace(/\]\s*\.\s*\[/g, '].[')
+  return s.replace(/\]\s*\.\s*(&?)\s*\[/g, (_m, amp) => '].' + amp + '[')
+}
+
+/**
+ * Résout un membre référencé (ex. [Dim].[Hier].[Level].&[Clé] ou [Dim].[Hier].[Nom]) vers son
+ * caption : trouve la hiérarchie englobante dans les métadonnées, charge ses membres (cache
+ * partagé avec l'autocomplétion) et matche par uniqueName — repli sur la clé finale &[…] si le
+ * segment de niveau du script diffère de celui renvoyé par le serveur. Null si non résolu.
+ */
+async function resolveMemberCaption(normRef: string): Promise<string | null> {
+  const meta = store.cubeMeta
+  if (!meta || !store.cube) return null
+  let best: string | null = null
+  for (const d of meta.dimensions)
+    for (const h of d.hierarchies) {
+      const nh = normalizeRef(h.uniqueName)
+      if (normRef.startsWith(nh + '.') && (!best || nh.length > best.length)) best = nh
+    }
+  if (!best) return null
+  const members = await membersOf(best)
+  let hit = members.find((m) => normalizeRef(m.uniqueName) === normRef)
+  if (!hit) {
+    const key = normRef.match(/&\[(?:[^\]]|\]\])*\]$/)
+    if (key) hit = members.find((m) => normalizeRef(m.uniqueName).endsWith(key[0]))
+  }
+  return hit ? hit.caption : null
 }
 
 /** Table uniqueName normalisé → caption/description, construite depuis le cube courant. */
@@ -182,9 +207,10 @@ function buildRefLookup(): Map<string, RefEntry> {
   return map
 }
 
-/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé. */
+/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé
+ *  et les qualificateurs de clé de membre `.&[clé]` (ex. …[Portefeuille].&[PFC019]). */
 function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
-  const re = /\[(?:[^\]]|\]\])*\](?:\s*\.\s*\[(?:[^\]]|\]\])*\])*/g
+  const re = /\[(?:[^\]]|\]\])*\](?:\s*\.\s*&?\s*\[(?:[^\]]|\]\])*\])*/g
   const col0 = column - 1
   let m: RegExpExecArray | null
   while ((m = re.exec(line)) !== null) {
@@ -195,24 +221,27 @@ function refAtColumn(line: string, column: number): { text: string; start: numbe
 }
 
 monaco.languages.registerHoverProvider('mdx', {
-  provideHover(model, position) {
-    // 1) Référence de mesure/membre du cube → caption + description
+  async provideHover(model, position) {
     const ref = refAtColumn(model.getLineContent(position.lineNumber), position.column)
     if (ref) {
-      const entry = buildRefLookup().get(normalizeRef(ref.text))
+      const normRef = normalizeRef(ref.text)
+      const range = new monaco.Range(position.lineNumber, ref.start, position.lineNumber, ref.end)
+      // 1) Mesure / dimension / hiérarchie / niveau (métadonnées synchrones) → caption + description
+      const entry = buildRefLookup().get(normRef)
       if (entry) {
         const contents: { value: string }[] = [
           { value: '**' + entry.caption + '**' + (entry.kind === 'measure' ? '' : ' _(' + entry.kind + ')_') },
         ]
         if (entry.description) contents.push({ value: entry.description })
-        contents.push({ value: '`' + normalizeRef(ref.text) + '`' })
-        return {
-          range: new monaco.Range(position.lineNumber, ref.start, position.lineNumber, ref.end),
-          contents,
-        }
+        contents.push({ value: '`' + normRef + '`' })
+        return { range, contents }
       }
+      // 2) Membre (clé &[…] ou nom) → caption chargé à la volée depuis la hiérarchie
+      const caption = await resolveMemberCaption(normRef)
+      if (caption)
+        return { range, contents: [{ value: '**' + caption + '** _(membre)_' }, { value: '`' + normRef + '`' }] }
     }
-    // 2) Repli : fonction MDX connue → signature + doc courte
+    // 3) Repli : fonction MDX connue → signature + doc courte
     const word = model.getWordAtPosition(position)
     if (!word) return null
     const fn = mdxFunctions[word.word.toUpperCase()]
