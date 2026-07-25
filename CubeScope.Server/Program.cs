@@ -458,7 +458,7 @@ api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
 });
 
 // Panneau IA : statut (clé configurée ?) et exécution d'une action sur le MDX courant
-api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured }));
+api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured, model = AiService.ActiveModel }));
 api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, CancellationToken ct) =>
 {
     if (!Enum.TryParse<AiAction>(action, ignoreCase: true, out var aiAction))

@@ -90,9 +90,9 @@ export default {
     nlPlaceholder: 'Décris ce que tu veux (ex. VL par fonds sur le dernier mois)…',
     keyMissing: "Clé API absente : définir la variable d'environnement {var} puis relancer CubeScope.",
     apply: "Appliquer à l'éditeur",
-    running: '{action}… (claude-opus-4-8 réfléchit, jusqu\'à ~1 min)',
+    running: '{action}… ({model} réfléchit, jusqu\'à ~1 min)',
     analyzing: 'Analyse…',
-    footer: 'claude-opus-4-8 · {s} s',
+    footer: '{model} · {s} s',
     hint: 'Écris (ou charge) une requête MDX, puis choisis une action.',
   },
   profiler: {

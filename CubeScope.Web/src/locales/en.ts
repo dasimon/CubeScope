@@ -92,9 +92,9 @@ const en: typeof fr = {
     nlPlaceholder: 'Describe what you want (e.g. NAV by fund for last month)…',
     keyMissing: 'API key missing: set the {var} environment variable, then restart CubeScope.',
     apply: 'Apply to editor',
-    running: '{action}… (claude-opus-4-8 is thinking, up to ~1 min)',
+    running: '{action}… ({model} is thinking, up to ~1 min)',
     analyzing: 'Analyzing…',
-    footer: 'claude-opus-4-8 · {s} s',
+    footer: '{model} · {s} s',
     hint: 'Write (or load) an MDX query, then choose an action.',
   },
   profiler: {

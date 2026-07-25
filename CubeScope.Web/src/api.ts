@@ -162,7 +162,7 @@ export const api = {
       `/api/script/${encodeURIComponent(cube)}/dependencies?name=${encodeURIComponent(name)}`,
     ),
   docUrl: (cube: string) => `/api/doc/${encodeURIComponent(cube)}`,
-  aiStatus: () => request<{ configured: boolean }>('GET', '/api/ai/status'),
+  aiStatus: () => request<{ configured: boolean; model: string }>('GET', '/api/ai/status'),
   ai: (action: AiAction, mdx: string, lang: string, signal: AbortSignal) =>
     request<{ text: string; durationMs: number }>('POST', `/api/ai/${action}`, { mdx, lang }, signal),
   aiOptimizeProfile: (mdx: string, profile: QueryProfile, lang: string, signal: AbortSignal) =>

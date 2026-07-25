@@ -30,7 +30,7 @@ const hasApplicableMdx = computed(() => /```(mdx)?\s*\n[\s\S]*?```/i.test(store.
 
 const runningLabel = computed(() => {
   const a = ACTIONS.find((x) => x.action === store.aiAction)
-  return a ? t('ai.running', { action: t(a.labelKey) }) : t('ai.analyzing')
+  return a ? t('ai.running', { action: t(a.labelKey), model: store.aiModel }) : t('ai.analyzing')
 })
 </script>
 
@@ -105,7 +105,7 @@ const runningLabel = computed(() => {
       <Message v-else-if="store.aiError" severity="error" class="ai-msg">{{ store.aiError }}</Message>
       <template v-else-if="store.aiResult">
         <div class="ai-result" v-html="resultHtml" />
-        <div class="ai-footer">{{ t('ai.footer', { s: (store.aiDurationMs / 1000).toFixed(1) }) }}</div>
+        <div class="ai-footer">{{ t('ai.footer', { model: store.aiModel, s: (store.aiDurationMs / 1000).toFixed(1) }) }}</div>
       </template>
       <div v-else class="ai-center ai-hint">
         {{ t('ai.hint') }}

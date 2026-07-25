@@ -60,8 +60,10 @@ component to deploy, no cloud.
   profile (Formula/Storage Engine split, subcubes, cache/aggregation hits) for
   concrete, numbers-justified advice, and **natural-language → MDX** (describe what
   you want, the AI writes the query from the cube's metadata). Powered by the
-  Anthropic API (`claude-opus-4-8`), with the relevant cube metadata injected into
-  the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
+  Anthropic API (`claude-opus-4-8`) by default, with the relevant cube metadata
+  injected into the context. Can also target any **OpenAI-compatible** endpoint
+  (local Ollama / LM Studio for on-prem confidentiality, OpenAI, Mistral,
+  OpenRouter, Groq…) — see Prerequisites. *(Requires an API key — see Prerequisites.)*
 - **Cache management** — clear the SSAS cache of a catalog (explicit confirmation).
 - **History** — every query stored locally (SQLite), filterable, reloadable.
 - **Bilingual UI** — French (default) and English, switchable at runtime.
@@ -89,7 +91,25 @@ component to deploy, no cloud.
 - **`ANTHROPIC_API_KEY`** environment variable for the **AI assistant**. If it
   is absent, the AI panel degrades gracefully with a clear message; everything
   else keeps working. The key is read from the environment only — it is never
-  stored locally.
+  stored locally. The Anthropic model defaults to `claude-opus-4-8`; set
+  `CUBESCOPE_ANTHROPIC_MODEL` to use a different Claude model.
+  - **Alternative LLM providers (optional).** To use any OpenAI-compatible
+    endpoint instead of Anthropic — a **local** model (Ollama, LM Studio) so no
+    data leaves your network, or OpenAI / Mistral / OpenRouter / Groq — set
+    `CUBESCOPE_LLM_BASEURL` (e.g. `http://localhost:11434/v1`) and
+    `CUBESCOPE_LLM_MODEL` (e.g. `qwen2.5-coder`), plus `CUBESCOPE_LLM_KEY` if the
+    endpoint needs a bearer token. When both base URL and model are set they take
+    precedence over Anthropic. The active model name is shown in the AI panel.
+    *(Azure OpenAI's non-standard deployment URL and `api-key` header are not
+    covered.)* **Ollama users:** CubeScope doesn't send a context-length
+    parameter, so your model runs at whatever context size it was loaded with
+    (often 2048–4096 by default) — too small for the natural-language → MDX
+    metadata dump on a cube with hundreds of measures. Create a variant with a
+    larger context first: `ollama create mymodel-32k -f Modelfile` with
+    `PARAMETER num_ctx 32768` in the Modelfile, and point
+    `CUBESCOPE_LLM_MODEL` at that. Expect noticeably lower MDX quality than
+    Claude for this — MDX is a niche language most local models barely saw
+    in training.
 
 **To build from source, additionally:**
 
@@ -183,8 +203,9 @@ Key technical choices:
 
 - All SSAS connections use **Windows Integrated Security**. No credentials are
   read from, or written to, disk or config.
-- The Anthropic API key is read from the `ANTHROPIC_API_KEY` environment variable
-  only.
+- The AI API key is read from the environment only (`ANTHROPIC_API_KEY`, or
+  `CUBESCOPE_LLM_KEY` for an OpenAI-compatible provider) — never from, or written
+  to, disk or config.
 - **Transitive advisories (resolved):** the ADOMD.NET Core client used to pull in
   `Microsoft.Identity.Client` 4.56.0, flagged by NU1901/NU1902 (low/moderate).
   CubeScope now pins `Microsoft.Identity.Client` 4.86.1 directly, forcing the

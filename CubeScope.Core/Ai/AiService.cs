@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using Anthropic;
 using Anthropic.Models.Messages;
 using CubeScope.Core.Ssas;
@@ -16,14 +18,22 @@ public enum AiAction
 }
 
 /// <summary>
-/// Expert IA intégré (décision actée) : appelle l'API Anthropic avec un prompt système
-/// par action et les métadonnées pertinentes du cube injectées dans le contexte.
-/// Clé : variable d'environnement ANTHROPIC_API_KEY (validé 2026-07-23 — pas de stockage local).
-/// Modèle : claude-opus-4-8, adaptive thinking.
+/// Expert IA intégré (décision actée) : prompt système par action + métadonnées
+/// pertinentes du cube injectées dans le contexte.
+/// Transport par défaut : API Anthropic (ANTHROPIC_API_KEY, claude-opus-4-8, adaptive
+/// thinking). Alternative : tout endpoint compatible OpenAI (/v1/chat/completions) si
+/// CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL sont définis — couvre Ollama/LM Studio en
+/// local (confidentialité) et OpenAI/Mistral/OpenRouter/Groq. Clés en env uniquement,
+/// jamais de stockage local (validé 2026-07-23).
 /// </summary>
 public sealed class AiService(MetadataService metadata, SsasSession session)
 {
-    private const string ModelId = "claude-opus-4-8";
+    private const string DefaultAnthropicModel = "claude-opus-4-8";
+
+    // Modèle Anthropic : CUBESCOPE_ANTHROPIC_MODEL si posée (ex. un autre Claude),
+    // sinon le défaut. Adaptive thinking reste actif quel que soit le modèle.
+    private static string ModelId =>
+        Env("CUBESCOPE_ANTHROPIC_MODEL") is { } m && !string.IsNullOrWhiteSpace(m) ? m.Trim() : DefaultAnthropicModel;
 
     // Prompt système commun, stable (préfixe cacheable) — le contexte cube et le MDX
     // arrivent dans le message utilisateur.
@@ -109,8 +119,24 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             """,
     };
 
+    // Fournisseur alternatif compatible OpenAI (/v1/chat/completions) : couvre Ollama en local
+    // (données qui ne quittent pas le réseau), OpenAI, Mistral, OpenRouter, Groq, LM Studio…
+    // Activé dès que base URL + modèle sont définis ; sinon défaut = Anthropic (inchangé).
+    private static string? LlmBaseUrl => Env("CUBESCOPE_LLM_BASEURL");
+    private static string? LlmModel => Env("CUBESCOPE_LLM_MODEL");
+    private static string? LlmKey => Env("CUBESCOPE_LLM_KEY");
+    private static bool UseOpenAiCompat =>
+        !string.IsNullOrWhiteSpace(LlmBaseUrl) && !string.IsNullOrWhiteSpace(LlmModel);
+    private static string? AnthropicKey => Env("ANTHROPIC_API_KEY");
+    private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
+
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+
     public static bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+        UseOpenAiCompat || !string.IsNullOrWhiteSpace(AnthropicKey);
+
+    /// <summary>Modèle actif (pour l'affichage UI) : le modèle OpenAI-compatible configuré, sinon Anthropic.</summary>
+    public static string ActiveModel => UseOpenAiCompat ? LlmModel! : ModelId;
 
     // Actions qui opèrent sur une VRAIE requête MDX existante : on peut auto-extraire les
     // références [Dim].[Hiér] qu'elle contient et n'injecter que les métadonnées pertinentes
@@ -125,7 +151,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     {
         if (!IsConfigured)
             throw new InvalidOperationException(
-                "Clé API absente : définir la variable d'environnement ANTHROPIC_API_KEY puis relancer CubeScope.");
+                "IA non configurée : définir ANTHROPIC_API_KEY, ou CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL (fournisseur compatible OpenAI), puis relancer CubeScope.");
         if (string.IsNullOrWhiteSpace(mdx))
             throw new InvalidOperationException("Aucune requête MDX à analyser.");
 
@@ -174,6 +200,10 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
                 """;
         }
 
+        // Fournisseur compatible OpenAI configuré → HTTP /chat/completions ; sinon Anthropic (défaut).
+        if (UseOpenAiCompat)
+            return await RunOpenAiCompatAsync($"{SystemBase}\n\n{langInstruction}", userContent, ct);
+
         AnthropicClient client = new();
         var response = await client.Messages.Create(new MessageCreateParams
         {
@@ -196,5 +226,65 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             .OfType<TextBlock>()
             .Select(t => t.Text);
         return string.Concat(parts);
+    }
+
+    // Appel d'un endpoint compatible OpenAI (/v1/chat/completions, Bearer). Couvre Ollama (local,
+    // données qui ne sortent pas du réseau), OpenAI, Mistral, OpenRouter, Groq, LM Studio, etc.
+    // Non couvert (limite assumée) : Azure OpenAI (URL de déploiement + header api-key non standard).
+    private static async Task<string> RunOpenAiCompatAsync(string system, string user, CancellationToken ct)
+    {
+        string url = LlmBaseUrl!.TrimEnd('/') + "/chat/completions";
+        var payload = new OpenAiChatRequest
+        {
+            Model = LlmModel!,
+            MaxTokens = 16000,
+            Messages =
+            [
+                new() { Role = "system", Content = system },
+                new() { Role = "user", Content = user },
+            ],
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
+        if (!string.IsNullOrWhiteSpace(LlmKey))
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", LlmKey);
+
+        using var resp = await Http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            string body = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"Erreur LLM ({(int)resp.StatusCode}) : {Truncate(body, 500)}");
+        }
+
+        var parsed = await resp.Content.ReadFromJsonAsync<OpenAiChatResponse>(ct);
+        string? text = parsed?.Choices?.FirstOrDefault()?.Message?.Content;
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("Réponse LLM vide ou illisible (champ choices[0].message.content absent).");
+        return text;
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    private sealed class OpenAiChatRequest
+    {
+        [JsonPropertyName("model")] public string Model { get; set; } = "";
+        [JsonPropertyName("messages")] public List<OpenAiMessage> Messages { get; set; } = [];
+        [JsonPropertyName("max_tokens")] public int MaxTokens { get; set; }
+    }
+
+    private sealed class OpenAiMessage
+    {
+        [JsonPropertyName("role")] public string Role { get; set; } = "";
+        [JsonPropertyName("content")] public string Content { get; set; } = "";
+    }
+
+    private sealed class OpenAiChatResponse
+    {
+        [JsonPropertyName("choices")] public List<OpenAiChoice>? Choices { get; set; }
+    }
+
+    private sealed class OpenAiChoice
+    {
+        [JsonPropertyName("message")] public OpenAiMessage? Message { get; set; }
     }
 }

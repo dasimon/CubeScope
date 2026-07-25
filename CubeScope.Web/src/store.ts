@@ -75,6 +75,7 @@ export const store = reactive({
 
   // Panneau IA
   aiConfigured: null as boolean | null,
+  aiModel: 'claude-opus-4-8', // modèle actif (Anthropic par défaut, ou LLM compatible OpenAI configuré)
   aiRunning: false,
   aiAction: null as AiAction | null,
   aiResult: '',
@@ -186,7 +187,9 @@ export const actions = {
 
   async loadAiStatus(): Promise<void> {
     try {
-      store.aiConfigured = (await api.aiStatus()).configured
+      const s = await api.aiStatus()
+      store.aiConfigured = s.configured
+      if (s.model) store.aiModel = s.model
     } catch {
       store.aiConfigured = null
     }
