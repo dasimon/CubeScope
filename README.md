@@ -55,9 +55,12 @@ component to deploy, no cloud.
   member's properties (format string, display folder, description) with round-trip
   writeback into the `.cube`, safely rename a calculated member across the whole
   script (definition + references), and every deploy is kept in an audit log.
-- **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, powered
-  by the Anthropic API (`claude-opus-4-8`), with the relevant cube metadata
-  injected into the context. *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
+- **AI assistant** — Explain / Optimize / Detect anti-patterns / Format, plus a
+  **profiler-grounded optimization** action that feeds the AI the real execution
+  profile (Formula/Storage Engine split, subcubes, cache/aggregation hits) for
+  concrete, numbers-justified advice. Powered by the Anthropic API
+  (`claude-opus-4-8`), with the relevant cube metadata injected into the context.
+  *(Requires `ANTHROPIC_API_KEY` — see Prerequisites.)*
 - **Cache management** — clear the SSAS cache of a catalog (explicit confirmation).
 - **History** — every query stored locally (SQLite), filterable, reloadable.
 - **Bilingual UI** — French (default) and English, switchable at runtime.
