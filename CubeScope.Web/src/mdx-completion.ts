@@ -147,9 +147,72 @@ monaco.languages.registerCompletionItemProvider('mdx', {
   },
 })
 
-// Survol d'une fonction MDX connue → signature + doc courte (même source que l'autocomplétion).
+// Survol : d'abord une référence de mesure/membre du cube ([Dim].[Hier].[…]) → caption +
+// description (métadonnées) ; sinon repli sur une fonction MDX connue (signature + doc).
+interface RefEntry {
+  caption: string
+  description?: string
+  kind: string
+}
+
+/** "[Measures] . [X]" → "[Measures].[X]" (espaces autour des points, comme le tokenizer). */
+function normalizeRef(s: string): string {
+  return s.replace(/\]\s*\.\s*\[/g, '].[')
+}
+
+/** Table uniqueName normalisé → caption/description, construite depuis le cube courant. */
+function buildRefLookup(): Map<string, RefEntry> {
+  const map = new Map<string, RefEntry>()
+  const meta = store.cubeMeta
+  if (!meta) return map
+  for (const f of meta.measureFolders)
+    for (const m of f.measures)
+      map.set(normalizeRef(m.uniqueName), {
+        caption: m.name,
+        description: m.description || undefined,
+        kind: 'measure',
+      })
+  for (const d of meta.dimensions) {
+    map.set(normalizeRef(d.uniqueName), { caption: d.name, kind: 'dimension' })
+    for (const h of d.hierarchies) {
+      map.set(normalizeRef(h.uniqueName), { caption: h.name, kind: 'hierarchy' })
+      for (const l of h.levels) map.set(normalizeRef(l.uniqueName), { caption: l.name, kind: 'level' })
+    }
+  }
+  return map
+}
+
+/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé. */
+function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
+  const re = /\[(?:[^\]]|\]\])*\](?:\s*\.\s*\[(?:[^\]]|\]\])*\])*/g
+  const col0 = column - 1
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) !== null) {
+    if (m.index <= col0 && col0 <= m.index + m[0].length)
+      return { text: m[0], start: m.index + 1, end: m.index + m[0].length + 1 }
+  }
+  return null
+}
+
 monaco.languages.registerHoverProvider('mdx', {
   provideHover(model, position) {
+    // 1) Référence de mesure/membre du cube → caption + description
+    const ref = refAtColumn(model.getLineContent(position.lineNumber), position.column)
+    if (ref) {
+      const entry = buildRefLookup().get(normalizeRef(ref.text))
+      if (entry) {
+        const contents: { value: string }[] = [
+          { value: '**' + entry.caption + '**' + (entry.kind === 'measure' ? '' : ' _(' + entry.kind + ')_') },
+        ]
+        if (entry.description) contents.push({ value: entry.description })
+        contents.push({ value: '`' + normalizeRef(ref.text) + '`' })
+        return {
+          range: new monaco.Range(position.lineNumber, ref.start, position.lineNumber, ref.end),
+          contents,
+        }
+      }
+    }
+    // 2) Repli : fonction MDX connue → signature + doc courte
     const word = model.getWordAtPosition(position)
     if (!word) return null
     const fn = mdxFunctions[word.word.toUpperCase()]
