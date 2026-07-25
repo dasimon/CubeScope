@@ -122,21 +122,26 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     {
         string server = session.Server ?? "", catalog = session.Catalog ?? "";
         string key = $"{server}|{catalog}|{cube}";
+        Console.WriteLine($"[cap] START cube={cube} names={names.Count} validated={_validatedCubes.ContainsKey(key)}");
 
         // Validation du stamp une seule fois par (serveur, catalogue, cube) cette session.
         if (!_validatedCubes.ContainsKey(key))
         {
+            Console.WriteLine("[cap] stamp DMV (MDSCHEMA_CUBES)…");
             var stamp = await GetCubeStampAsync(cube, ct);
+            Console.WriteLine($"[cap] stamp='{stamp}'");
             if (store.GetCaptionStamp(server, catalog, cube) != stamp)
             {
                 store.InvalidateCubeCaptions(server, catalog, cube);
                 store.SetCaptionStamp(server, catalog, cube, stamp);
             }
             _validatedCubes.TryAdd(key, 0);
+            Console.WriteLine("[cap] stamp validated");
         }
 
         var cached = store.GetCachedCaptions(server, catalog, cube, names);
         var misses = names.Where(n => !cached.ContainsKey(n)).ToList();
+        Console.WriteLine($"[cap] cache hits={cached.Count} misses={misses.Count}");
 
         var found = new Dictionary<string, string>();
         string cubeQ = cube.Replace("'", "''");
@@ -155,6 +160,8 @@ public sealed class MetadataService(SsasSession session, StateStore store)
             for (int off = 0; off < members.Count; off += inChunk)
             {
                 var slice = members.Skip(off).Take(inChunk).ToList();
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                Console.WriteLine($"[cap] DMV hier={grp.Key ?? "(aucune)"} members={slice.Count} IN…");
                 try
                 {
                     string inList = string.Join(", ", slice.Select(n => $"'{n.Replace("'", "''")}'"));
@@ -165,9 +172,11 @@ public sealed class MetadataService(SsasSession session, StateStore store)
                         """, ct);
                     foreach (DataRow r in t.Rows)
                         found[(string)r["MEMBER_UNIQUE_NAME"]] = (string)r["MEMBER_CAPTION"];
+                    Console.WriteLine($"[cap] DMV IN done {sw.ElapsedMilliseconds}ms rows={t.Rows.Count}");
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[cap] DMV IN FAILED ({ex.GetType().Name}: {ex.Message}) → repli membre/membre");
                     foreach (var name in slice)
                     {
                         var t = await session.ExecuteDmvAsync($"""
@@ -177,10 +186,12 @@ public sealed class MetadataService(SsasSession session, StateStore store)
                         var cap = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
                         if (cap is not null) found[name] = cap;
                     }
+                    Console.WriteLine($"[cap] repli done {sw.ElapsedMilliseconds}ms found+={found.Count}");
                 }
             }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
+        Console.WriteLine($"[cap] END found={found.Count} total_returned={names.Count}");
 
         var result = new Dictionary<string, string?>(names.Count);
         foreach (var name in names)
