@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Text;
 using CubeScope.Core.Models;
 using CubeScope.Core.State;
+using Microsoft.AnalysisServices.AdomdClient;
 
 namespace CubeScope.Core.Ssas;
 
@@ -107,15 +109,34 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     /// (invalidé une fois par session si le cube a été reprocessé), les manquants résolus par
     /// lookup ciblé MDSCHEMA_MEMBERS puis persistés. Valeur null pour un membre introuvable.
     /// </summary>
-    // uniqueName d'une hiérarchie = 2 premiers segments crochetés ([Dim].[Hier]) d'un membre.
-    private static readonly System.Text.RegularExpressions.Regex HierRe =
-        new(@"^\s*(\[(?:[^\]]|\]\])*\]\s*\.\s*\[(?:[^\]]|\]\])*\])",
-            System.Text.RegularExpressions.RegexOptions.Compiled);
-    private static string? HierarchyOf(string memberUniqueName)
-    {
-        var m = HierRe.Match(memberUniqueName);
-        return m.Success ? m.Groups[1].Value : null;
-    }
+    /// <summary>
+    /// Résout les captions de membres par MDX (`membre.Properties("MEMBER_CAPTION")`) : chaque
+    /// membre est résolu directement par sa clé, sans scan de dimension. Une requête pour tout
+    /// le paquet. Lève si un membre est invalide (l'appelant fait alors un repli membre/membre).
+    /// </summary>
+    private Task<IReadOnlyDictionary<string, string>> ResolveCaptionsViaMdxAsync(
+        string cube, IReadOnlyList<string> members, CancellationToken ct)
+        => session.WithConnectionAsync<IReadOnlyDictionary<string, string>>(conn =>
+        {
+            var sb = new StringBuilder("WITH ");
+            for (int i = 0; i < members.Count; i++)
+                sb.Append($"MEMBER [Measures].[__cap{i}] AS StrToMember('{members[i].Replace("'", "''")}').Properties(\"MEMBER_CAPTION\") ");
+            sb.Append("SELECT { ")
+              .Append(string.Join(", ", Enumerable.Range(0, members.Count).Select(i => $"[Measures].[__cap{i}]")))
+              .Append(" } ON 0 FROM [").Append(cube.Replace("]", "]]")).Append(']');
+
+            using var cmd = new AdomdCommand(sb.ToString(), conn);
+            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { } });
+            var cs = cmd.ExecuteCellSet();
+            var result = new Dictionary<string, string>();
+            for (int i = 0; i < members.Count; i++)
+            {
+                var val = cs.Cells[i].Value;
+                if (val is not null and not DBNull && val.ToString() is { Length: > 0 } s)
+                    result[members[i]] = s;
+            }
+            return result;
+        }, ct);
 
     public async Task<IReadOnlyDictionary<string, string?>> GetMemberCaptionsAsync(
         string cube, IReadOnlyList<string> names, CancellationToken ct = default)
@@ -144,50 +165,28 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         Console.WriteLine($"[cap] cache hits={cached.Count} misses={misses.Count}");
 
         var found = new Dictionary<string, string>();
-        string cubeQ = cube.Replace("'", "''");
-        // CLÉ DE PERFORMANCE : restreindre par HIERARCHY_UNIQUE_NAME. Sans ça, MDSCHEMA_MEMBERS
-        // filtré seulement par MEMBER_UNIQUE_NAME scanne TOUT l'espace des membres du cube
-        // (des millions pour une dimension titres) → chaque lookup rame/gèle. On groupe les
-        // membres manquants par hiérarchie (2 premiers segments) et on interroge hiérarchie par
-        // hiérarchie, en paquets de ≈100 via `IN` (repli membre par membre si `IN` non supporté).
-        foreach (var grp in misses.GroupBy(HierarchyOf))
+        // Résolution par MDX `.Properties("MEMBER_CAPTION")` : résout chaque membre DIRECTEMENT
+        // par sa clé, sans scanner la dimension — contrairement à MDSCHEMA_MEMBERS qui scanne
+        // toute la hiérarchie (des milliers de titres) → gel. Et la DMV ne supporte pas `IN`.
+        // Une seule requête MDX résout tout un paquet ; repli membre par membre si un membre
+        // du paquet est invalide (référence périmée) et fait échouer la requête entière.
+        const int mdxChunk = 50;
+        for (int off = 0; off < misses.Count; off += mdxChunk)
         {
-            string hierClause = grp.Key is { Length: > 0 } h
-                ? $"AND [HIERARCHY_UNIQUE_NAME] = '{h.Replace("'", "''")}' "
-                : "";
-            var members = grp.ToList();
-            const int inChunk = 100;
-            for (int off = 0; off < members.Count; off += inChunk)
+            var slice = misses.Skip(off).Take(mdxChunk).ToList();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Console.WriteLine($"[cap] MDX captions x{slice.Count}…");
+            try
             {
-                var slice = members.Skip(off).Take(inChunk).ToList();
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                Console.WriteLine($"[cap] DMV hier={grp.Key ?? "(aucune)"} members={slice.Count} IN…");
-                try
-                {
-                    string inList = string.Join(", ", slice.Select(n => $"'{n.Replace("'", "''")}'"));
-                    var t = await session.ExecuteDmvAsync($"""
-                        SELECT [MEMBER_UNIQUE_NAME], [MEMBER_CAPTION]
-                        FROM $SYSTEM.MDSCHEMA_MEMBERS
-                        WHERE [CUBE_NAME] = '{cubeQ}' {hierClause}AND [MEMBER_UNIQUE_NAME] IN ({inList})
-                        """, ct);
-                    foreach (DataRow r in t.Rows)
-                        found[(string)r["MEMBER_UNIQUE_NAME"]] = (string)r["MEMBER_CAPTION"];
-                    Console.WriteLine($"[cap] DMV IN done {sw.ElapsedMilliseconds}ms rows={t.Rows.Count}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[cap] DMV IN FAILED ({ex.GetType().Name}: {ex.Message}) → repli membre/membre");
-                    foreach (var name in slice)
-                    {
-                        var t = await session.ExecuteDmvAsync($"""
-                            SELECT [MEMBER_CAPTION] FROM $SYSTEM.MDSCHEMA_MEMBERS
-                            WHERE [CUBE_NAME] = '{cubeQ}' {hierClause}AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
-                            """, ct);
-                        var cap = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
-                        if (cap is not null) found[name] = cap;
-                    }
-                    Console.WriteLine($"[cap] repli done {sw.ElapsedMilliseconds}ms found+={found.Count}");
-                }
+                foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, slice, ct)) found[kv.Key] = kv.Value;
+                Console.WriteLine($"[cap] MDX done {sw.ElapsedMilliseconds}ms found+={found.Count}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[cap] MDX bulk failed ({ex.Message}) → membre/membre");
+                foreach (var name in slice)
+                    try { foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, new[] { name }, ct)) found[kv.Key] = kv.Value; }
+                    catch { /* membre invalide (référence périmée) : ignoré */ }
             }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
