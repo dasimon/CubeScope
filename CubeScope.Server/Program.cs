@@ -353,6 +353,21 @@ api.MapPost("/script/rename", (RenameRequest req) =>
     }
 });
 
+// Analyse d'impact : diff de deux versions du MDX Script (membres calculés / sets ajoutés,
+// supprimés, modifiés) + fermeture transitive des membres du nouveau script impactés en aval.
+// Pur texte, aucune session ni accès disque côté serveur.
+api.MapPost("/script/impact", (ImpactRequest req) =>
+{
+    try
+    {
+        return Results.Ok(ImpactAnalyzer.Analyze(req.OldScript, req.NewScript));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
+
 // Bibliothèque de snippets MDX (locale, SQLite)
 api.MapGet("/snippets", (StateStore store) => Results.Ok(store.GetSnippets()));
 api.MapPost("/snippets", (SnippetRequest req, StateStore store) =>
@@ -464,6 +479,7 @@ internal sealed record SnippetRequest(string Name, string Mdx);
 internal sealed record CalcPropRequest(
     string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);
 internal sealed record RenameRequest(string Script, string OldName, string NewName);
+internal sealed record ImpactRequest(string OldScript, string NewScript);
 
 /// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
 internal sealed class StatsHub : Hub;

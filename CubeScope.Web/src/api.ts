@@ -173,6 +173,8 @@ export const api = {
       undefined,
       signal,
     ),
+  impact: (oldScript: string, newScript: string) =>
+    request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
@@ -259,6 +261,16 @@ export interface QueryProfile {
   cacheHits: number
   aggregationHits: number
   subcubes: SubcubeInfo[]
+}
+
+export interface MemberChange {
+  name: string
+  kind: string
+  change: 'Added' | 'Removed' | 'Changed'
+  impactedDownstream: string[]
+}
+export interface ImpactReport {
+  changes: MemberChange[]
 }
 
 export interface ProfileRun {

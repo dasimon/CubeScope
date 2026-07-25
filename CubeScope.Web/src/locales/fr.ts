@@ -197,6 +197,15 @@ export default {
     chars: 'caractères',
     empty: 'Aucun déploiement enregistré',
   },
+  impact: {
+    button: "Analyser l'impact",
+    title: 'Impact du changement',
+    added: 'Ajouté',
+    removed: 'Supprimé',
+    changed: 'Modifié',
+    downstream: '{n} membre(s) impacté(s) en aval',
+    none: 'Aucun changement',
+  },
   calcprops: {
     title: 'Propriétés',
     formatString: 'Format string',

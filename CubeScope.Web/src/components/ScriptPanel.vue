@@ -12,6 +12,7 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Panel from 'primevue/panel'
 import ProgressSpinner from 'primevue/progressspinner'
+import Tag from 'primevue/tag'
 import Tree from 'primevue/tree'
 import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
@@ -24,6 +25,8 @@ import {
   type DependencyGraph,
   type DeployLogEntry,
   type DirectoryListing,
+  type ImpactReport,
+  type MemberChange,
   type ProjectScript,
   type RecentProject,
   type ScriptCommand,
@@ -445,6 +448,32 @@ const deployDiffers = ref(false)
 const serverText = ref('')
 const deployError = ref('')
 const deployLog = ref<DeployLogEntry[]>([])
+const impactReport = ref<ImpactReport | null>(null)
+const impactBusy = ref(false)
+const impactError = ref('')
+
+async function analyzeImpact() {
+  if (impactBusy.value) return
+  impactBusy.value = true
+  impactError.value = ''
+  impactReport.value = null
+  try {
+    const newText = editor?.getValue() ?? project.value?.fullText ?? ''
+    impactReport.value = await api.impact(serverText.value, newText)
+  } catch (e) {
+    impactError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    impactBusy.value = false
+  }
+}
+
+function impactLabel(change: MemberChange['change']): string {
+  return change === 'Added' ? t('impact.added') : change === 'Removed' ? t('impact.removed') : t('impact.changed')
+}
+
+function impactSeverity(change: MemberChange['change']): 'success' | 'danger' | 'warn' {
+  return change === 'Added' ? 'success' : change === 'Removed' ? 'danger' : 'warn'
+}
 
 async function loadDeployLog() {
   try {
@@ -519,6 +548,8 @@ function showDeployDialog() {
   deployDiffers.value = false
   serverText.value = ''
   deployError.value = ''
+  impactReport.value = null
+  impactError.value = ''
   showDeploy.value = true
   void loadDeployLog()
 }
@@ -534,6 +565,8 @@ async function deploy(force = false) {
     if (r.differs && !r.deployed) {
       deployDiffers.value = true
       serverText.value = r.serverText ?? ''
+      impactReport.value = null
+      impactError.value = ''
       return
     }
     showDeploy.value = false
@@ -791,6 +824,22 @@ onBeforeUnmount(() => {
         <div class="script-deps-title">{{ t('project.serverScript') }}</div>
         <div class="deploy-diff-hint">{{ t('project.diffHint') }}</div>
         <div ref="diffHost" class="deploy-diff"></div>
+        <Button :label="t('impact.button')" severity="secondary" outlined size="small"
+          :loading="impactBusy" class="impact-btn" @click="analyzeImpact" />
+        <Message v-if="impactError" severity="error">{{ impactError }}</Message>
+        <div v-if="impactReport" class="impact-report">
+          <template v-if="impactReport.changes.length">
+            <div class="script-deps-title">{{ t('impact.title') }}</div>
+            <div v-for="c in impactReport.changes" :key="c.kind + '|' + c.name" class="impact-row">
+              <Tag :value="impactLabel(c.change)" :severity="impactSeverity(c.change)" />
+              <span class="impact-name">{{ c.name }}</span>
+              <span v-if="c.impactedDownstream.length" class="impact-downstream">
+                {{ t('impact.downstream', { n: c.impactedDownstream.length }) }} : {{ c.impactedDownstream.join(', ') }}
+              </span>
+            </div>
+          </template>
+          <Message v-else severity="info">{{ t('impact.none') }}</Message>
+        </div>
         <Button :label="t('project.overwriteBtn')" severity="danger" :loading="deployBusy" @click="deploy(true)" />
       </template>
       <Button v-else :label="t('project.deployBtn')" :loading="deployBusy"
@@ -1149,5 +1198,25 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   padding: 0.05rem 0.35rem;
   font-size: 0.72rem;
+}
+.impact-btn {
+  margin-bottom: 0.5rem;
+}
+.impact-report {
+  margin-bottom: 0.75rem;
+}
+.impact-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+  font-size: 0.8rem;
+}
+.impact-name {
+  font-family: monospace;
+}
+.impact-downstream {
+  color: var(--p-text-muted-color);
+  font-size: 0.75rem;
 }
 </style>

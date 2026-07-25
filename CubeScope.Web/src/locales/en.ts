@@ -199,6 +199,15 @@ const en: typeof fr = {
     chars: 'chars',
     empty: 'No deployment recorded',
   },
+  impact: {
+    button: 'Analyze impact',
+    title: 'Change impact',
+    added: 'Added',
+    removed: 'Removed',
+    changed: 'Changed',
+    downstream: '{n} downstream member(s) impacted',
+    none: 'No change',
+  },
   calcprops: {
     title: 'Properties',
     formatString: 'Format string',
