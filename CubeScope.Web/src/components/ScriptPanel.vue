@@ -11,9 +11,11 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Panel from 'primevue/panel'
+import ProgressSpinner from 'primevue/progressspinner'
 import Tree from 'primevue/tree'
 import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
+import { marked } from 'marked'
 import { monaco } from '../monaco-mdx'
 import {
   api,
@@ -27,7 +29,8 @@ import {
   type ScriptCommand,
 } from '../api'
 import type { RenameResult } from '../api'
-import { store } from '../store'
+import { currentLocale } from '../i18n'
+import { actions, store } from '../store'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -174,6 +177,43 @@ const canRename = computed(
     !!project.value?.canEdit &&
     (selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet'),
 )
+
+// --- Tracer IA : explique comment un membre calculé / set nommé construit sa valeur
+// (expression + dépendances calculées, transitif). Dispo en mode projet ET cube live. ---
+const showExplain = ref(false)
+const explainLoading = ref(false)
+const explainText = ref('')
+const explainError = ref('')
+
+const canExplain = computed(
+  () =>
+    !!store.cube &&
+    (selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet'),
+)
+
+const explainHtml = computed(() => (explainText.value ? marked.parse(explainText.value) : ''))
+
+async function explainCalc() {
+  if (!store.cube || !selected.value) return
+  showExplain.value = true
+  explainLoading.value = true
+  explainText.value = ''
+  explainError.value = ''
+  if (store.aiConfigured === null) await actions.loadAiStatus()
+  if (store.aiConfigured === false) {
+    explainError.value = t('explain.needKey')
+    explainLoading.value = false
+    return
+  }
+  try {
+    const r = await api.explainCalc(store.cube, selected.value.name, currentLocale())
+    explainText.value = r.text
+  } catch (e) {
+    explainError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    explainLoading.value = false
+  }
+}
 
 const renameApplyDisabled = computed(() => {
   const n = renameNewName.value.trim()
@@ -666,6 +706,15 @@ onBeforeUnmount(() => {
           </template>
         </ul>
       </template>
+      <div v-if="canExplain" class="script-explain-bar">
+        <Button
+          icon="pi pi-sparkles"
+          size="small"
+          severity="secondary"
+          :label="t('explain.button')"
+          @click="explainCalc"
+        />
+      </div>
       <div v-if="selected && (graphLoading || graph)" class="script-deps">
         <div class="script-deps-title">{{ t('script.deps', { name: selected.name }) }}</div>
         <div v-if="graphLoading" class="script-hint">{{ t('script.analyzing') }}</div>
@@ -787,6 +836,14 @@ onBeforeUnmount(() => {
         <Button :label="t('rename.apply')" icon="pi pi-check" :loading="renameBusy"
           :disabled="renameApplyDisabled" @click="applyRename" />
       </template>
+    </Dialog>
+    <Dialog v-model:visible="showExplain" :header="t('explain.title')" modal :style="{ width: '42rem' }">
+      <div v-if="explainLoading" class="explain-loading">
+        <ProgressSpinner style="width: 32px; height: 32px" />
+        <span>{{ t('explain.loading') }}</span>
+      </div>
+      <Message v-else-if="explainError" severity="error">{{ explainError }}</Message>
+      <div v-else class="explain-result" v-html="explainHtml" />
     </Dialog>
     <div ref="host" class="script-editor" />
   </div>
@@ -936,6 +993,34 @@ onBeforeUnmount(() => {
 .project-browser-list {
   max-height: 14rem;
   overflow: auto;
+}
+.script-explain-bar {
+  padding: 0.3rem 0.6rem;
+  border-top: 1px solid var(--p-surface-700);
+}
+.explain-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+}
+.explain-result {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-height: 60vh;
+  overflow: auto;
+}
+.explain-result :deep(pre) {
+  background: var(--p-surface-800);
+  border: 1px solid var(--p-surface-700);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+.explain-result :deep(code) {
+  font-family: Consolas, monospace;
 }
 .script-deps {
   border-top: 1px solid var(--p-surface-700);

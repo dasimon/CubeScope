@@ -185,6 +185,70 @@ api.MapGet("/script/{cube}/dependencies", async (string cube, [FromQuery] string
         return Results.BadRequest(new { error = ex.GetBaseException().Message });
     }
 });
+// Tracer IA : explique en français comment un membre calculé / set construit sa valeur,
+// à partir de son expression + des expressions des membres calculés dont il dépend
+// (transitif, via le graphe de dépendances existant).
+api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name,
+    [FromQuery] string? lang, ScriptService scripts, MetadataService meta, AiService ai, CancellationToken ct) =>
+{
+    try
+    {
+        var script = await scripts.GetScriptAsync(cube, ct: ct);
+        var target = script.Commands.FirstOrDefault(c => c.Name == name);
+        if (target is null)
+            return Results.BadRequest(new { error = $"Membre introuvable dans le script : {name}" });
+
+        if (!AiService.IsConfigured)
+            return Results.BadRequest(new { error = "Clé API absente : ANTHROPIC_API_KEY non configurée." });
+
+        var cubeMeta = await meta.GetCubeMetaAsync(cube, ct: ct);
+        var graph = DependencyService.Resolve(script, cubeMeta, name);
+
+        // Dépendances calculées (membre/set), transitives, dédupliquées, plafonnées.
+        const int maxDeps = 30;
+        const int maxChars = 8000;
+        var byName = script.Commands
+            .Where(c => c.Kind is "CalculatedMember" or "NamedSet")
+            .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
+        var deps = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { name };
+        void Walk(DependencyNode node)
+        {
+            foreach (var child in node.Dependencies)
+            {
+                if (child.Kind is "CalculatedMember" or "NamedSet" && seen.Add(child.Name))
+                {
+                    if (deps.Count < maxDeps) deps.Add(child.Name);
+                    Walk(child);
+                }
+            }
+        }
+        Walk(graph.Root);
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("MEMBRE CIBLE: ").Append(target.Name).Append('\n');
+        sb.Append("AS ").Append(target.Expression).Append("\n\n");
+        sb.Append("DÉPEND DE:\n");
+        foreach (var depName in deps)
+        {
+            if (sb.Length >= maxChars) break;
+            if (byName.TryGetValue(depName, out var depCmd))
+                sb.Append("- ").Append(depName).Append(": ").Append(depCmd.Expression).Append('\n');
+        }
+        string context = sb.Length > maxChars ? sb.ToString(0, maxChars) : sb.ToString();
+
+        string text = await ai.RunAsync(AiAction.Tracer, context, lang ?? "fr", ct);
+        return Results.Ok(new { text });
+    }
+    catch (OperationCanceledException)
+    {
+        throw; // client parti
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.GetBaseException().Message });
+    }
+});
 api.MapGet("/doc/{cube}", async (string cube, ScriptService scripts, MetadataService meta,
     SsasSession session, CancellationToken ct) =>
 {

@@ -10,6 +10,7 @@ public enum AiAction
     Optimiser,
     AntiPatterns,
     Formater,
+    Tracer,
 }
 
 /// <summary>
@@ -62,6 +63,15 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             espaces par niveau d'imbrication, clauses WITH/SELECT/FROM/WHERE alignées à
             gauche, virgules en fin de ligne. Réponds UNIQUEMENT avec le MDX formaté dans
             un bloc ```mdx, sans aucune explication.
+            """,
+        [AiAction.Tracer] = """
+            Tâche : TRACER LE CALCUL. On te donne un membre calculé (ou un named set), son
+            expression, et les expressions des membres calculés/sets dont il dépend
+            (directement ou transitivement). Explique en français, étape par étape, COMMENT
+            sa valeur est construite : la chaîne de calcul, ce que chaque sous-membre apporte
+            au résultat final, et l'ordre logique d'évaluation. Sois concret et concis. Ne
+            réécris pas le MDX, explique-le. N'invente aucun membre ou dépendance qui ne
+            figure pas dans le contexte fourni.
             """,
     };
 

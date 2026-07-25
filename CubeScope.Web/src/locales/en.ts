@@ -147,6 +147,12 @@ const en: typeof fr = {
     done: 'Member renamed ({n} occurrences)',
     button: 'Rename',
   },
+  explain: {
+    button: 'Explain this calculation',
+    title: 'Calculation explanation',
+    loading: 'Analyzing…',
+    needKey: 'ANTHROPIC_API_KEY not configured',
+  },
   errors: {
     queryCanceled: 'Query canceled.',
     aiCanceled: 'Analysis canceled.',

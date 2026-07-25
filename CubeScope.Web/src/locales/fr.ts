@@ -145,6 +145,12 @@ export default {
     done: 'Membre renommé ({n} occurrences)',
     button: 'Renommer',
   },
+  explain: {
+    button: 'Expliquer ce calcul',
+    title: 'Explication du calcul',
+    loading: 'Analyse en cours…',
+    needKey: 'Clé ANTHROPIC_API_KEY non configurée',
+  },
   errors: {
     queryCanceled: 'Requête annulée.',
     aiCanceled: 'Analyse annulée.',

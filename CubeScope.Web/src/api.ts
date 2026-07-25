@@ -166,6 +166,13 @@ export const api = {
   deleteSnippet: (id: number) => request<void>('DELETE', `/api/snippets/${id}`),
   renameMember: (script: string, oldName: string, newName: string) =>
     request<RenameResult>('POST', '/api/script/rename', { script, oldName, newName }),
+  explainCalc: (cube: string, name: string, lang: string, signal?: AbortSignal) =>
+    request<{ text: string }>(
+      'GET',
+      `/api/script/${encodeURIComponent(cube)}/explain?name=${encodeURIComponent(name)}&lang=${lang}`,
+      undefined,
+      signal,
+    ),
 }
 
 export type AiAction = 'expliquer' | 'optimiser' | 'antipatterns' | 'formater'
