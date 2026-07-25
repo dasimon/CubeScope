@@ -516,23 +516,33 @@ api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService m
     try
     {
         var m = await meta.GetCubeMetaAsync(req.Cube, ct: ct);
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"MÉTADONNÉES DU CUBE [{m.CubeName}]");
-        sb.AppendLine("MESURES :");
+
+        var measuresSb = new System.Text.StringBuilder();
+        measuresSb.AppendLine("MESURES :");
         foreach (var f in m.MeasureFolders)
             foreach (var mes in f.Measures)
-                sb.AppendLine($"- {mes.UniqueName}{(string.IsNullOrEmpty(f.Folder) ? "" : $"  (dossier {f.Folder})")}");
-        sb.AppendLine("DIMENSIONS :");
+                measuresSb.AppendLine($"- {mes.UniqueName}{(string.IsNullOrEmpty(f.Folder) ? "" : $"  (dossier {f.Folder})")}");
+
+        var dimsSb = new System.Text.StringBuilder();
+        dimsSb.AppendLine("DIMENSIONS :");
         foreach (var d in m.Dimensions)
         {
-            sb.AppendLine($"- {d.UniqueName} :");
+            dimsSb.AppendLine($"- {d.UniqueName}{(string.IsNullOrEmpty(d.Description) ? "" : $"  — {d.Description}")} :");
             foreach (var h in d.Hierarchies)
-                sb.AppendLine($"    - {h.UniqueName}  (niveaux : {string.Join(" > ", h.Levels.Select(l => l.Name))})");
+                dimsSb.AppendLine($"    - {h.UniqueName}{(string.IsNullOrEmpty(h.Description) ? "" : $"  — {h.Description}")}  (niveaux : {string.Join(" > ", h.Levels.Select(l => l.Name))})");
         }
-        // Borne le contexte métadonnées pour ne pas exploser le prompt sur un gros cube.
-        const int maxMeta = 12000;
-        string metaCtx = sb.Length > maxMeta ? sb.ToString(0, maxMeta) + "\n… (métadonnées tronquées)" : sb.ToString();
+
+        // Chaque section bornée indépendamment (pas un budget global) : sur un cube avec des
+        // centaines de mesures, la liste des mesures ne doit jamais évincer les dimensions —
+        // c'est justement la dimension d'analyse (ROWS) que l'IA doit choisir correctement.
+        const int maxSection = 20000;
+        string metaCtx = $"MÉTADONNÉES DU CUBE [{m.CubeName}]\n"
+            + TruncateSection(measuresSb.ToString(), maxSection)
+            + TruncateSection(dimsSb.ToString(), maxSection);
         string context = $"{metaCtx}\n\nDEMANDE : {req.Question}";
+
+        static string TruncateSection(string s, int max) =>
+            s.Length <= max ? s : s[..max] + "\n… (section tronquée)\n";
 
         var sw = Stopwatch.StartNew();
         string text = await ai.RunAsync(AiAction.GenererMdx, context, req.Lang ?? "fr", ct);

@@ -48,10 +48,10 @@ public static partial class MdxContextBuilder
             sb.AppendLine("Dimensions référencées (hiérarchies → niveaux) :");
             foreach (var d in dims)
             {
-                sb.AppendLine($"  - {d.UniqueName}");
+                sb.AppendLine($"  - {d.UniqueName}{(d.Description.Length > 0 ? $"  — {d.Description}" : "")}");
                 foreach (var h in d.Hierarchies.Where(h => refs.Contains(h.Name) || refs.Contains(d.Name)
                              || h.Levels.Any(l => refs.Contains(l.Name))))
-                    sb.AppendLine($"      {h.UniqueName} : niveaux {string.Join(" > ", h.Levels.Select(l => l.Name))}");
+                    sb.AppendLine($"      {h.UniqueName}{(h.Description.Length > 0 ? $"  — {h.Description}" : "")} : niveaux {string.Join(" > ", h.Levels.Select(l => l.Name))}");
             }
         }
 

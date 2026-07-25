@@ -11,9 +11,9 @@ public sealed record MeasureFolder(string Folder, IReadOnlyList<MeasureMeta> Mea
 
 public sealed record MeasureMeta(string Name, string UniqueName, string Description = "");
 
-public sealed record DimensionMeta(string Name, string UniqueName, IReadOnlyList<HierarchyMeta> Hierarchies);
+public sealed record DimensionMeta(string Name, string UniqueName, IReadOnlyList<HierarchyMeta> Hierarchies, string Description = "");
 
-public sealed record HierarchyMeta(string Name, string UniqueName, IReadOnlyList<LevelMeta> Levels);
+public sealed record HierarchyMeta(string Name, string UniqueName, IReadOnlyList<LevelMeta> Levels, string Description = "");
 
 public sealed record LevelMeta(string Name, string UniqueName, int Number);
 

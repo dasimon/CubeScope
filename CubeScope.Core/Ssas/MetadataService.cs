@@ -37,12 +37,12 @@ public sealed class MetadataService(SsasSession session, StateStore store)
             WHERE [CUBE_NAME] = '{quoted}' AND [MEASURE_IS_VISIBLE]
             """, ct);
         var dimensions = await session.ExecuteDmvAsync($"""
-            SELECT [DIMENSION_NAME], [DIMENSION_UNIQUE_NAME]
+            SELECT [DIMENSION_NAME], [DIMENSION_UNIQUE_NAME], [DESCRIPTION]
             FROM $SYSTEM.MDSCHEMA_DIMENSIONS
             WHERE [CUBE_NAME] = '{quoted}' AND [DIMENSION_IS_VISIBLE] AND [DIMENSION_UNIQUE_NAME] <> '[Measures]'
             """, ct);
         var hierarchies = await session.ExecuteDmvAsync($"""
-            SELECT [DIMENSION_UNIQUE_NAME], [HIERARCHY_NAME], [HIERARCHY_UNIQUE_NAME]
+            SELECT [DIMENSION_UNIQUE_NAME], [HIERARCHY_NAME], [HIERARCHY_UNIQUE_NAME], [DESCRIPTION]
             FROM $SYSTEM.MDSCHEMA_HIERARCHIES
             WHERE [CUBE_NAME] = '{quoted}' AND [HIERARCHY_IS_VISIBLE]
             """, ct);
@@ -237,7 +237,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
                     {
                         string un = (string)r["HIERARCHY_UNIQUE_NAME"];
                         return new HierarchyMeta((string)r["HIERARCHY_NAME"], un,
-                            levelsByHier.GetValueOrDefault(un, []));
+                            levelsByHier.GetValueOrDefault(un, []), r["DESCRIPTION"] as string ?? "");
                     })
                     .OrderBy(h => h.Name).ToList());
 
@@ -245,7 +245,8 @@ public sealed class MetadataService(SsasSession session, StateStore store)
             .Select(r =>
             {
                 string un = (string)r["DIMENSION_UNIQUE_NAME"];
-                return new DimensionMeta((string)r["DIMENSION_NAME"], un, hiersByDim.GetValueOrDefault(un, []));
+                return new DimensionMeta((string)r["DIMENSION_NAME"], un, hiersByDim.GetValueOrDefault(un, []),
+                    r["DESCRIPTION"] as string ?? "");
             })
             .OrderBy(d => d.Name)
             .ToList();

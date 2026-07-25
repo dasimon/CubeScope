@@ -87,9 +87,14 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             dimensions / hiérarchies listées (jamais de membre, mesure ou hiérarchie inventé).
             Conventions : mesures sur COLUMNS, la dimension d'analyse sur ROWS (souvent
             `.Members` ou `.Children` du bon niveau), `NON EMPTY` sur les axes, `FROM [cube]`,
-            filtres dans la clause `WHERE`. Pour une date/période non déterminable précisément,
-            fais une hypothèse raisonnable (ex. dernier membre de la hiérarchie de dates) et
-            SIGNALE-la. Réponds avec la requête dans un bloc ```mdx, suivie d'une courte phrase
+            filtres dans la clause `WHERE`. Pour une date/période non déterminable précisément
+            (ex. "aujourd'hui", "actuel"), prends la DERNIÈRE DATE AVEC DONNÉES pour la mesure de
+            la requête via `Tail(NonEmpty(<Hiérarchie>.[Niveau feuille].Members, <mesure>), 1).Item(0)`
+            — jamais `Tail(<Niveau>.Members).Item(0)` seul : le dernier membre calendaire d'une
+            hiérarchie de dates (souvent chargée au-delà des données réelles — jours fériés,
+            week-ends, dates futures) n'a généralement PAS de données, la requête renvoie alors un
+            résultat vide. Et JAMAIS `.LastChild` sur un niveau (LastChild attend un membre, pas un
+            niveau : erreur d'exécution garantie). SIGNALE cette hypothèse de date. Réponds avec la requête dans un bloc ```mdx, suivie d'une courte phrase
             expliquant les choix et les hypothèses. Si la demande est trop ambiguë pour choisir
             une mesure ou une dimension, demande la précision manquante au lieu de deviner.
             """,
@@ -107,6 +112,15 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     public static bool IsConfigured =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
 
+    // Actions qui opèrent sur une VRAIE requête MDX existante : on peut auto-extraire les
+    // références [Dim].[Hiér] qu'elle contient et n'injecter que les métadonnées pertinentes
+    // (MdxContextBuilder). Les autres actions (GenererMdx, Tracer, OptimiserProfil) reçoivent
+    // déjà un contexte complet et auto-descriptif construit par leur appelant (Program.cs) —
+    // pour elles, ni auto-extraction (qui interrogerait le mauvais cube via cubes[0]), ni
+    // enveloppe "Requête MDX" trompeuse : le texte fourni est envoyé tel quel.
+    private static readonly HashSet<AiAction> RawMdxActions =
+        [AiAction.Expliquer, AiAction.Optimiser, AiAction.AntiPatterns, AiAction.Formater];
+
     public async Task<string> RunAsync(AiAction action, string mdx, string lang = "fr", CancellationToken ct = default)
     {
         if (!IsConfigured)
@@ -115,26 +129,50 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
         if (string.IsNullOrWhiteSpace(mdx))
             throw new InvalidOperationException("Aucune requête MDX à analyser.");
 
-        // Contexte cube : métadonnées du cube courant si disponibles (sinon on continue sans)
-        string cubeContext = "";
-        try
-        {
-            var cubes = await metadata.GetCubesAsync(ct);
-            if (cubes.Count > 0 && session.Catalog is not null)
-            {
-                var meta = await metadata.GetCubeMetaAsync(cubes[0], ct: ct);
-                cubeContext = MdxContextBuilder.Build(meta, mdx);
-            }
-        }
-        catch
-        {
-            // Pas de connexion/cube : l'IA travaille sur le MDX seul, dégradé assumé
-        }
-
         // Langue de réponse (l'UI envoie la locale courante) — le reste du prompt est stable.
         string langInstruction = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase)
             ? "Respond in English."
             : "Réponds en français.";
+
+        string userContent;
+        if (RawMdxActions.Contains(action))
+        {
+            // Contexte cube : métadonnées du cube courant si disponibles (sinon on continue sans)
+            string cubeContext = "";
+            try
+            {
+                var cubes = await metadata.GetCubesAsync(ct);
+                if (cubes.Count > 0 && session.Catalog is not null)
+                {
+                    var meta = await metadata.GetCubeMetaAsync(cubes[0], ct: ct);
+                    cubeContext = MdxContextBuilder.Build(meta, mdx);
+                }
+            }
+            catch
+            {
+                // Pas de connexion/cube : l'IA travaille sur le MDX seul, dégradé assumé
+            }
+
+            userContent = $"""
+                {ActionPrompts[action]}
+
+                Métadonnées du cube :
+                {(cubeContext.Length > 0 ? cubeContext : "(non connecté — analyse le MDX seul)")}
+
+                Requête MDX :
+                ```mdx
+                {mdx}
+                ```
+                """;
+        }
+        else
+        {
+            userContent = $"""
+                {ActionPrompts[action]}
+
+                {mdx}
+                """;
+        }
 
         AnthropicClient client = new();
         var response = await client.Messages.Create(new MessageCreateParams
@@ -149,21 +187,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             },
             Messages =
             [
-                new()
-                {
-                    Role = Role.User,
-                    Content = $"""
-                        {ActionPrompts[action]}
-
-                        Métadonnées du cube :
-                        {(cubeContext.Length > 0 ? cubeContext : "(non connecté — analyse le MDX seul)")}
-
-                        Requête MDX :
-                        ```mdx
-                        {mdx}
-                        ```
-                        """,
-                },
+                new() { Role = Role.User, Content = userContent },
             ],
         }, cancellationToken: ct);
 

@@ -56,10 +56,10 @@ public class MetadataServiceBuildTests
     public void Build_AttachesHierarchiesAndLevels_ByUniqueName()
     {
         var emptyM = Table(["MEASURE_NAME", "MEASURE_UNIQUE_NAME", "MEASURE_DISPLAY_FOLDER"]);
-        var dims = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME"], ["Dates", "[Dates]"]);
+        var dims = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME", "DESCRIPTION"], ["Dates", "[Dates]", ""]);
         var hiers = Table(
-            ["DIMENSION_UNIQUE_NAME", "HIERARCHY_NAME", "HIERARCHY_UNIQUE_NAME"],
-            ["[Dates]", "Année", "[Dates].[Année]"]);
+            ["DIMENSION_UNIQUE_NAME", "HIERARCHY_NAME", "HIERARCHY_UNIQUE_NAME", "DESCRIPTION"],
+            ["[Dates]", "Année", "[Dates].[Année]", ""]);
         var levels = Table(
             ["HIERARCHY_UNIQUE_NAME", "LEVEL_NAME", "LEVEL_UNIQUE_NAME", "LEVEL_NUMBER"],
             ["[Dates].[Année]", "Année", "[Dates].[Année].[Année]", 1],
@@ -78,7 +78,7 @@ public class MetadataServiceBuildTests
     public void Build_DimensionWithoutHierarchies_YieldsEmptyList()
     {
         var emptyM = Table(["MEASURE_NAME", "MEASURE_UNIQUE_NAME", "MEASURE_DISPLAY_FOLDER"]);
-        var dims = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME"], ["Orpheline", "[Orpheline]"]);
+        var dims = Table(["DIMENSION_NAME", "DIMENSION_UNIQUE_NAME", "DESCRIPTION"], ["Orpheline", "[Orpheline]", ""]);
         var emptyH = Table(["DIMENSION_UNIQUE_NAME", "HIERARCHY_NAME", "HIERARCHY_UNIQUE_NAME"]);
         var emptyL = Table(["HIERARCHY_UNIQUE_NAME", "LEVEL_NAME", "LEVEL_UNIQUE_NAME", "LEVEL_NUMBER"]);
 
