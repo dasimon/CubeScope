@@ -260,13 +260,19 @@ monaco.languages.registerHoverProvider('mdx', {
  * ≥3 segments crochetés, hors métadonnées déjà résolues), dédupliquées et plafonnées, puis
  * lookup ciblé en parallèle (concurrence limitée). Best effort : les échecs sont ignorés.
  */
-export async function prefetchMemberCaptions(scriptText: string): Promise<void> {
-  if (!store.cube || !store.cubeMeta) return
+export async function prefetchMemberCaptions(
+  scriptText: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  if (!store.cube || !store.cubeMeta) {
+    onProgress?.(0, 0)
+    return
+  }
   const lookup = buildRefLookup()
   const re = new RegExp(REF_PATTERN, 'g')
   const seen = new Set<string>()
   const refs: string[] = []
-  const MAX = 1000
+  const MAX = 400 // au-delà, résolution à la demande au survol (reste fonctionnel)
   let m: RegExpExecArray | null
   while ((m = re.exec(scriptText)) !== null) {
     const norm = normalizeRef(m[0])
@@ -278,10 +284,19 @@ export async function prefetchMemberCaptions(scriptText: string): Promise<void> 
     refs.push(norm)
     if (refs.length >= MAX) break
   }
-  const CONCURRENCY = 6
+  const total = refs.length
+  onProgress?.(0, total)
+  if (total === 0) return
+  // Concurrence volontairement basse (3) : le navigateur plafonne ~6 connexions par hôte —
+  // en laisser pour l'UI, et ne pas marteler SSAS. Best effort, les échecs sont ignorés.
+  const CONCURRENCY = 3
   let i = 0
+  let done = 0
   const worker = async () => {
-    while (i < refs.length) await resolveMemberCaption(refs[i++])
+    while (i < refs.length) {
+      await resolveMemberCaption(refs[i++])
+      onProgress?.(++done, total)
+    }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
 }

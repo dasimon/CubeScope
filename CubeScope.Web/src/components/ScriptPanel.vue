@@ -44,6 +44,19 @@ const loading = ref(false)
 const error = ref('')
 const filter = ref('')
 const selected = ref<ScriptCommand | null>(null)
+
+// Pré-chargement des captions de membres en arrière-plan (indicateur discret)
+const prefetchDone = ref(0)
+const prefetchTotal = ref(0)
+const prefetching = computed(() => prefetchTotal.value > 0 && prefetchDone.value < prefetchTotal.value)
+function runPrefetch(text: string) {
+  prefetchDone.value = 0
+  prefetchTotal.value = 0
+  void prefetchMemberCaptions(text, (done, total) => {
+    prefetchDone.value = done
+    prefetchTotal.value = total
+  })
+}
 const graph = ref<DependencyGraph | null>(null)
 const graphLoading = ref(false)
 
@@ -297,7 +310,7 @@ async function load(refresh = false) {
     script.value = await api.script(store.cube, refresh)
     ensureEditor()
     if (!isProject.value) setEditorText(script.value.fullText, true)
-    void prefetchMemberCaptions(script.value.fullText) // captions en arrière-plan (survol instantané)
+    runPrefetch(script.value.fullText) // captions en arrière-plan (survol instantané)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     script.value = null
@@ -376,7 +389,8 @@ async function openProject(path?: string) {
     openPath.value = p
     ensureEditor()
     setEditorText(proj.fullText, !proj.canEdit)
-    void prefetchMemberCaptions(proj.fullText) // captions en arrière-plan (survol instantané)
+    toast.add({ severity: 'success', summary: t('project.opened', { cube: proj.cubeName }), life: 3000 })
+    runPrefetch(proj.fullText) // captions en arrière-plan (survol instantané)
     calcProps.value = []
     if (proj.canEdit) void loadCalcProps(p)
   } catch (e) {
@@ -685,6 +699,9 @@ onBeforeUnmount(() => {
           :title="t('rename.button')" @click="openRename" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
+        <span v-if="prefetching" class="script-prefetch" :title="t('script.prefetchTitle')">
+          <i class="pi pi-spin pi-spinner" />{{ t('script.prefetch', { done: prefetchDone, total: prefetchTotal }) }}
+        </span>
       </div>
       <Message v-if="isProject && !project!.canEdit" severity="warn" class="script-msg">
         {{ t('project.readOnly', { reason: project!.readOnlyReason ?? '' }) }}
@@ -920,6 +937,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.25rem;
   padding: 0.3rem 0.5rem;
+}
+.script-prefetch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--p-text-muted-color);
+  white-space: nowrap;
 }
 .script-filter {
   flex: 1;
