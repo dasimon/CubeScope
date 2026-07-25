@@ -18,6 +18,7 @@ import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
 import { marked } from 'marked'
 import { monaco } from '../monaco-mdx'
+import { prefetchMemberCaptions } from '../mdx-completion'
 import {
   api,
   type CalculationProp,
@@ -296,6 +297,7 @@ async function load(refresh = false) {
     script.value = await api.script(store.cube, refresh)
     ensureEditor()
     if (!isProject.value) setEditorText(script.value.fullText, true)
+    void prefetchMemberCaptions(script.value.fullText) // captions en arrière-plan (survol instantané)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     script.value = null
@@ -374,6 +376,7 @@ async function openProject(path?: string) {
     openPath.value = p
     ensureEditor()
     setEditorText(proj.fullText, !proj.canEdit)
+    void prefetchMemberCaptions(proj.fullText) // captions en arrière-plan (survol instantané)
     calcProps.value = []
     if (proj.canEdit) void loadCalcProps(p)
   } catch (e) {

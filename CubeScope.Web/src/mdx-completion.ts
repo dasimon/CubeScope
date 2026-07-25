@@ -203,10 +203,15 @@ function buildRefLookup(): Map<string, RefEntry> {
   return map
 }
 
-/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé
- *  et les qualificateurs de clé de membre `.&[clé]` (ex. …[Niveau].&[Clé]). */
+// Motif d'une chaîne de référence : segments [..] reliés par "." / ".&" / "&" collé (clé
+// composite &[k1]&[k2]), avec ]] échappé. Nouvelle instance à chaque usage (flag g = stateful).
+const REF_PATTERN =
+  String.raw`\[(?:[^\]]|\]\])*\](?:\s*\.\s*&?\s*\[(?:[^\]]|\]\])*\]|&\s*\[(?:[^\]]|\]\])*\])*`
+
+/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé,
+ *  les qualificateurs de clé `.&[clé]` et les clés composites `&[k1]&[k2]`. */
 function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
-  const re = /\[(?:[^\]]|\]\])*\](?:\s*\.\s*&?\s*\[(?:[^\]]|\]\])*\])*/g
+  const re = new RegExp(REF_PATTERN, 'g')
   const col0 = column - 1
   let m: RegExpExecArray | null
   while ((m = re.exec(line)) !== null) {
@@ -248,3 +253,35 @@ monaco.languages.registerHoverProvider('mdx', {
     }
   },
 })
+
+/**
+ * Pré-charge en arrière-plan les captions des membres référencés dans un script (throttlé,
+ * non bloquant) pour des survols instantanés. Extrait les références « membre » (clé &[…] ou
+ * ≥3 segments crochetés, hors métadonnées déjà résolues), dédupliquées et plafonnées, puis
+ * lookup ciblé en parallèle (concurrence limitée). Best effort : les échecs sont ignorés.
+ */
+export async function prefetchMemberCaptions(scriptText: string): Promise<void> {
+  if (!store.cube || !store.cubeMeta) return
+  const lookup = buildRefLookup()
+  const re = new RegExp(REF_PATTERN, 'g')
+  const seen = new Set<string>()
+  const refs: string[] = []
+  const MAX = 1000
+  let m: RegExpExecArray | null
+  while ((m = re.exec(scriptText)) !== null) {
+    const norm = normalizeRef(m[0])
+    if (seen.has(norm)) continue
+    seen.add(norm)
+    if (lookup.has(norm) || captionCache.has(norm)) continue
+    const isMember = norm.includes('&[') || (norm.match(/\[/g)?.length ?? 0) >= 3
+    if (!isMember) continue
+    refs.push(norm)
+    if (refs.length >= MAX) break
+  }
+  const CONCURRENCY = 6
+  let i = 0
+  const worker = async () => {
+    while (i < refs.length) await resolveMemberCaption(refs[i++])
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
+}
