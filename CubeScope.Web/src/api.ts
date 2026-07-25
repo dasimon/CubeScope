@@ -142,6 +142,11 @@ export const api = {
       'GET',
       `/api/metadata/members?cube=${encodeURIComponent(cube)}&hierarchy=${encodeURIComponent(hierarchy)}`,
     ),
+  memberCaption: (cube: string, name: string) =>
+    request<{ caption: string | null }>(
+      'GET',
+      `/api/metadata/member?cube=${encodeURIComponent(cube)}&name=${encodeURIComponent(name)}`,
+    ),
   statsStatus: () => request<StatsStatus>('GET', '/api/stats/status'),
   profilerStatus: () => request<StatsStatus>('GET', '/api/profiler/status'),
   profilerHistory: () => request<ProfileRun[]>('GET', '/api/profiler/history'),

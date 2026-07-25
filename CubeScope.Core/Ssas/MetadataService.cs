@@ -79,6 +79,28 @@ public sealed class MetadataService(SsasSession session)
     }
 
     private readonly ConcurrentDictionary<string, IReadOnlyList<MemberMeta>> _memberCache = new();
+    private readonly ConcurrentDictionary<string, string?> _captionCache = new();
+
+    /// <summary>
+    /// Caption d'UN membre par son unique name (lookup ciblé MDSCHEMA_MEMBERS filtré sur
+    /// MEMBER_UNIQUE_NAME). Fonctionne pour n'importe quel membre indépendamment de la taille
+    /// de la dimension — contrairement à GetMembersAsync (plafonné à 1000). Null si introuvable.
+    /// </summary>
+    public async Task<string?> GetMemberCaptionAsync(string cube, string memberUniqueName, CancellationToken ct = default)
+    {
+        string key = $"c|{session.Server}|{session.Catalog}|{cube}|{memberUniqueName}";
+        if (_captionCache.TryGetValue(key, out var cached)) return cached;
+
+        var t = await session.ExecuteDmvAsync($"""
+            SELECT [MEMBER_CAPTION]
+            FROM $SYSTEM.MDSCHEMA_MEMBERS
+            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
+              AND [MEMBER_UNIQUE_NAME] = '{memberUniqueName.Replace("'", "''")}'
+            """, ct);
+        string? caption = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
+        _captionCache[key] = caption;
+        return caption;
+    }
 
     /// <summary>Construction pure du DTO à partir des rowsets (testable sans serveur).</summary>
     internal static CubeMeta Build(string cube, DataTable measures, DataTable dimensions,

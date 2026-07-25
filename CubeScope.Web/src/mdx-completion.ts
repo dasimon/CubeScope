@@ -22,6 +22,7 @@ const FUNCTION_SUGGESTIONS = [
 
 // Cache client des membres par hiérarchie (le serveur cache aussi — double filet assumé)
 const memberCache = new Map<string, MemberMeta[]>()
+const captionCache = new Map<string, string | null>() // unique name → caption (survol)
 
 async function membersOf(hierarchy: string): Promise<MemberMeta[]> {
   if (!store.cube) return []
@@ -36,9 +37,10 @@ async function membersOf(hierarchy: string): Promise<MemberMeta[]> {
   }
 }
 
-/** Vide le cache membres (changement de catalogue/cube). */
+/** Vide les caches (changement de catalogue/cube). */
 export function resetCompletionCache(): void {
   memberCache.clear()
+  captionCache.clear()
 }
 
 function suggestion(
@@ -162,27 +164,21 @@ function normalizeRef(s: string): string {
 
 /**
  * Résout un membre référencé (ex. [Dim].[Hier].[Level].&[Clé] ou [Dim].[Hier].[Nom]) vers son
- * caption : trouve la hiérarchie englobante dans les métadonnées, charge ses membres (cache
- * partagé avec l'autocomplétion) et matche par uniqueName — repli sur la clé finale &[…] si le
- * segment de niveau du script diffère de celui renvoyé par le serveur. Null si non résolu.
+ * caption via un lookup ciblé côté serveur (MDSCHEMA_MEMBERS filtré sur MEMBER_UNIQUE_NAME) :
+ * fonctionne pour N'IMPORTE QUEL membre, indépendamment de la taille de la dimension (contrairement
+ * au chargement plafonné à 1000). Résultat caché par unique name. Null si non résolu.
  */
 async function resolveMemberCaption(normRef: string): Promise<string | null> {
-  const meta = store.cubeMeta
-  if (!meta || !store.cube) return null
-  let best: string | null = null
-  for (const d of meta.dimensions)
-    for (const h of d.hierarchies) {
-      const nh = normalizeRef(h.uniqueName)
-      if (normRef.startsWith(nh + '.') && (!best || nh.length > best.length)) best = nh
-    }
-  if (!best) return null
-  const members = await membersOf(best)
-  let hit = members.find((m) => normalizeRef(m.uniqueName) === normRef)
-  if (!hit) {
-    const key = normRef.match(/&\[(?:[^\]]|\]\])*\]$/)
-    if (key) hit = members.find((m) => normalizeRef(m.uniqueName).endsWith(key[0]))
+  if (!store.cube) return null
+  if (captionCache.has(normRef)) return captionCache.get(normRef) ?? null
+  let caption: string | null = null
+  try {
+    caption = (await api.memberCaption(store.cube, normRef)).caption
+  } catch {
+    caption = null
   }
-  return hit ? hit.caption : null
+  captionCache.set(normRef, caption)
+  return caption
 }
 
 /** Table uniqueName normalisé → caption/description, construite depuis le cube courant. */

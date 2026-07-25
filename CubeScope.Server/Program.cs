@@ -507,6 +507,13 @@ api.MapGet("/metadata/cube/{cube}", async (string cube, MetadataService meta,
 api.MapGet("/metadata/members", async ([FromQuery] string cube, [FromQuery] string hierarchy,
     MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetMembersAsync(cube, hierarchy, ct: ct)));
+// Caption d'UN membre par unique name (lookup ciblé — pour le survol, indépendant du cap 1000)
+api.MapGet("/metadata/member", async ([FromQuery] string cube, [FromQuery] string name,
+    MetadataService meta, CancellationToken ct) =>
+{
+    try { return Results.Ok(new { caption = await meta.GetMemberCaptionAsync(cube, name, ct) }); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
 
 // SignalR : push des stats perfmon post-exécution (décision actée : SignalR pour ce qui streame)
 app.MapHub<StatsHub>("/hubs/stats");
