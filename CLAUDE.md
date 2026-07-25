@@ -126,6 +126,17 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
 - DMV : **crocheter toutes les colonnes** (`SELECT [HIERARCHY_UNIQUE_NAME] …`) —
   `HIERARCHY` (entre autres) est un mot réservé MDX, la requête non crochetée
   échoue en syntaxe. `CUBE_NAME`/`MEASURE_NAME` passent nus par chance.
+- **Caption d'un membre par sa clé** (survol des `…&[clé]` dans le script) : NE PAS
+  passer par `$SYSTEM.MDSCHEMA_MEMBERS`. (a) Le DMV **ne supporte pas `IN (…)`**
+  (« La syntaxe de "IN" est incorrecte »). (b) Filtrer par `MEMBER_UNIQUE_NAME`
+  seul (même avec `HIERARCHY_UNIQUE_NAME`) fait **scanner toute la dimension** →
+  gel sur une dimension titres (milliers d'ISIN). La bonne méthode = **MDX**
+  `StrToMember('[Dim].[Hier].[Niveau].&[clé]').Properties("MEMBER_CAPTION")` :
+  résolution directe par clé, zéro scan ; une seule requête résout tout un paquet
+  (`WITH MEMBER [Measures].[__capN] AS … SELECT {…} ON 0 FROM [cube]`), repli
+  membre par membre si une référence périmée fait échouer le paquet entier.
+  Cache persistant SQLite (`MemberCaption`) invalidé sur l'empreinte
+  `LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE` du cube.
 - `CELL PROPERTIES VALUE` (requêtes copiées d'Excel/SSMS) : le serveur ne renvoie
   QUE les propriétés listées → `Cell.FormattedValue` vaut **chaîne vide, pas
   null** (le `??` ne suffit pas). Toujours se replier sur `Cell.Value` quand
