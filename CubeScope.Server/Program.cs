@@ -514,6 +514,18 @@ api.MapGet("/metadata/member", async ([FromQuery] string cube, [FromQuery] strin
     try { return Results.Ok(new { caption = await meta.GetMemberCaptionAsync(cube, name, ct) }); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
+// Captions de plusieurs membres d'un coup (prefetch groupé — cache SQLite persistant)
+api.MapPost("/metadata/captions", async (CaptionsRequest req, MetadataService meta, CancellationToken ct) =>
+{
+    try { return Results.Ok(await meta.GetMemberCaptionsAsync(req.Cube, req.Names, ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+// Rafraîchissement manuel : vide le cache persistant des captions du cube
+api.MapPost("/metadata/captions/refresh", (CaptionRefreshRequest req, MetadataService meta) =>
+{
+    try { meta.InvalidateCube(req.Cube); return Results.Ok(); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
 
 // SignalR : push des stats perfmon post-exécution (décision actée : SignalR pour ce qui streame)
 app.MapHub<StatsHub>("/hubs/stats");
@@ -547,6 +559,8 @@ internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
+internal sealed record CaptionsRequest(string Cube, string[] Names);
+internal sealed record CaptionRefreshRequest(string Cube);
 internal sealed record SnippetRequest(string Name, string Mdx);
 internal sealed record RegressionSaveRequest(string Name, string Mdx, QueryResult Expected);
 internal sealed record CalcPropRequest(

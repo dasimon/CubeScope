@@ -147,6 +147,9 @@ export const api = {
       'GET',
       `/api/metadata/member?cube=${encodeURIComponent(cube)}&name=${encodeURIComponent(name)}`,
     ),
+  memberCaptions: (cube: string, names: string[]) =>
+    request<Record<string, string | null>>('POST', '/api/metadata/captions', { cube, names }),
+  refreshCaptions: (cube: string) => request<void>('POST', '/api/metadata/captions/refresh', { cube }),
   statsStatus: () => request<StatsStatus>('GET', '/api/stats/status'),
   profilerStatus: () => request<StatsStatus>('GET', '/api/profiler/status'),
   profilerHistory: () => request<ProfileRun[]>('GET', '/api/profiler/history'),

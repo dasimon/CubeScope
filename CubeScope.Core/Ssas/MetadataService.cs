@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data;
 using CubeScope.Core.Models;
+using CubeScope.Core.State;
 
 namespace CubeScope.Core.Ssas;
 
@@ -10,7 +11,7 @@ namespace CubeScope.Core.Ssas;
 /// bougent qu'au déploiement, bouton Rafraîchir côté UI pour forcer.
 /// Piège : TOUJOURS crocheter les colonnes DMV (HIERARCHY est un mot réservé MDX).
 /// </summary>
-public sealed class MetadataService(SsasSession session)
+public sealed class MetadataService(SsasSession session, StateStore store)
 {
     private readonly ConcurrentDictionary<string, CubeMeta> _cache = new();
 
@@ -79,27 +80,90 @@ public sealed class MetadataService(SsasSession session)
     }
 
     private readonly ConcurrentDictionary<string, IReadOnlyList<MemberMeta>> _memberCache = new();
-    private readonly ConcurrentDictionary<string, string?> _captionCache = new();
+
+    // Cubes dont le stamp a déjà été validé cette session (un seul aller-retour DMV par
+    // (serveur, catalogue, cube) : au premier accès on compare le stamp au cache SQLite et,
+    // s'il diffère, on invalide le cache persistant).
+    private readonly ConcurrentDictionary<string, byte> _validatedCubes = new();
+
+    /// <summary>Empreinte de version du cube (LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE) : change
+    /// quand le cube est reprocessé → sert à invalider le cache de captions. "" si pas de ligne.</summary>
+    private async Task<string> GetCubeStampAsync(string cube, CancellationToken ct)
+    {
+        var t = await session.ExecuteDmvAsync($"""
+            SELECT [LAST_SCHEMA_UPDATE], [LAST_DATA_UPDATE]
+            FROM $SYSTEM.MDSCHEMA_CUBES
+            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}' AND [CUBE_SOURCE] = 1
+            """, ct);
+        var row = t.Rows.Cast<DataRow>().FirstOrDefault();
+        if (row is null) return "";
+        string schema = row["LAST_SCHEMA_UPDATE"] is DBNull ? "" : Convert.ToString(row["LAST_SCHEMA_UPDATE"]) ?? "";
+        string data = row["LAST_DATA_UPDATE"] is DBNull ? "" : Convert.ToString(row["LAST_DATA_UPDATE"]) ?? "";
+        return $"{schema}|{data}";
+    }
 
     /// <summary>
-    /// Caption d'UN membre par son unique name (lookup ciblé MDSCHEMA_MEMBERS filtré sur
-    /// MEMBER_UNIQUE_NAME). Fonctionne pour n'importe quel membre indépendamment de la taille
-    /// de la dimension — contrairement à GetMembersAsync (plafonné à 1000). Null si introuvable.
+    /// Captions de plusieurs membres par unique name : cache persistant SQLite d'abord
+    /// (invalidé une fois par session si le cube a été reprocessé), les manquants résolus par
+    /// lookup ciblé MDSCHEMA_MEMBERS puis persistés. Valeur null pour un membre introuvable.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string?>> GetMemberCaptionsAsync(
+        string cube, IReadOnlyList<string> names, CancellationToken ct = default)
+    {
+        string server = session.Server ?? "", catalog = session.Catalog ?? "";
+        string key = $"{server}|{catalog}|{cube}";
+
+        // Validation du stamp une seule fois par (serveur, catalogue, cube) cette session.
+        if (!_validatedCubes.ContainsKey(key))
+        {
+            var stamp = await GetCubeStampAsync(cube, ct);
+            if (store.GetCaptionStamp(server, catalog, cube) != stamp)
+            {
+                store.InvalidateCubeCaptions(server, catalog, cube);
+                store.SetCaptionStamp(server, catalog, cube, stamp);
+            }
+            _validatedCubes.TryAdd(key, 0);
+        }
+
+        var cached = store.GetCachedCaptions(server, catalog, cube, names);
+        var misses = names.Where(n => !cached.ContainsKey(n)).ToList();
+
+        var found = new Dictionary<string, string>();
+        foreach (var name in misses)
+        {
+            var t = await session.ExecuteDmvAsync($"""
+                SELECT [MEMBER_CAPTION]
+                FROM $SYSTEM.MDSCHEMA_MEMBERS
+                WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
+                  AND [MEMBER_UNIQUE_NAME] = '{name.Replace("'", "''")}'
+                """, ct);
+            string? caption = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
+            if (caption is not null) found[name] = caption;
+        }
+        if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
+
+        var result = new Dictionary<string, string?>(names.Count);
+        foreach (var name in names)
+            result[name] = cached.TryGetValue(name, out var c) ? c : found.GetValueOrDefault(name);
+        return result;
+    }
+
+    /// <summary>
+    /// Caption d'UN membre par son unique name. Délègue au lookup groupé (cache SQLite persistant).
+    /// Fonctionne pour n'importe quel membre indépendamment de la taille de la dimension. Null si introuvable.
     /// </summary>
     public async Task<string?> GetMemberCaptionAsync(string cube, string memberUniqueName, CancellationToken ct = default)
     {
-        string key = $"c|{session.Server}|{session.Catalog}|{cube}|{memberUniqueName}";
-        if (_captionCache.TryGetValue(key, out var cached)) return cached;
+        var d = await GetMemberCaptionsAsync(cube, new[] { memberUniqueName }, ct);
+        return d.TryGetValue(memberUniqueName, out var c) ? c : null;
+    }
 
-        var t = await session.ExecuteDmvAsync($"""
-            SELECT [MEMBER_CAPTION]
-            FROM $SYSTEM.MDSCHEMA_MEMBERS
-            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
-              AND [MEMBER_UNIQUE_NAME] = '{memberUniqueName.Replace("'", "''")}'
-            """, ct);
-        string? caption = t.Rows.Cast<DataRow>().Select(r => (string)r["MEMBER_CAPTION"]).FirstOrDefault();
-        _captionCache[key] = caption;
-        return caption;
+    /// <summary>Vide le cache persistant de captions du cube (rafraîchissement manuel).</summary>
+    public void InvalidateCube(string cube)
+    {
+        string server = session.Server ?? "", catalog = session.Catalog ?? "";
+        store.InvalidateCubeCaptions(server, catalog, cube);
+        _validatedCubes.TryRemove($"{server}|{catalog}|{cube}", out _);
     }
 
     /// <summary>Construction pure du DTO à partir des rowsets (testable sans serveur).</summary>

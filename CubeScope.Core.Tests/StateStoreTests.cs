@@ -174,6 +174,37 @@ public class StateStoreTests : IDisposable
         Assert.Equal(id1, only.Id);
     }
 
+    [Fact]
+    public void MemberCaption_CacheStampAndInvalidate()
+    {
+        const string srv = "SSAS-SERVER", cat = "CatalogA", cube = "Portefeuilles";
+
+        // Put + read back, unknown name omitted
+        _store.PutCachedCaptions(srv, cat, cube, new Dictionary<string, string>
+        {
+            ["[Devise].[Devise].&[EUR]"] = "Euro",
+            ["[Devise].[Devise].&[USD]"] = "Dollar US",
+        });
+        var got = _store.GetCachedCaptions(srv, cat, cube, new[]
+        {
+            "[Devise].[Devise].&[EUR]", "[Devise].[Devise].&[USD]", "[Devise].[Devise].&[XXX]",
+        });
+        Assert.Equal(2, got.Count);
+        Assert.Equal("Euro", got["[Devise].[Devise].&[EUR]"]);
+        Assert.Equal("Dollar US", got["[Devise].[Devise].&[USD]"]);
+        Assert.False(got.ContainsKey("[Devise].[Devise].&[XXX]"));
+
+        // Stamp set/get round-trip
+        Assert.Null(_store.GetCaptionStamp(srv, cat, cube));
+        _store.SetCaptionStamp(srv, cat, cube, "2026-07-25|2026-07-24");
+        Assert.Equal("2026-07-25|2026-07-24", _store.GetCaptionStamp(srv, cat, cube));
+
+        // Invalidate clears both captions and stamp
+        _store.InvalidateCubeCaptions(srv, cat, cube);
+        Assert.Empty(_store.GetCachedCaptions(srv, cat, cube, new[] { "[Devise].[Devise].&[EUR]" }));
+        Assert.Null(_store.GetCaptionStamp(srv, cat, cube));
+    }
+
     public void Dispose()
     {
         _store.Dispose();

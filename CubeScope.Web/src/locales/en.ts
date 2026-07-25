@@ -121,6 +121,8 @@ const en: typeof fr = {
     unfoldAll: 'Unfold all',
     prefetch: 'captions {done}/{total}',
     prefetchTitle: 'Prefetching member captions for hover…',
+    refreshCaptions: 'Refresh member captions',
+    captionsRefreshed: 'Captions refreshed',
     exportDoc: 'Export the cube Markdown doc',
     needConnect: 'Connect to a catalog to read the script.',
     deps: 'Dependencies of {name}',

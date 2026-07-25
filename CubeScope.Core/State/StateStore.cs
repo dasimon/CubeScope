@@ -119,6 +119,118 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 6;
                 """);
         }
+        if (version < 7)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS MemberCaption (
+                    Server TEXT NOT NULL, Catalog TEXT NOT NULL, Cube TEXT NOT NULL,
+                    UniqueName TEXT NOT NULL, Caption TEXT NOT NULL,
+                    PRIMARY KEY (Server, Catalog, Cube, UniqueName)
+                );
+                CREATE TABLE IF NOT EXISTS CaptionStamp (
+                    Server TEXT NOT NULL, Catalog TEXT NOT NULL, Cube TEXT NOT NULL,
+                    Stamp TEXT NOT NULL, PRIMARY KEY (Server, Catalog, Cube)
+                );
+                PRAGMA user_version = 7;
+                """);
+        }
+    }
+
+    // --- Cache persistant des captions de membres (v7) : évite de re-DMV chaque membre
+    // référencé à chaque session. Invalidé quand le cube a été reprocessé (stamp).
+
+    /// <summary>Captions en cache pour les <paramref name="names"/> demandés (seulement ceux
+    /// trouvés). Le IN est découpé à ≤ 500 paramètres (limite de variables SQLite).</summary>
+    public IReadOnlyDictionary<string, string> GetCachedCaptions(
+        string server, string catalog, string cube, IReadOnlyCollection<string> names)
+    {
+        var result = new Dictionary<string, string>();
+        if (names.Count == 0) return result;
+        lock (_lock)
+        {
+            const int chunkSize = 500;
+            var list = names as IList<string> ?? names.ToList();
+            for (int offset = 0; offset < list.Count; offset += chunkSize)
+            {
+                int count = Math.Min(chunkSize, list.Count - offset);
+                using var cmd = _db.CreateCommand();
+                var placeholders = new string[count];
+                for (int i = 0; i < count; i++)
+                {
+                    placeholders[i] = $"$n{i}";
+                    cmd.Parameters.AddWithValue($"$n{i}", list[offset + i]);
+                }
+                cmd.CommandText =
+                    "SELECT UniqueName, Caption FROM MemberCaption " +
+                    "WHERE Server = $s AND Catalog = $c AND Cube = $cube " +
+                    $"AND UniqueName IN ({string.Join(",", placeholders)})";
+                cmd.Parameters.AddWithValue("$s", server);
+                cmd.Parameters.AddWithValue("$c", catalog);
+                cmd.Parameters.AddWithValue("$cube", cube);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) result[r.GetString(0)] = r.GetString(1);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Insère/remplace les captions fournies (une seule transaction, sous verrou).</summary>
+    public void PutCachedCaptions(
+        string server, string catalog, string cube, IReadOnlyDictionary<string, string> captions)
+    {
+        if (captions.Count == 0) return;
+        lock (_lock)
+        {
+            using var tx = _db.BeginTransaction();
+            using var cmd = _db.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                "INSERT OR REPLACE INTO MemberCaption (Server, Catalog, Cube, UniqueName, Caption) " +
+                "VALUES ($s, $c, $cube, $u, $cap)";
+            var pS = cmd.Parameters.Add("$s", SqliteType.Text);
+            var pC = cmd.Parameters.Add("$c", SqliteType.Text);
+            var pCube = cmd.Parameters.Add("$cube", SqliteType.Text);
+            var pU = cmd.Parameters.Add("$u", SqliteType.Text);
+            var pCap = cmd.Parameters.Add("$cap", SqliteType.Text);
+            pS.Value = server; pC.Value = catalog; pCube.Value = cube;
+            foreach (var (name, caption) in captions)
+            {
+                pU.Value = name;
+                pCap.Value = caption;
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+    }
+
+    public string? GetCaptionStamp(string server, string catalog, string cube)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText =
+                "SELECT Stamp FROM CaptionStamp WHERE Server = $s AND Catalog = $c AND Cube = $cube";
+            cmd.Parameters.AddWithValue("$s", server);
+            cmd.Parameters.AddWithValue("$c", catalog);
+            cmd.Parameters.AddWithValue("$cube", cube);
+            return cmd.ExecuteScalar() as string;
+        }
+    }
+
+    public void SetCaptionStamp(string server, string catalog, string cube, string stamp) =>
+        Exec("""
+            INSERT INTO CaptionStamp (Server, Catalog, Cube, Stamp) VALUES ($s, $c, $cube, $st)
+            ON CONFLICT (Server, Catalog, Cube) DO UPDATE SET Stamp = $st
+            """,
+            ("$s", server), ("$c", catalog), ("$cube", cube), ("$st", stamp));
+
+    /// <summary>Vide le cache de captions ET le stamp d'un cube (reprocessing / refresh manuel).</summary>
+    public void InvalidateCubeCaptions(string server, string catalog, string cube)
+    {
+        Exec("DELETE FROM MemberCaption WHERE Server = $s AND Catalog = $c AND Cube = $cube",
+            ("$s", server), ("$c", catalog), ("$cube", cube));
+        Exec("DELETE FROM CaptionStamp WHERE Server = $s AND Catalog = $c AND Cube = $cube",
+            ("$s", server), ("$c", catalog), ("$cube", cube));
     }
 
     public void AddRecentConnection(string server, string? catalog)

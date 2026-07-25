@@ -1,5 +1,6 @@
 using System.Data;
 using CubeScope.Core.Ssas;
+using CubeScope.Core.State;
 
 namespace CubeScope.Core.Tests;
 
@@ -91,13 +92,15 @@ public class MetadataServiceBuildTests
 public class MetadataServiceIntegrationTests : IDisposable
 {
     private readonly SsasSession _session = new();
+    private readonly StateStore _store =
+        new(Path.Combine(Path.GetTempPath(), $"cubescope-meta-{Guid.NewGuid():N}.db"));
 
     [Fact]
     public async Task GetCubeMeta_OnConfiguredCube_ReturnsRichTree()
     {
         await _session.ConnectAsync(TestTarget.Server);
         await _session.SetCatalogAsync(TestTarget.Catalog);
-        var svc = new MetadataService(_session);
+        var svc = new MetadataService(_session, _store);
 
         var cubes = await svc.GetCubesAsync();
         Assert.Contains(TestTarget.Cube, cubes);
@@ -115,7 +118,7 @@ public class MetadataServiceIntegrationTests : IDisposable
     {
         await _session.ConnectAsync(TestTarget.Server);
         await _session.SetCatalogAsync(TestTarget.Catalog);
-        var svc = new MetadataService(_session);
+        var svc = new MetadataService(_session, _store);
 
         // Préfixe = dimension de la hiérarchie configurée (1er segment de son unique name)
         string dimPrefix = TestTarget.Hierarchy[..TestTarget.Hierarchy.IndexOf('.')];
@@ -129,5 +132,9 @@ public class MetadataServiceIntegrationTests : IDisposable
         Assert.Same(members, again);
     }
 
-    public void Dispose() => _session.Dispose();
+    public void Dispose()
+    {
+        _session.Dispose();
+        _store.Dispose();
+    }
 }

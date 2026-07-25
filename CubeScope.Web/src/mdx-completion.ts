@@ -43,6 +43,11 @@ export function resetCompletionCache(): void {
   captionCache.clear()
 }
 
+/** Vide uniquement le cache client des captions (rafraîchissement manuel des libellés). */
+export function clearCaptionCache(): void {
+  captionCache.clear()
+}
+
 function suggestion(
   label: string,
   insertText: string,
@@ -287,15 +292,27 @@ export async function prefetchMemberCaptions(
   const total = refs.length
   onProgress?.(0, total)
   if (total === 0) return
-  // Concurrence volontairement basse (3) : le navigateur plafonne ~6 connexions par hôte —
-  // en laisser pour l'UI, et ne pas marteler SSAS. Best effort, les échecs sont ignorés.
-  const CONCURRENCY = 3
-  let i = 0
+  // Lookup GROUPÉ : au lieu de ~400 appels HTTP unitaires, on découpe en tranches de 150 et
+  // on résout chaque tranche en un seul POST. Concurrence basse (2) : laisser des connexions
+  // à l'UI et ne pas marteler SSAS. Best effort, les échecs sont ignorés.
+  const CHUNK = 150
+  const CONCURRENCY = 2
+  const cube = store.cube
+  const chunks: string[][] = []
+  for (let c = 0; c < refs.length; c += CHUNK) chunks.push(refs.slice(c, c + CHUNK))
+  let ci = 0
   let done = 0
   const worker = async () => {
-    while (i < refs.length) {
-      await resolveMemberCaption(refs[i++])
-      onProgress?.(++done, total)
+    while (ci < chunks.length) {
+      const chunk = chunks[ci++]
+      try {
+        const res = await api.memberCaptions(cube, chunk)
+        for (const name of chunk) captionCache.set(name, res[name] ?? null)
+      } catch {
+        // échec de la tranche : on ne cache rien, résolution à la demande au survol
+      }
+      done += chunk.length
+      onProgress?.(done, total)
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))

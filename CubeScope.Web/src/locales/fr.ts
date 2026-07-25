@@ -119,6 +119,8 @@ export default {
     unfoldAll: 'Tout déplier',
     prefetch: 'libellés {done}/{total}',
     prefetchTitle: 'Pré-chargement des libellés de membres pour le survol…',
+    refreshCaptions: 'Rafraîchir les libellés de membres',
+    captionsRefreshed: 'Libellés rafraîchis',
     exportDoc: 'Exporter la doc Markdown du cube',
     needConnect: 'Connecte-toi à un catalogue pour lire le script.',
     deps: 'Dépendances de {name}',

@@ -18,7 +18,7 @@ import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
 import { marked } from 'marked'
 import { monaco } from '../monaco-mdx'
-import { prefetchMemberCaptions } from '../mdx-completion'
+import { prefetchMemberCaptions, clearCaptionCache } from '../mdx-completion'
 import {
   api,
   type CalculationProp,
@@ -59,6 +59,20 @@ function runPrefetch(text: string) {
     prefetchDone.value = done
     prefetchTotal.value = total
   })
+}
+
+// Rafraîchit les libellés de membres : vide le cache persistant serveur (le cube a pu être
+// reprocessé) + le cache client, puis relance le pré-chargement groupé sur le script courant.
+async function refreshCaptions() {
+  if (!store.cube) return
+  try {
+    await api.refreshCaptions(store.cube)
+  } catch {
+    /* best effort : le cache serveur se revalidera de toute façon au prochain stamp */
+  }
+  clearCaptionCache()
+  runPrefetch(fullScriptText.value)
+  toast.add({ severity: 'success', summary: t('script.captionsRefreshed'), life: 3000 })
 }
 const graph = ref<DependencyGraph | null>(null)
 const graphLoading = ref(false)
@@ -700,6 +714,7 @@ onBeforeUnmount(() => {
           :disabled="!project?.canEdit" :title="t('project.deploy')" @click="showDeployDialog" />
         <Button v-if="canRename" icon="pi pi-pencil" text size="small" :label="t('rename.button')"
           :title="t('rename.button')" @click="openRename" />
+        <Button v-if="store.cube" icon="pi pi-sync" text size="small" :title="t('script.refreshCaptions')" @click="refreshCaptions" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
       </div>
