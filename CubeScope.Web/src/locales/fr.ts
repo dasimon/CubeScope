@@ -115,6 +115,8 @@ export default {
   },
   script: {
     reload: 'Recharger le script',
+    foldAll: 'Tout replier',
+    unfoldAll: 'Tout déplier',
     exportDoc: 'Exporter la doc Markdown du cube',
     needConnect: 'Connecte-toi à un catalogue pour lire le script.',
     deps: 'Dépendances de {name}',

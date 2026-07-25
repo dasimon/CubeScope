@@ -117,6 +117,8 @@ const en: typeof fr = {
   },
   script: {
     reload: 'Reload the script',
+    foldAll: 'Fold all',
+    unfoldAll: 'Unfold all',
     exportDoc: 'Export the cube Markdown doc',
     needConnect: 'Connect to a catalog to read the script.',
     deps: 'Dependencies of {name}',

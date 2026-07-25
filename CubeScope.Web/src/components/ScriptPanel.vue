@@ -278,6 +278,13 @@ function ensureEditor() {
   })
 }
 
+function foldAll() {
+  void editor?.getAction('editor.foldAll')?.run()
+}
+function unfoldAll() {
+  void editor?.getAction('editor.unfoldAll')?.run()
+}
+
 function setEditorText(text: string, readOnly: boolean) {
   suppressDirty = true
   editor?.updateOptions({ readOnly })
@@ -590,6 +597,8 @@ onBeforeUnmount(() => {
     <div class="script-side">
       <div class="script-bar">
         <InputText v-model="filter" :placeholder="t('common.filter')" size="small" class="script-filter" />
+        <Button icon="pi pi-angle-double-up" text size="small" :title="t('script.foldAll')" @click="foldAll" />
+        <Button icon="pi pi-angle-double-down" text size="small" :title="t('script.unfoldAll')" @click="unfoldAll" />
         <Button icon="pi pi-folder-open" text size="small" :title="t('project.open')" @click="showOpenDialog" />
         <Button v-if="isProject" icon="pi pi-save" text size="small" :disabled="!dirty || !project?.canEdit"
           :loading="saving" :title="dirty ? t('project.dirty') : t('project.save')" @click="saveProject" />
