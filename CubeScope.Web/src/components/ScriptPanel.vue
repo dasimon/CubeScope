@@ -49,6 +49,9 @@ const selected = ref<ScriptCommand | null>(null)
 const prefetchDone = ref(0)
 const prefetchTotal = ref(0)
 const prefetching = computed(() => prefetchTotal.value > 0 && prefetchDone.value < prefetchTotal.value)
+const prefetchPercent = computed(() =>
+  prefetchTotal.value ? Math.round((prefetchDone.value / prefetchTotal.value) * 100) : 0,
+)
 function runPrefetch(text: string) {
   prefetchDone.value = 0
   prefetchTotal.value = 0
@@ -699,9 +702,13 @@ onBeforeUnmount(() => {
           :title="t('rename.button')" @click="openRename" />
         <Button v-if="!isProject" icon="pi pi-refresh" text size="small" :title="t('script.reload')" :loading="loading" @click="load(true)" />
         <Button v-if="!isProject" icon="pi pi-download" text size="small" :title="t('script.exportDoc')" :disabled="!script" @click="exportDoc" />
-        <span v-if="prefetching" class="script-prefetch" :title="t('script.prefetchTitle')">
-          <i class="pi pi-spin pi-spinner" />{{ t('script.prefetch', { done: prefetchDone, total: prefetchTotal }) }}
-        </span>
+      </div>
+      <div
+        v-if="prefetching"
+        class="script-prefetch-bar"
+        :title="t('script.prefetchTitle') + ' ' + t('script.prefetch', { done: prefetchDone, total: prefetchTotal }) + ' (' + prefetchPercent + '%)'"
+      >
+        <div class="script-prefetch-fill" :style="{ width: prefetchPercent + '%' }" />
       </div>
       <Message v-if="isProject && !project!.canEdit" severity="warn" class="script-msg">
         {{ t('project.readOnly', { reason: project!.readOnlyReason ?? '' }) }}
@@ -938,13 +945,15 @@ onBeforeUnmount(() => {
   gap: 0.25rem;
   padding: 0.3rem 0.5rem;
 }
-.script-prefetch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.72rem;
-  color: var(--p-text-muted-color);
-  white-space: nowrap;
+.script-prefetch-bar {
+  height: 3px;
+  background: var(--p-surface-700);
+  overflow: hidden;
+}
+.script-prefetch-fill {
+  height: 100%;
+  background: var(--p-primary-color);
+  transition: width 0.2s ease;
 }
 .script-filter {
   flex: 1;
