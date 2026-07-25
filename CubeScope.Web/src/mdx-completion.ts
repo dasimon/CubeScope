@@ -284,8 +284,10 @@ export async function prefetchMemberCaptions(
     if (seen.has(norm)) continue
     seen.add(norm)
     if (lookup.has(norm) || captionCache.has(norm)) continue
-    const isMember = norm.includes('&[') || (norm.match(/\[/g)?.length ?? 0) >= 3
-    if (!isMember) continue
+    // Uniquement les membres à clé &[…] : ce sont ceux qu'on veut (portefeuilles, titres,
+    // notations…). Les refs par nom/niveau ([Dim].[Hier].[Level]) sont souvent des niveaux ou
+    // des fragments d'expression qui font échouer StrToMember — elles se résolvent au survol.
+    if (!norm.includes('&[')) continue
     refs.push(norm)
     if (refs.length >= MAX) break
   }

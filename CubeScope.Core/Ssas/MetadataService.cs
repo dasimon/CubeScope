@@ -143,26 +143,21 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     {
         string server = session.Server ?? "", catalog = session.Catalog ?? "";
         string key = $"{server}|{catalog}|{cube}";
-        Console.WriteLine($"[cap] START cube={cube} names={names.Count} validated={_validatedCubes.ContainsKey(key)}");
 
         // Validation du stamp une seule fois par (serveur, catalogue, cube) cette session.
         if (!_validatedCubes.ContainsKey(key))
         {
-            Console.WriteLine("[cap] stamp DMV (MDSCHEMA_CUBES)…");
             var stamp = await GetCubeStampAsync(cube, ct);
-            Console.WriteLine($"[cap] stamp='{stamp}'");
             if (store.GetCaptionStamp(server, catalog, cube) != stamp)
             {
                 store.InvalidateCubeCaptions(server, catalog, cube);
                 store.SetCaptionStamp(server, catalog, cube, stamp);
             }
             _validatedCubes.TryAdd(key, 0);
-            Console.WriteLine("[cap] stamp validated");
         }
 
         var cached = store.GetCachedCaptions(server, catalog, cube, names);
         var misses = names.Where(n => !cached.ContainsKey(n)).ToList();
-        Console.WriteLine($"[cap] cache hits={cached.Count} misses={misses.Count}");
 
         var found = new Dictionary<string, string>();
         // Résolution par MDX `.Properties("MEMBER_CAPTION")` : résout chaque membre DIRECTEMENT
@@ -174,23 +169,18 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         for (int off = 0; off < misses.Count; off += mdxChunk)
         {
             var slice = misses.Skip(off).Take(mdxChunk).ToList();
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            Console.WriteLine($"[cap] MDX captions x{slice.Count}…");
             try
             {
                 foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, slice, ct)) found[kv.Key] = kv.Value;
-                Console.WriteLine($"[cap] MDX done {sw.ElapsedMilliseconds}ms found+={found.Count}");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[cap] MDX bulk failed ({ex.Message}) → membre/membre");
                 foreach (var name in slice)
                     try { foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, new[] { name }, ct)) found[kv.Key] = kv.Value; }
                     catch { /* membre invalide (référence périmée) : ignoré */ }
             }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
-        Console.WriteLine($"[cap] END found={found.Count} total_returned={names.Count}");
 
         var result = new Dictionary<string, string?>(names.Count);
         foreach (var name in names)

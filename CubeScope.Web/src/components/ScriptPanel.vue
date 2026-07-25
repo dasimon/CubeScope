@@ -48,17 +48,21 @@ const selected = ref<ScriptCommand | null>(null)
 // Pré-chargement des captions de membres en arrière-plan (indicateur discret)
 const prefetchDone = ref(0)
 const prefetchTotal = ref(0)
-const prefetching = computed(() => prefetchTotal.value > 0 && prefetchDone.value < prefetchTotal.value)
+const prefetchActive = ref(false)
+const prefetching = computed(() => prefetchActive.value && prefetchTotal.value > 0)
 const prefetchPercent = computed(() =>
   prefetchTotal.value ? Math.round((prefetchDone.value / prefetchTotal.value) * 100) : 0,
 )
 function runPrefetch(text: string) {
   prefetchDone.value = 0
   prefetchTotal.value = 0
-  void prefetchMemberCaptions(text, (done, total) => {
+  prefetchActive.value = true
+  // Le pré-chargement est très rapide (MDX direct) : on laisse la barre visible ~1 s à la fin
+  // pour un retour visuel, sinon elle disparaît avant qu'on la voie.
+  prefetchMemberCaptions(text, (done, total) => {
     prefetchDone.value = done
     prefetchTotal.value = total
-  })
+  }).finally(() => setTimeout(() => (prefetchActive.value = false), 1000))
 }
 
 // Rafraîchit les libellés de membres : vide le cache persistant serveur (le cube a pu être
