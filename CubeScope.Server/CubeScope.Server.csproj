@@ -11,6 +11,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Décision actée : un seul exécutable "cubescope.exe" -->
     <AssemblyName>cubescope</AssemblyName>
+    <!-- Icône exe = même identité visuelle que favicon.svg (cube émeraude isométrique). -->
+    <ApplicationIcon>cubescope.ico</ApplicationIcon>
     <!-- Embarque AUSSI les DLL natives (e_sqlite3, msalruntime…) dans l'exe et les
          auto-extrait au démarrage → l'exe seul suffit (sinon SQLite/historique plante
          une fois l'exe déplacé sans ses DLL voisines). -->
