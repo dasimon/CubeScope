@@ -18,7 +18,7 @@ import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
 import { marked } from 'marked'
 import { monaco } from '../monaco-mdx'
-import { prefetchMemberCaptions, clearCaptionCache } from '../mdx-completion'
+import { prefetchMemberCaptions, clearCaptionCache, normalizeRef } from '../mdx-completion'
 import {
   api,
   type CalculationProp,
@@ -675,6 +675,29 @@ watch(
     if (c && !isProject.value) void load()
   },
   { immediate: true },
+)
+
+// « Aller à la définition » demandé depuis l'éditeur MDX (F12). L'onglet est activé par
+// App.vue ; ici on charge le script au besoin, puis on se positionne sur la commande.
+watch(
+  () => store.gotoDefinitionRevision,
+  async () => {
+    const target = normalizeRef(store.gotoDefinition)
+    if (!target) return
+    if (!script.value && !isProject.value) await load()
+
+    const cmd = commands.value.find((c) => normalizeRef(c.name) === target)
+    if (!cmd) {
+      toast.add({
+        severity: 'warn',
+        summary: t('editor.definitionNotFound', { name: target }),
+        life: 5000,
+      })
+      return
+    }
+    filter.value = '' // sinon la commande visée peut être masquée par le filtre courant
+    await select(cmd)
+  },
 )
 
 function exportDoc() {

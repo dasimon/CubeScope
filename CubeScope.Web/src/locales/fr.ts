@@ -168,6 +168,8 @@ export default {
   },
   editor: {
     defaultComment: 'CubeScope : exécuter avec F5 ou Ctrl+Entrée',
+    gotoDefinition: 'Aller à la définition (MDX Script)',
+    definitionNotFound: "Aucune définition dans le MDX Script pour {name} — mesure physique, ou script non chargé pour ce cube.",
   },
   project: {
     open: 'Ouvrir un projet SSDT',

@@ -163,7 +163,7 @@ interface RefEntry {
 }
 
 /** "[Measures] . [X]" → "[Measures].[X]" ; gère aussi la clé "] . & [" → "].&[". */
-function normalizeRef(s: string): string {
+export function normalizeRef(s: string): string {
   return s.replace(/\]\s*\.\s*(&?)\s*\[/g, (_m, amp) => '].' + amp + '[')
 }
 
@@ -215,7 +215,7 @@ const REF_PATTERN =
 
 /** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé,
  *  les qualificateurs de clé `.&[clé]` et les clés composites `&[k1]&[k2]`. */
-function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
+export function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
   const re = new RegExp(REF_PATTERN, 'g')
   const col0 = column - 1
   let m: RegExpExecArray | null

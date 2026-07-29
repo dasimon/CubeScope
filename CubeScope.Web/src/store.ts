@@ -52,6 +52,11 @@ export const store = reactive({
   selectedMdx: '', // sélection courante dans Monaco ; non vide → exécutée en priorité sur store.mdx
   insertText: '', // texte à insérer au curseur (explorateur)
   insertRevision: 0,
+  // « Aller à la définition » : point de rendez-vous entre l'éditeur MDX et le panneau Script,
+  // qui vivent dans deux racines dockview distinctes. La révision permet de redemander deux
+  // fois de suite la MÊME définition (sinon le watch ne se redéclencherait pas).
+  gotoDefinition: '' as string,
+  gotoDefinitionRevision: 0,
   running: false,
   result: null as QueryResult | null,
   queryError: '',
@@ -88,6 +93,12 @@ let aiAbort: AbortController | null = null
 let resultSeq = 0 // compteur monotone d'onglets de résultats (pas de Date.now/Math.random)
 
 export const actions = {
+  /** Demande au panneau Script de se positionner sur la définition d'un membre/set calculé. */
+  requestDefinition(name: string): void {
+    store.gotoDefinition = name
+    store.gotoDefinitionRevision++
+  },
+
   async loadRecent(): Promise<void> {
     try {
       store.recent = await api.recent()

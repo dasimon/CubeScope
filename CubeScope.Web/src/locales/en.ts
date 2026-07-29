@@ -170,6 +170,8 @@ const en: typeof fr = {
   },
   editor: {
     defaultComment: 'CubeScope: execute with F5 or Ctrl+Enter',
+    gotoDefinition: 'Go to definition (MDX Script)',
+    definitionNotFound: 'No definition in the MDX Script for {name} — physical measure, or script not loaded for this cube.',
   },
   project: {
     open: 'Open an SSDT project',

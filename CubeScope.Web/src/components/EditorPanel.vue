@@ -2,9 +2,14 @@
 // Panneau éditeur MDX (Monaco). store.mdx est la source de vérité ;
 // mdxRevision signale un remplacement externe (chargement depuis l'historique).
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { monaco } from '../monaco-mdx'
-import '../mdx-completion' // enregistre le provider d'autocomplétion (effet de bord)
+// L'import nommé suffit à charger le module, qui enregistre au passage les providers
+// d'autocomplétion et de survol (effet de bord).
+import { normalizeRef, refAtColumn } from '../mdx-completion'
 import { actions, store } from '../store'
+
+const { t } = useI18n()
 
 const host = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -32,6 +37,25 @@ onMounted(() => {
   // Exécution : Ctrl+Entrée et F5 (le F5 navigateur est intercepté au niveau app)
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void actions.run())
   editor.addCommand(monaco.KeyCode.F5, () => void actions.run())
+
+  // Aller à la définition : saute au CREATE MEMBER / SET du MDX Script. Ce n'est pas un
+  // DefinitionProvider Monaco (F12 natif), car la cible est un AUTRE éditeur, dans un autre
+  // panneau dockview — un provider doit renvoyer une position du modèle courant.
+  editor.addAction({
+    id: 'mdx.gotoDefinition',
+    label: t('editor.gotoDefinition'),
+    keybindings: [monaco.KeyCode.F12],
+    contextMenuGroupId: 'navigation',
+    contextMenuOrder: 1,
+    run: (ed) => {
+      const position = ed.getPosition()
+      const model = ed.getModel()
+      if (!position || !model) return
+      const ref = refAtColumn(model.getLineContent(position.lineNumber), position.column)
+      if (!ref) return
+      actions.requestDefinition(normalizeRef(ref.text))
+    },
+  })
 })
 
 // Remplacement externe du MDX (historique) sans boucle de réédition

@@ -136,6 +136,13 @@ watch(locale, () => {
   for (const [id, key] of PANELS) dvApi.value?.getPanel(id)?.api.setTitle(t(key))
 })
 
+// « Aller à la définition » : le layout appartient à cette coquille, la navigation dans le
+// script appartient à ScriptPanel — chacun réagit au même signal de son côté.
+watch(
+  () => store.gotoDefinitionRevision,
+  () => dvApi.value?.getPanel('script')?.api.setActive(),
+)
+
 async function onCatalogChange(catalog: string) {
   await actions.setCatalog(catalog)
 }
