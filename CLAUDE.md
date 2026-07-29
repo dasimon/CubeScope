@@ -142,6 +142,14 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   null** (le `??` ne suffit pas). Toujours se replier sur `Cell.Value` quand
   FormattedValue est null OU vide (fait dans `CellSetMapper.CellValue`), sinon
   la grille affiche des colonnes vides alors que les données sont là.
+- **Cellule en erreur** : XMLA renvoie `<Cell><Value><Error><Description>…`, et ADOMD
+  relaie cette Description en `AdomdErrorResponseException` levée sur `Cell.Value`
+  **ET** `Cell.FormattedValue` **ET** les `CellProperties` `VALUE`/`FORMATTED_VALUE`
+  (vérifié sur un cube réel — aucun accesseur ne rend l'erreur sans lever). Ne jamais
+  avaler l'exception : `CellSetMapper.CellValue` garde `ex.Message` et `Build` l'écrit
+  sous une clé jumelle `v{c}__err` dans la ligne (pas de changement du modèle ni de la
+  sérialisation ; l'export CSV/TSV n'itère que sur `Columns` et l'ignore). La grille
+  affiche `#Erreur` en rouge, message en infobulle et au clic.
 - `CellSet` : `axis.Set.Hierarchies` déclenche une résolution paresseuse d'objets
   schéma qui peut échouer (`ArgumentException "Impossible de trouver l'objet
   [Dimension].[Membre]"`, constaté sur un cube réel) alors que positions/cellules
@@ -213,12 +221,38 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
 
 ## Statut
 
+**Roadmap terminée, produit en usage quotidien.** Publié sur
+`github.com/dasimon/CubeScope`, versions taguées jusqu'à **v0.10.0** (chaque tag
+déclenche la Release GitHub Actions). Historique détaillé et daté de chaque
+évolution : `docs/PROJET.md` (source de vérité — cette section n'en est que le
+résumé).
+
 MVP livré (Phases 1–5) : connexion + éditeur Monaco + exécution + grille ;
 explorateur de métadonnées, autocomplétion, stats perfmon, ClearCache,
 historique ; panneau IA (API Anthropic, `claude-opus-4-8`) ; MDX Script +
 graphe de dépendances + doc Markdown exportable ; publication GitHub (MIT,
 CI + Release GitHub Actions). Extras post-MVP : **Profiler** (découpage
 Formula/Storage Engine par requête via trace SSAS), **i18n FR/EN**.
+
+Livré ensuite (v0.2 → v0.10), par thème :
+
+- **Productivité éditeur** : export CSV/presse-papiers, bibliothèque de snippets,
+  scaffold de membre calculé, exécution de la sélection, onglets de résultats,
+  drillthrough, signatures de fonctions, recherche dans le script, renommage de
+  membre (`MemberRenamer`), pliage structurel `{ }` / `( )` / SCOPE.
+- **Métadonnées au survol** : hover résolvant une référence mesure/membre vers sa
+  caption + description, y compris les clés `&[clé]` et les clés composites, avec
+  préchargement progressif et **cache SQLite persistant** invalidé sur l'empreinte
+  du cube. Descriptions de mesures dans l'explorateur et l'autocomplétion.
+- **Mode projet SSDT** (détaillé ci-dessous) : navigateur de fichiers `.cube`,
+  édition des `CalculationProperty`, diff Monaco côte à côte au déploiement.
+- **Analyse** : harnais de non-régression MDX (requêtes de référence, ré-exécution,
+  diff), analyse d'impact d'un changement (diff de versions de script + impact
+  aval), historique de runs du Profiler avec comparaison avant/après.
+- **IA** : « Expliquer ce calcul » (traceur de membre calculé), « Optimiser
+  (profil) » adossé aux chiffres réels du profil d'exécution (FE/SE, sous-cubes,
+  hits), génération **NL → MDX** ancrée dans les métadonnées du cube, et
+  **providers alternatifs compatibles OpenAI** en plus de l'API Anthropic.
 
 **Mode projet SSDT : TERMINÉ (2026-07-24)** — ouverture/édition du fichier
 `.cube` d'un projet SSDT Multidimensional (`CubeProjectService`,
@@ -232,8 +266,10 @@ calculé disparu — signalé, jamais supprimé automatiquement). Déploiement d
 script seul vers un cube de dev via AMO façon BIDS Helper
 (`ScriptDeployService`) avec garde de divergence (compare serveur vs projet,
 refuse sans `force` si différent) et garde catalogue dev (nom contenant
-« dev »). StateStore v2 (`RecentProject(Path, LastUsedUtc)`,
-`PRAGMA user_version = 2`).
+« dev »). ⚠️ La garde catalogue dev est **uniquement côté UI** (`ScriptPanel.vue`) :
+`ScriptDeployService.Deploy` n'a que la garde de divergence, un appel direct à
+l'API la contourne. Écart assumé tant que le produit reste à usage perso.
+StateStore v2 (`RecentProject(Path, LastUsedUtc)`, `PRAGMA user_version = 2`).
 
 `cubescope.exe` est un single-file self-contained : SPA et DLL natives sont
 embarquées dans l'assembly (voir `EmbeddedSpaFileProvider` + la cible `EmbedSpa`
