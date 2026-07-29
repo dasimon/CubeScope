@@ -11,7 +11,7 @@ namespace CubeScope.Core.Tests;
 /// </summary>
 public class BrowserLifetimeTests
 {
-    private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(60);
+    private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(50);
 
     private static (BrowserLifetime Sut, FakeLifetime Host) Create(bool enabled = true)
     {
@@ -20,8 +20,27 @@ public class BrowserLifetimeTests
         return (sut, host);
     }
 
-    /// <summary>Laisse passer le délai de grâce, avec de la marge pour l'ordonnanceur.</summary>
-    private static Task WaitPastGrace() => Task.Delay(Grace * 6);
+    /// <summary>
+    /// Attend l'arrêt au lieu de dormir une durée fixe : sous un pool de threads saturé (CI),
+    /// la continuation du délai de grâce peut être replanifiée bien après son échéance — un
+    /// simple sleep rendait le test instable sans qu'aucun bug ne soit en cause.
+    /// </summary>
+    private static async Task AssertStopsAsync(FakeLifetime host)
+    {
+        var stopped = await Task.WhenAny(host.Stopping, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.True(stopped == host.Stopping, "L'arrêt n'a pas été déclenché dans les 10 s.");
+    }
+
+    /// <summary>
+    /// Laisse largement passer le délai de grâce et vérifie que rien ne s'est déclenché.
+    /// Ce sens-là ne souffre pas de la lenteur : une annulation est posée avant toute attente,
+    /// un ordonnancement tardif ne peut donc pas faire apparaître un arrêt.
+    /// </summary>
+    private static async Task AssertDoesNotStopAsync(FakeLifetime host)
+    {
+        await Task.Delay(Grace * 10);
+        Assert.False(host.Stopped);
+    }
 
     [Fact]
     public async Task LastTabClosed_StopsTheApplication()
@@ -30,9 +49,8 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
 
         sut.ClientDisconnected();
-        await WaitPastGrace();
 
-        Assert.True(host.Stopped);
+        await AssertStopsAsync(host);
     }
 
     [Fact]
@@ -44,9 +62,8 @@ public class BrowserLifetimeTests
 
         sut.ClientDisconnected();
         sut.ClientConnected();
-        await WaitPastGrace();
 
-        Assert.False(host.Stopped);
+        await AssertDoesNotStopAsync(host);
     }
 
     [Fact]
@@ -57,9 +74,8 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
 
         sut.ClientDisconnected();
-        await WaitPastGrace();
 
-        Assert.False(host.Stopped);
+        await AssertDoesNotStopAsync(host);
     }
 
     [Fact]
@@ -71,9 +87,8 @@ public class BrowserLifetimeTests
 
         sut.ClientDisconnected();
         sut.ClientDisconnected();
-        await WaitPastGrace();
 
-        Assert.True(host.Stopped);
+        await AssertStopsAsync(host);
     }
 
     [Fact]
@@ -84,9 +99,8 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
 
         sut.ClientDisconnected();
-        await WaitPastGrace();
 
-        Assert.False(host.Stopped);
+        await AssertDoesNotStopAsync(host);
     }
 
     [Fact]
@@ -96,19 +110,25 @@ public class BrowserLifetimeTests
         // se couperait pendant l'ouverture du navigateur.
         var (_, host) = Create();
 
-        await WaitPastGrace();
-
-        Assert.False(host.Stopped);
+        await AssertDoesNotStopAsync(host);
     }
 
+    /// <summary>
+    /// L'arrêt est déclenché depuis le pool de threads : on l'expose en tâche plutôt qu'en
+    /// booléen, pour que le test l'attende sans sondage ni question de visibilité mémoire.
+    /// </summary>
     private sealed class FakeLifetime : IHostApplicationLifetime
     {
-        public bool Stopped { get; private set; }
+        private readonly TaskCompletionSource _stopped =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Stopping => _stopped.Task;
+        public bool Stopped => _stopped.Task.IsCompleted;
 
         public CancellationToken ApplicationStarted => CancellationToken.None;
         public CancellationToken ApplicationStopping => CancellationToken.None;
         public CancellationToken ApplicationStopped => CancellationToken.None;
 
-        public void StopApplication() => Stopped = true;
+        public void StopApplication() => _stopped.TrySetResult();
     }
 }
