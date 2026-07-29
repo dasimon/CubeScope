@@ -4,7 +4,7 @@ namespace CubeScope.Core.Tests;
 
 public class CellSetMapperTests
 {
-    private static object? Cell(int i) => $"c{i}";
+    private static CellData Cell(int i) => new($"c{i}");
 
     [Fact]
     public void ZeroAxis_SingleScalarCell()
@@ -88,6 +88,41 @@ public class CellSetMapperTests
     [InlineData("[Dim à ]]crochet].[Hier].&[K]", "Hier")]
     public void HierarchyFromUniqueName_ParsesSecondSegment(string uniqueName, string expected)
         => Assert.Equal(expected, CellSetMapper.HierarchyFromUniqueName(uniqueName));
+
+    [Fact]
+    public void ErrorCell_KeepsServerMessageUnderTwinKey()
+    {
+        // Cellule 1 en erreur : la valeur reste affichable, le message atterrit sous "v1__err"
+        var cols = new AxisData(["Measures"], [["Sales"], ["Boom"]]);
+        static CellData WithError(int i) => i == 1
+            ? new CellData(CellSetMapper.ErrorPlaceholder, "Le type ne correspond pas.")
+            : new CellData($"c{i}");
+
+        var r = CellSetMapper.Build(cols, null, WithError, cellCount: 2, durationMs: 5);
+
+        var row = Assert.Single(r.Rows);
+        Assert.Equal("c0", row["v0"]);
+        Assert.False(row.ContainsKey("v0" + CellSetMapper.ErrorSuffix)); // pas de clé parasite
+        Assert.Equal(CellSetMapper.ErrorPlaceholder, row["v1"]);
+        Assert.Equal("Le type ne correspond pas.", row["v1" + CellSetMapper.ErrorSuffix]);
+    }
+
+    [Fact]
+    public void ErrorCell_TwoAxes_TwinKeyFollowsTheRightCell()
+    {
+        var cols = new AxisData(["Measures"], [["Sales"], ["Cost"]]);
+        var rows = new AxisData(["Product"], [["ItemA"], ["ItemB"]]);
+        // ordinal 3 = ligne 1 (ItemB), colonne 1 (Cost)
+        static CellData WithError(int i) => i == 3
+            ? new CellData(CellSetMapper.ErrorPlaceholder, "Division par zéro.")
+            : new CellData($"c{i}");
+
+        var r = CellSetMapper.Build(cols, rows, WithError, cellCount: 4, durationMs: 5);
+
+        Assert.False(r.Rows[0].ContainsKey("v1" + CellSetMapper.ErrorSuffix));
+        Assert.Equal("Division par zéro.", r.Rows[1]["v1" + CellSetMapper.ErrorSuffix]);
+        Assert.False(r.Rows[1].ContainsKey("v0" + CellSetMapper.ErrorSuffix));
+    }
 
     [Fact]
     public void OneAxis_EmptySet_NoColumnsNoRows()

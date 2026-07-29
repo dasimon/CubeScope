@@ -55,6 +55,8 @@ const en: typeof fr = {
     drillthrough: 'Drillthrough',
     drillthroughHint: 'Show the source rows of the current query (single-cell query)',
     maxRows: 'Max rows',
+    cellErrorHint: 'Cell in error — click for details',
+    cellErrorCopied: 'Error message copied to clipboard',
   },
   explorer: {
     measures: 'Measures ({n})',

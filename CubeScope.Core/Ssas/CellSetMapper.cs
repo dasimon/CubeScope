@@ -7,11 +7,29 @@ namespace CubeScope.Core.Ssas;
 public sealed record AxisData(IReadOnlyList<string> HierarchyCaptions, IReadOnlyList<IReadOnlyList<string>> Positions);
 
 /// <summary>
+/// Contenu d'une cellule : valeur d'affichage, plus le message d'erreur du serveur quand la
+/// cellule est en erreur (XMLA renvoie alors &lt;Value&gt;&lt;Error&gt;&lt;Description&gt;…, qu'ADOMD
+/// relaie en AdomdErrorResponseException sur Value ET FormattedValue — constaté sur un cube réel).
+/// </summary>
+public readonly record struct CellData(object? Value, string? Error = null);
+
+/// <summary>
 /// Aplatit un CellSet (0, 1 ou 2 axes) en QueryResult pour la grille.
 /// Piège connu : une requête mono-axe n'a pas d'Axes[1] — toujours tester Axes.Count.
 /// </summary>
 public static class CellSetMapper
 {
+    /// <summary>Texte affiché à la place de la valeur d'une cellule en erreur.</summary>
+    public const string ErrorPlaceholder = "#Erreur";
+
+    /// <summary>
+    /// Suffixe de la clé « jumelle » portant le message d'erreur d'une cellule dans la ligne
+    /// (ex. la cellule "v3" en erreur ajoute "v3__err"). Clé parallèle plutôt que valeur
+    /// structurée : aucun changement du modèle ni de la sérialisation, et l'export CSV/TSV
+    /// (qui n'itère que sur Columns) l'ignore naturellement.
+    /// </summary>
+    public const string ErrorSuffix = "__err";
+
     public static QueryResult Map(CellSet cs, long durationMs)
     {
         int axes = cs.Axes.Count;
@@ -26,20 +44,29 @@ public static class CellSetMapper
     /// <summary>
     /// Valeur d'affichage d'une cellule. Piège : `CELL PROPERTIES VALUE` (requêtes copiées
     /// d'Excel/SSMS) restreint les propriétés renvoyées — FormattedValue est alors null,
-    /// il faut se replier sur Value (brut). Une cellule en erreur ne doit pas tout casser.
+    /// il faut se replier sur Value (brut). Une cellule en erreur ne doit pas tout casser :
+    /// on garde le message du serveur au lieu de l'avaler, la grille l'expose en infobulle.
     /// </summary>
-    private static object? CellValue(Cell cell)
+    private static CellData CellValue(Cell cell)
     {
         try
         {
             // FormattedValue vaut "" (pas null) quand FORMATTED_VALUE n'a pas été demandé
             var formatted = cell.FormattedValue;
-            return string.IsNullOrEmpty(formatted) ? cell.Value : formatted;
+            return new CellData(string.IsNullOrEmpty(formatted) ? cell.Value : formatted);
         }
-        catch
+        catch (Exception first)
         {
-            try { return cell.Value; } catch { return "#ERREUR"; }
+            try { return new CellData(cell.Value); }
+            catch (Exception second) { return new CellData(ErrorPlaceholder, Describe(second) ?? Describe(first)); }
         }
+    }
+
+    /// <summary>Message serveur nettoyé (ADOMD ajoute des espaces en fin de Description).</summary>
+    private static string? Describe(Exception ex)
+    {
+        var message = ex.Message?.Trim();
+        return string.IsNullOrEmpty(message) ? null : message;
     }
 
     private static AxisData ReadAxis(Axis axis)
@@ -85,16 +112,26 @@ public static class CellSetMapper
     /// ordinal = colonne + ligne * nbColonnes (l'axe 0 varie le plus vite).
     /// </summary>
     public static QueryResult Build(AxisData? columnsAxis, AxisData? rowsAxis,
-        Func<int, object?> cellAt, int cellCount, long durationMs)
+        Func<int, CellData> cellAt, int cellCount, long durationMs)
     {
         var gridColumns = new List<GridColumn>();
         var gridRows = new List<Dictionary<string, object?>>();
+
+        // Écrit la valeur sous "v{c}" et, si la cellule est en erreur, le message sous "v{c}__err"
+        static void SetCell(Dictionary<string, object?> row, string field, CellData cell)
+        {
+            row[field] = cell.Value;
+            if (cell.Error is not null) row[field + ErrorSuffix] = cell.Error;
+        }
 
         // 0 axe : une seule cellule scalaire
         if (columnsAxis is null)
         {
             gridColumns.Add(new GridColumn("v0", "Valeur", IsRowHeader: false));
-            gridRows.Add(new Dictionary<string, object?> { ["v0"] = cellCount > 0 ? cellAt(0) : null });
+            var scalar = new Dictionary<string, object?>();
+            if (cellCount > 0) SetCell(scalar, "v0", cellAt(0));
+            else scalar["v0"] = null;
+            gridRows.Add(scalar);
             return new QueryResult(gridColumns, gridRows, cellCount, 0, durationMs);
         }
 
@@ -108,7 +145,7 @@ public static class CellSetMapper
         if (rowsAxis is null)
         {
             var row = new Dictionary<string, object?>();
-            for (int c = 0; c < nCols; c++) row[$"v{c}"] = cellAt(c);
+            for (int c = 0; c < nCols; c++) SetCell(row, $"v{c}", cellAt(c));
             gridRows.Add(row);
             return new QueryResult(gridColumns, gridRows, cellCount, 1, durationMs);
         }
@@ -123,7 +160,7 @@ public static class CellSetMapper
         {
             var row = new Dictionary<string, object?>();
             for (int h = 0; h < rowsAxis.Positions[r].Count; h++) row[$"h{h}"] = rowsAxis.Positions[r][h];
-            for (int c = 0; c < nCols; c++) row[$"v{c}"] = cellAt(c + r * nCols);
+            for (int c = 0; c < nCols; c++) SetCell(row, $"v{c}", cellAt(c + r * nCols));
             gridRows.Add(row);
         }
         return new QueryResult(gridColumns, gridRows, cellCount, 2, durationMs);

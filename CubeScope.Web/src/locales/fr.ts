@@ -53,6 +53,8 @@ export default {
     drillthrough: 'Drillthrough',
     drillthroughHint: 'Affiche les lignes sources de la requête courante (requête à une cellule)',
     maxRows: 'Lignes max',
+    cellErrorHint: 'Cellule en erreur — cliquer pour le détail',
+    cellErrorCopied: "Message d'erreur copié dans le presse-papiers",
   },
   explorer: {
     measures: 'Mesures ({n})',
