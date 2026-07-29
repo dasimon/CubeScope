@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CubeScope.Core\CubeScope.Core.csproj" />
+    <!-- Pour BrowserLifetime : sa logique de délai/annulation décide de l'arrêt de l'exe,
+         elle mérite d'être testée sans dépendre d'un vrai navigateur. -->
+    <ProjectReference Include="..\CubeScope.Server\CubeScope.Server.csproj" />
   </ItemGroup>
 
 </Project>

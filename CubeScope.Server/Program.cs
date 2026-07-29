@@ -38,6 +38,12 @@ builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
+// Arrêt automatique à la fermeture du navigateur — inactif en dev/tests (--no-browser),
+// sinon fermer la page couperait le serveur sous les pieds de Vite.
+builder.Services.AddSingleton(sp => new BrowserLifetime(
+    sp.GetRequiredService<IHostApplicationLifetime>(),
+    sp.GetRequiredService<ILogger<BrowserLifetime>>(),
+    enabled: !args.Contains("--no-browser")));
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -643,5 +649,21 @@ internal sealed record CalcPropRequest(
 internal sealed record RenameRequest(string Script, string OldName, string NewName);
 internal sealed record ImpactRequest(string OldScript, string NewScript);
 
-/// <summary>Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").</summary>
-internal sealed class StatsHub : Hub;
+/// <summary>
+/// Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").
+/// Ses connexions servent aussi de signal de vie du navigateur (voir <see cref="BrowserLifetime"/>).
+/// </summary>
+internal sealed class StatsHub(BrowserLifetime browser) : Hub
+{
+    public override Task OnConnectedAsync()
+    {
+        browser.ClientConnected();
+        return base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        browser.ClientDisconnected();
+        return base.OnDisconnectedAsync(exception);
+    }
+}
