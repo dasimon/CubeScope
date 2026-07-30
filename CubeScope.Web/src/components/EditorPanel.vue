@@ -44,7 +44,13 @@ onMounted(() => {
   editor.addAction({
     id: 'mdx.gotoDefinition',
     label: t('editor.gotoDefinition'),
-    keybindings: [monaco.KeyCode.F12],
+    // PAS F12 : dans Edge/Chrome, F12 ouvre les outils de développement et n'est pas
+    // interceptable par le contenu de la page. Alt+F12 (le « Peek Definition » de VS Code)
+    // et Ctrl+Alt+G passent, eux — vérifiés au navigateur.
+    keybindings: [
+      monaco.KeyMod.Alt | monaco.KeyCode.F12,
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyG,
+    ],
     contextMenuGroupId: 'navigation',
     contextMenuOrder: 1,
     run: (ed) => {

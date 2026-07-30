@@ -606,6 +606,15 @@ api.MapPost("/metadata/captions/refresh", (CaptionRefreshRequest req, MetadataSe
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Balise de départ de page (navigator.sendBeacon sur `pagehide`) : distingue une fermeture
+// ou un rechargement — délai d'arrêt court — d'un simple transport qui lâche, où le client
+// va se reconnecter tout seul et où couper vite tuerait le serveur sous une page vivante.
+api.MapPost("/leaving", (BrowserLifetime browser) =>
+{
+    browser.NoticeClientLeaving();
+    return Results.NoContent();
+});
+
 // SignalR : push des stats perfmon post-exécution (décision actée : SignalR pour ce qui streame)
 app.MapHub<StatsHub>("/hubs/stats");
 

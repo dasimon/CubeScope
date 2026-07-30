@@ -11,12 +11,17 @@ namespace CubeScope.Core.Tests;
 /// </summary>
 public class BrowserLifetimeTests
 {
-    private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(50);
+    /// <summary>Délai « la page a prévenu qu'elle partait » (fermeture ou F5).</summary>
+    private static readonly TimeSpan Close = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Délai « le transport a lâché sans préavis » — franchement plus long, pour
+    /// que les tests puissent distinguer les deux sans dépendre de l'ordonnanceur.</summary>
+    private static readonly TimeSpan Drop = TimeSpan.FromSeconds(30);
 
     private static (BrowserLifetime Sut, FakeLifetime Host) Create(bool enabled = true)
     {
         var host = new FakeLifetime();
-        var sut = new BrowserLifetime(host, NullLogger<BrowserLifetime>.Instance, enabled, Grace);
+        var sut = new BrowserLifetime(host, NullLogger<BrowserLifetime>.Instance, enabled, Close, Drop);
         return (sut, host);
     }
 
@@ -38,30 +43,88 @@ public class BrowserLifetimeTests
     /// </summary>
     private static async Task AssertDoesNotStopAsync(FakeLifetime host)
     {
-        await Task.Delay(Grace * 10);
+        await Task.Delay(Close * 10);
         Assert.False(host.Stopped);
     }
 
     [Fact]
-    public async Task LastTabClosed_StopsTheApplication()
+    public async Task AnnouncedClose_StopsQuickly()
     {
         var (sut, host) = Create();
         sut.ClientConnected();
 
+        sut.NoticeClientLeaving(); // balise pagehide, puis fermeture du WebSocket
         sut.ClientDisconnected();
 
         await AssertStopsAsync(host);
     }
 
     [Fact]
-    public async Task Reload_WithinGrace_DoesNotStop()
+    public async Task NoticeArrivingAfterTheDisconnect_ShortensThePendingShutdown()
     {
-        // Un F5 ferme la connexion puis la rouvre aussitôt : le serveur doit survivre.
+        // La balise et la fermeture du socket courent l'une contre l'autre : dans cet ordre,
+        // l'arrêt est déjà armé au délai LONG et doit être ramené au délai court.
         var (sut, host) = Create();
         sut.ClientConnected();
 
         sut.ClientDisconnected();
+        sut.NoticeClientLeaving();
+
+        await AssertStopsAsync(host);
+    }
+
+    [Fact]
+    public async Task UnannouncedDrop_WaitsForTheClientToComeBack()
+    {
+        // Le cœur du correctif : un transport qui lâche n'est PAS une fermeture. Le client
+        // est en withAutomaticReconnect (0/2/10/30 s) — couper au délai court le tuerait
+        // sous une page encore ouverte.
+        var (sut, host) = Create();
         sut.ClientConnected();
+
+        sut.ClientDisconnected(); // aucune balise
+
+        await AssertDoesNotStopAsync(host);
+    }
+
+    [Fact]
+    public async Task ReconnectAfterADrop_DoesNotStop()
+    {
+        var (sut, host) = Create();
+        sut.ClientConnected();
+
+        sut.ClientDisconnected();
+        sut.ClientConnected(); // la reconnexion automatique a abouti
+
+        await AssertDoesNotStopAsync(host);
+    }
+
+    [Fact]
+    public async Task Reload_WithinGrace_DoesNotStop()
+    {
+        // Un F5 prévient (pagehide) puis rouvre aussitôt : le serveur doit survivre.
+        var (sut, host) = Create();
+        sut.ClientConnected();
+
+        sut.NoticeClientLeaving();
+        sut.ClientDisconnected();
+        sut.ClientConnected();
+
+        await AssertDoesNotStopAsync(host);
+    }
+
+    [Fact]
+    public async Task ReconnectClearsTheLeavingFlag()
+    {
+        // Une balise consommée par un rechargement ne doit pas faire passer une coupure
+        // ultérieure, sans préavis, pour une fermeture volontaire.
+        var (sut, host) = Create();
+        sut.ClientConnected();
+        sut.NoticeClientLeaving();
+        sut.ClientDisconnected();
+        sut.ClientConnected(); // le F5 a abouti
+
+        sut.ClientDisconnected(); // plus tard : coupure réseau, sans balise
 
         await AssertDoesNotStopAsync(host);
     }
@@ -73,6 +136,7 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
         sut.ClientConnected();
 
+        sut.NoticeClientLeaving();
         sut.ClientDisconnected();
 
         await AssertDoesNotStopAsync(host);
@@ -85,7 +149,9 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
         sut.ClientConnected();
 
+        sut.NoticeClientLeaving();
         sut.ClientDisconnected();
+        sut.NoticeClientLeaving();
         sut.ClientDisconnected();
 
         await AssertStopsAsync(host);
@@ -98,6 +164,7 @@ public class BrowserLifetimeTests
         var (sut, host) = Create(enabled: false);
         sut.ClientConnected();
 
+        sut.NoticeClientLeaving();
         sut.ClientDisconnected();
 
         await AssertDoesNotStopAsync(host);

@@ -195,14 +195,27 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   toute route API inconnue : un 200 HTML sur un endpoint attendu = symptôme de
   vieux binaire, pas de bug front).
 - **Arrêt automatique à la fermeture du navigateur** (`BrowserLifetime`) : les
-  connexions du `StatsHub` servent de signal de vie ; quand la dernière se ferme,
-  l'exe s'arrête après 10 s de grâce (le délai absorbe un F5, qui déconnecte puis
-  reconnecte). ⚠️ **Couplé à `--no-browser`** : ce drapeau désactive aussi l'arrêt
-  automatique, sinon la boucle de dev et les tests se couperaient dès qu'on ferme
-  la page. Donc en dev le serveur ne s'arrête jamais seul — c'est voulu, pas une
-  panne. Rien ne s'arme tant qu'aucun client ne s'est connecté (l'exe ne peut pas
-  se couper pendant l'ouverture du navigateur), et si le transport retombe en
-  long-polling la détection prend jusqu'au `ClientTimeoutInterval` (~30 s).
+  connexions du `StatsHub` servent de signal de vie. ⚠️ **PIÈGE — une déconnexion
+  du hub ne veut PAS dire que la page est partie** : le client est en
+  `withAutomaticReconnect()`, qui réessaie à **0, 2, 10 puis 30 s**. Couper au bout
+  d'un délai court sur une simple coupure de transport tue le serveur sous une page
+  encore ouverte (« Failed to fetch ») — et comme l'exe prend un **port libre** au
+  lancement, le relancer donne un autre port : l'onglet resté ouvert vise un port
+  mort. D'où deux délais : la page prévient de son départ par
+  `navigator.sendBeacon('/api/leaving')` sur `pagehide` (fermeture **ou** F5) →
+  grâce courte (10 s) ; sans préavis, c'est le transport qui a lâché → grâce longue
+  (45 s), au-delà de la fenêtre de reconnexion. La balise et la fermeture du socket
+  courent l'une contre l'autre : les deux ordres d'arrivée sont gérés (`NoticeClientLeaving`
+  raccourcit un arrêt déjà armé). ⚠️ **Couplé à `--no-browser`** : ce drapeau
+  désactive aussi l'arrêt automatique, sinon la boucle de dev et les tests se
+  couperaient dès qu'on ferme la page. Donc en dev le serveur ne s'arrête jamais
+  seul — c'est voulu, pas une panne. Rien ne s'arme tant qu'aucun client ne s'est
+  connecté (l'exe ne peut pas se couper pendant l'ouverture du navigateur).
+- **Raccourcis clavier dans le navigateur** : `F12` est pris par les outils de
+  développement d'Edge/Chrome et **n'est pas interceptable** par le contenu de la
+  page — inutile de le lier dans Monaco. « Aller à la définition » utilise
+  `Alt+F12` et `Ctrl+Alt+G` (les deux vérifiés au navigateur), plus le menu
+  contextuel. `F5` est interceptable, lui (déjà utilisé pour l'exécution).
 - Nom "MDX" pollué par Markdown+JSX dans l'écosystème npm/GitHub : ne pas
   nommer de packages `mdx-*` côté frontend.
 - Round-trip `.cube` (mode projet SSDT) : `XDocument.Load` doit utiliser

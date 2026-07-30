@@ -22,4 +22,13 @@ export function startStatsHub(): void {
   conn.start().catch(() => {
     /* hub indisponible : les stats resteront vides, non bloquant */
   })
+
+  // Prévient le serveur que la page s'en va, pour qu'il distingue une fermeture (ou un F5)
+  // d'un transport qui lâche — sans ça, il ne peut pas savoir s'il doit s'arrêter vite ou
+  // patienter le temps que le client se reconnecte. sendBeacon est le seul envoi qui
+  // aboutit de façon fiable pendant le déchargement de la page.
+  // `pagehide` plutôt que `beforeunload` : il couvre aussi la mise en cache arrière/avant.
+  window.addEventListener('pagehide', () => {
+    navigator.sendBeacon('/api/leaving')
+  })
 }
