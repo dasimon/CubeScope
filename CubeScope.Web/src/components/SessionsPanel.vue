@@ -80,6 +80,30 @@ function commandOf(s: SsasSessionInfo): string {
   return (s.commandText || s.lastCommand || '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Aperçu borné. Une commande MDX fait couramment plusieurs milliers de caractères : la
+ * laisser entière rendrait la barre de défilement horizontale inutilisable. On en montre
+ * assez pour reconnaître la requête, le texte complet est à un clic.
+ */
+const PREVIEW = 300
+function preview(s: SsasSessionInfo): string {
+  const c = commandOf(s)
+  return c.length > PREVIEW ? c.slice(0, PREVIEW) + '…' : c
+}
+
+/** Commande affichée en entier (clic sur la cellule). */
+const full = ref<SsasSessionInfo | null>(null)
+
+async function copyCommand() {
+  if (!full.value) return
+  try {
+    await navigator.clipboard.writeText(commandOf(full.value))
+    toast.add({ severity: 'success', summary: t('sessions.commandCopied'), life: 3000 })
+  } catch {
+    /* presse-papiers indisponible */
+  }
+}
+
 // Le panneau peut être monté avant la connexion (dockview crée tous les panneaux au
 // démarrage) : sans ce watch, il resterait vide jusqu'à un rafraîchissement manuel.
 watch(() => store.connected, (c) => { if (c) void load() })
@@ -131,7 +155,9 @@ onMounted(() => { if (store.connected) void load() })
       </Column>
       <Column :header="t('sessions.command')">
         <template #body="{ data }">
-          <span class="cmd" :title="commandOf(data)">{{ commandOf(data) }}</span>
+          <span class="cmd" :title="t('sessions.commandFull')" @click="full = data">
+            {{ preview(data) }}
+          </span>
         </template>
       </Column>
       <Column class="col-action">
@@ -147,6 +173,25 @@ onMounted(() => { if (store.connected) void load() })
         </template>
       </Column>
     </DataTable>
+
+    <Dialog
+      :visible="full !== null"
+      modal
+      :header="t('sessions.commandHeader')"
+      :style="{ width: '58rem' }"
+      @update:visible="full = null"
+    >
+      <template v-if="full">
+        <div class="full-meta">
+          {{ t('sessions.spid') }} {{ full.spid }} — {{ full.user }} — {{ full.database ?? '—' }}
+        </div>
+        <pre class="full-cmd">{{ commandOf(full) || '—' }}</pre>
+      </template>
+      <template #footer>
+        <Button :label="t('results.copy')" icon="pi pi-copy" text @click="copyCommand()" />
+        <Button :label="t('common.cancel')" text @click="full = null" />
+      </template>
+    </Dialog>
 
     <Dialog
       :visible="target !== null"
@@ -233,15 +278,31 @@ onMounted(() => { if (store.connected) void load() })
   background: var(--p-primary-color);
   color: var(--p-primary-contrast-color);
 }
+/* Pas de troncature CSS : le texte force la largeur du tableau, ce qui fait apparaître la
+   barre de défilement horizontale. L'aperçu est borné en JS pour qu'elle reste utilisable. */
 .cmd {
   display: inline-block;
-  max-width: 34rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
   font-family: var(--font-mono, monospace);
   font-size: 0.78rem;
+  cursor: pointer;
+}
+.cmd:hover {
+  text-decoration: underline dotted;
+}
+.full-meta {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+  margin-bottom: 0.5rem;
+}
+.full-cmd {
+  margin: 0;
+  max-height: 26rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
 }
 .confirm-msg {
   margin-bottom: 0.75rem;
