@@ -211,6 +211,26 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   couperaient dès qu'on ferme la page. Donc en dev le serveur ne s'arrête jamais
   seul — c'est voulu, pas une panne. Rien ne s'arme tant qu'aucun client ne s'est
   connecté (l'exe ne peut pas se couper pendant l'ouverture du navigateur).
+- **Sessions SSAS** (`SessionsService`, panneau Sessions) : le moteur DMV n'accepte
+  **ni JOIN, ni GROUP BY, ni LIKE, ni CAST** → `DISCOVER_SESSIONS` et
+  `DISCOVER_COMMANDS` sont lues séparément puis rapprochées en C# sur `SESSION_SPID`.
+  Lire ces DMV exige les **droits admin serveur**. Colonnes utiles (constatées sur
+  SSAS 2022) : `SESSION_ID` (GUID), `SESSION_SPID`, `SESSION_USER_NAME`,
+  `SESSION_CURRENT_DATABASE`, `SESSION_LAST_COMMAND`, `SESSION_CPU_TIME_MS`,
+  `SESSION_IDLE_TIME_MS` ; durées en `UInt64` côté sessions, `Int64` côté commandes
+  (convertir, ne pas caster). ⚠️ La liste contient les sessions des **jobs de prod et
+  des autres utilisateurs** — d'où la confirmation détaillée avant annulation.
+  Annulation = `<Cancel>` XMLA avec `<SPID>` + `<CancelAssociated>` ([doc MS](https://learn.microsoft.com/analysis-services/instances/disconnect-users-and-sessions-on-analysis-services-server)).
+  Un **SPID vieillit** : la liste affichée peut viser une session déjà partie, d'où le
+  contrôle d'existence avant d'émettre le Cancel (sinon « La session spécifiée est
+  introuvable » remonte brut à l'utilisateur).
+- **Annuler SA PROPRE session** laisse ADOMD avec une connexion en état **`Open`** dont
+  l'ID de session n'existe plus côté serveur : l'appel suivant échoue sur « L'ID de
+  session … est introuvable. Soit la session n'existe pas, soit elle a déjà expiré »,
+  puis ADOMD en renégocie une (donc l'appel d'après passe). `conn.State` ne trahit
+  rien — c'est un mode de défaillance **distinct** de « La connexion n'est pas
+  ouverte ». D'où `SsasSession.ResetAsync()`, appelé après avoir annulé sa propre
+  session.
 - **Raccourcis clavier dans le navigateur** : `F12` est pris par les outils de
   développement d'Edge/Chrome et **n'est pas interceptable** par le contenu de la
   page — inutile de le lier dans Monaco. « Aller à la définition » utilise

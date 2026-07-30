@@ -37,6 +37,7 @@ builder.Services.AddSingleton<FileBrowserService>();
 builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
+builder.Services.AddSingleton<SessionsService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 // Arrêt automatique à la fermeture du navigateur — inactif en dev/tests (--no-browser),
 // sinon fermer la page couperait le serveur sous les pieds de Vite.
@@ -603,6 +604,26 @@ api.MapPost("/metadata/captions", async (CaptionsRequest req, MetadataService me
 api.MapPost("/metadata/captions/refresh", (CaptionRefreshRequest req, MetadataService meta) =>
 {
     try { meta.InvalidateCube(req.Cube); return Results.Ok(); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
+// Sessions ouvertes sur l'instance. Lecture réservée aux admins SSAS : en cas de refus on
+// renvoie le message tel quel, l'UI se dégrade (même parti pris que le Profiler).
+api.MapGet("/sessions", async (SessionsService sessions, CancellationToken ct) =>
+{
+    try { return Results.Ok(await sessions.ListAsync(ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
+// Annulation d'une session par son SPID. ⚠️ La liste contient les sessions des jobs de
+// production : la confirmation est portée par l'UI, ce point d'entrée ne la rejoue pas.
+api.MapPost("/sessions/{spid:int}/cancel", async (int spid, SessionsService sessions, CancellationToken ct) =>
+{
+    try
+    {
+        bool cancelled = await sessions.CancelAsync(spid, ct);
+        return Results.Ok(new { spid, cancelled });
+    }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 

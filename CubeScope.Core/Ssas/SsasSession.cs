@@ -62,6 +62,29 @@ public sealed class SsasSession : IDisposable
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Repart sur une connexion neuve. Nécessaire après avoir annulé notre propre session :
+    /// ADOMD garde alors une connexion en état <c>Open</c> dont l'ID de session n'existe plus
+    /// côté serveur, et la requête suivante échoue sur « L'ID de session … est introuvable.
+    /// Soit la session n'existe pas, soit elle a déjà expiré » (constaté). L'état de la
+    /// connexion ne trahit rien : seule une reconnexion explicite règle le problème.
+    /// </summary>
+    public async Task ResetAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await Task.Run(() =>
+            {
+                _conn?.Dispose();
+                _conn = new AdomdConnection(_connectionString);
+                _conn.Open();
+                if (Catalog is not null) _conn.ChangeDatabase(Catalog);
+            }, ct);
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Exécute un travail sur la connexion courante, sous verrou.</summary>
     public async Task<T> WithConnectionAsync<T>(Func<AdomdConnection, T> work, CancellationToken ct = default)
     {

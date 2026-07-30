@@ -224,6 +224,28 @@ export const api = {
     ),
   impact: (oldScript: string, newScript: string) =>
     request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
+
+  // Sessions de l'instance (droits admin SSAS requis côté serveur)
+  sessions: () => request<SsasSessionInfo[]>('GET', '/api/sessions'),
+  // cancelled = false : la session avait déjà disparu (la liste affichée vieillit)
+  cancelSession: (spid: number) =>
+    request<{ spid: number; cancelled: boolean }>('POST', `/api/sessions/${spid}/cancel`),
+}
+
+/** Session ouverte sur l'instance SSAS. isMine = celle de CubeScope lui-même. */
+export interface SsasSessionInfo {
+  spid: number
+  sessionId: string
+  user: string
+  database: string | null
+  startTime: string
+  elapsedMs: number
+  cpuMs: number
+  idleMs: number
+  lastCommand: string | null
+  commandText: string | null
+  commandElapsedMs: number
+  isMine: boolean
 }
 
 export type AiAction =

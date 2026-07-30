@@ -20,6 +20,7 @@ import StatsPanel from './components/StatsPanel.vue'
 import AiPanel from './components/AiPanel.vue'
 import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
+import SessionsPanel from './components/SessionsPanel.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
@@ -64,6 +65,7 @@ const panelComponents: Record<string, VueComponent> = {
   ai: AiPanel as VueComponent,
   script: ScriptPanel as VueComponent,
   profiler: ProfilerPanel as VueComponent,
+  sessions: SessionsPanel as VueComponent,
 }
 
 // (id de panneau, clé de traduction du titre) — pour re-titrer au changement de langue.
@@ -76,6 +78,7 @@ const PANELS = [
   ['profiler', 'panel.profiler'],
   ['ai', 'panel.ai'],
   ['script', 'panel.script'],
+  ['sessions', 'panel.sessions'],
 ] as const
 
 const dvApi = shallowRef<DockviewApi>()
@@ -112,6 +115,12 @@ function onReady(event: DockviewReadyEvent) {
     id: 'profiler',
     component: 'profiler',
     title: t('panel.profiler'),
+    position: { referencePanel: 'results', direction: 'within' },
+  })
+  event.api.addPanel({
+    id: 'sessions',
+    component: 'sessions',
+    title: t('panel.sessions'),
     position: { referencePanel: 'results', direction: 'within' },
   })
   event.api.addPanel({
