@@ -16,12 +16,23 @@ public sealed class StateStore : IDisposable
 {
     private readonly SqliteConnection _db;
     private readonly Lock _lock = new();
+    private readonly int _keepHistory;
+    private readonly int _keepProfileRuns;
+    private readonly int _keepDeployLog;
 
     public static string DefaultDbPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CubeScope", "cubescope.db");
 
-    public StateStore(string? dbPath = null)
+    /// <summary>
+    /// Seuils de rétention effectifs. <paramref name="journalCap"/> les remplace tous les trois :
+    /// il n'existe que pour les tests, qui doivent franchir le seuil pour prouver que la purge
+    /// agit — le faire avec les valeurs réelles coûterait 5 000 insertions committées une à une.
+    /// </summary>
+    public StateStore(string? dbPath = null, int? journalCap = null)
     {
+        _keepHistory = journalCap ?? KeepHistory;
+        _keepProfileRuns = journalCap ?? KeepProfileRuns;
+        _keepDeployLog = journalCap ?? KeepDeployLog;
         var path = dbPath ?? DefaultDbPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         _db = new SqliteConnection($"Data Source={path}");
@@ -292,7 +303,7 @@ public sealed class StateStore : IDisposable
             ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$m", mdx), ("$ok", success ? 1 : 0),
             ("$d", durationMs), ("$n", cellCount), ("$e", (object?)error ?? DBNull.Value),
             ("$t", DateTime.UtcNow.ToString("O")));
-        Prune("QueryHistory", KeepHistory);
+        Prune("QueryHistory", _keepHistory);
     }
 
     /// <summary>Nombre d'exécutions conservées : au-delà, on perd un historique qu'on ne relit pas.</summary>
@@ -428,7 +439,7 @@ public sealed class StateStore : IDisposable
             ("$tot", totalMs), ("$se", storageEngineMs), ("$fe", formulaEngineMs),
             ("$sc", subcubeCount), ("$ch", cacheHits), ("$ah", aggregationHits),
             ("$t", DateTime.UtcNow.ToString("O")));
-        Prune("ProfileRun", KeepProfileRuns);
+        Prune("ProfileRun", _keepProfileRuns);
     }
 
     public IReadOnlyList<ProfileRun> GetProfileRuns(int limit = 50)
@@ -462,7 +473,7 @@ public sealed class StateStore : IDisposable
             """,
             ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$cube", cubeName), ("$p", projectPath),
             ("$n", scriptChars), ("$f", forced ? 1 : 0), ("$t", DateTime.UtcNow.ToString("O")));
-        Prune("DeployLog", KeepDeployLog);
+        Prune("DeployLog", _keepDeployLog);
     }
 
     public IReadOnlyList<DeployLogEntry> GetDeployLog(int limit = 100)

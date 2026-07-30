@@ -13,11 +13,11 @@ public class StateStoreTests : IDisposable
     public StateStoreTests() => _store = new StateStore(_dbPath);
 
     /// <summary>Un magasin isolé, dont le fichier sera nettoyé (sinon %TEMP% se remplit).</summary>
-    private StateStore NewStore()
+    private StateStore NewStore(int? journalCap = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db");
         _extraDbs.Add(path);
-        return new StateStore(path);
+        return new StateStore(path, journalCap);
     }
 
     [Fact]
@@ -232,21 +232,32 @@ public class StateStoreTests : IDisposable
     [Fact]
     public void History_AboveTheCap_DropsTheOldestRows()
     {
-        // Le vrai comportement de purge : franchir le seuil de 5 000 et vérifier que ce sont
-        // les plus ANCIENNES qui disparaissent. Sans dépasser le seuil, le test passerait même
-        // si l'élagage ne faisait rien — il ne prouverait alors plus rien.
-        using var store = NewStore();
-        const int cap = 5000;
-        const int extra = 100;
+        // Le seuil est abaissé pour le test : il FAUT le franchir pour prouver que la purge
+        // agit — en dessous, ce test passerait même si Prune ne faisait rien. Le franchir avec
+        // la valeur réelle (5 000) coûtait 35 s à la suite, pour la même garantie.
+        const int cap = 50;
+        const int extra = 10;
+        using var store = NewStore(journalCap: cap);
         for (int i = 0; i < cap + extra; i++)
             store.AddHistory("S", "C", $"SELECT {i}", true, 1, 1, null);
 
         var all = store.GetHistory(10_000);
 
         Assert.Equal(cap, all.Count);
-        Assert.Equal($"SELECT {cap + extra - 1}", all[0].Mdx);       // la plus récente est là
-        Assert.DoesNotContain(all, h => h.Mdx == "SELECT 0");        // la plus ancienne est partie
-        Assert.Contains(all, h => h.Mdx == $"SELECT {extra}");       // la première conservée
+        Assert.Equal($"SELECT {cap + extra - 1}", all[0].Mdx);   // la plus récente est là
+        Assert.DoesNotContain(all, h => h.Mdx == "SELECT 0");    // la plus ancienne est partie
+        Assert.Contains(all, h => h.Mdx == $"SELECT {extra}");   // la première conservée
+    }
+
+    [Fact]
+    public void ProfileRuns_AboveTheCap_DropTheOldestToo()
+    {
+        const int cap = 30;
+        using var store = NewStore(journalCap: cap);
+        for (int i = 0; i < cap + 5; i++)
+            store.AddProfileRun("S", "C", $"SELECT {i}", 10, 4, 6, 1, 0, 0);
+
+        Assert.Equal(cap, store.GetProfileRuns(10_000).Count);
     }
 
     public void Dispose()

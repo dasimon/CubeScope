@@ -186,6 +186,8 @@ const en: typeof fr = {
     refresh: 'Refresh',
     count: '{n} open session(s) on the instance',
     unavailable: 'Sessions unreadable: {detail}',
+    auto: 'Auto',
+    autoHint: 'Refresh every 10 s, only while this tab is visible',
     spid: 'SPID',
     user: 'User',
     database: 'Catalogue',

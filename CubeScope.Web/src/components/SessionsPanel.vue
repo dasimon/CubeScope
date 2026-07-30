@@ -4,13 +4,14 @@
 // autres utilisateurs y figurent. D'où la confirmation détaillée avant toute annulation —
 // annuler la mauvaise ligne fait échouer une alimentation.
 // Lecture réservée aux admins SSAS : sans droits, le serveur refuse et on affiche le message.
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Dialog from 'primevue/dialog'
+import Checkbox from 'primevue/checkbox'
 import { useToast } from 'primevue/usetoast'
 import { api, type SsasSessionInfo } from '../api'
 import { store } from '../store'
@@ -107,11 +108,40 @@ async function copyCommand() {
 // Le panneau peut être monté avant la connexion (dockview crée tous les panneaux au
 // démarrage) : sans ce watch, il resterait vide jusqu'à un rafraîchissement manuel.
 watch(() => store.connected, (c) => { if (c) void load() })
-onMounted(() => { if (store.connected) void load() })
+
+// --- Rafraîchissement automatique ---------------------------------------------------
+// Chaque cycle coûte DEUX requêtes DMV sur le serveur SSAS. On ne tourne donc que quand
+// le panneau est réellement visible : dockview garde les onglets inactifs montés mais
+// masqués, et sans cette garde on interrogerait la prod en continu sans que personne
+// ne regarde. Idem quand l'onglet du navigateur passe en arrière-plan.
+const AUTO_KEY = 'cubescope.sessions.auto'
+const PERIOD_MS = 10_000
+
+const auto = ref(localStorage.getItem(AUTO_KEY) !== 'off')
+const root = ref<HTMLElement | null>(null)
+let timer: number | undefined
+
+watch(auto, (on) => localStorage.setItem(AUTO_KEY, on ? 'on' : 'off'))
+
+/** Visible = onglet dockview actif (offsetParent non nul) ET onglet navigateur au premier plan. */
+function isVisible(): boolean {
+  return document.visibilityState === 'visible' && root.value?.offsetParent != null
+}
+
+function tick() {
+  // `loading` évite d'empiler les appels si le serveur répond plus lentement que la période.
+  if (auto.value && store.connected && !loading.value && isVisible()) void load()
+}
+
+onMounted(() => {
+  if (store.connected) void load()
+  timer = window.setInterval(tick, PERIOD_MS)
+})
+onBeforeUnmount(() => window.clearInterval(timer))
 </script>
 
 <template>
-  <div class="sessions-panel">
+  <div ref="root" class="sessions-panel">
     <div class="sessions-bar">
       <Button
         :label="t('sessions.refresh')"
@@ -124,6 +154,10 @@ onMounted(() => { if (store.connected) void load() })
       <span v-if="sessions.length" class="sessions-count">
         {{ t('sessions.count', { n: sessions.length }) }}
       </span>
+      <label class="sessions-auto" :title="t('sessions.autoHint')">
+        <Checkbox v-model="auto" binary size="small" />
+        {{ t('sessions.auto') }}
+      </label>
     </div>
 
     <Message v-if="error" severity="warn" class="sessions-msg">
@@ -247,7 +281,15 @@ onMounted(() => { if (store.connected) void load() })
   gap: 0.75rem;
   padding: 0.25rem 0.5rem;
 }
+.sessions-auto {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  cursor: pointer;
+}
 .sessions-count,
+.sessions-auto,
 .sessions-msg {
   font-size: 0.8rem;
   color: var(--p-text-muted-color);
@@ -288,7 +330,8 @@ onMounted(() => { if (store.connected) void load() })
   font-size: 0.78rem;
   cursor: pointer;
 }
-.cmd:hover {
+.cmd:hover,
+.cmd:focus-visible {
   text-decoration: underline dotted;
 }
 .full-meta {

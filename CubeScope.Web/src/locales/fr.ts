@@ -184,6 +184,8 @@ export default {
     refresh: 'Rafraîchir',
     count: "{n} session(s) ouverte(s) sur l'instance",
     unavailable: 'Sessions illisibles : {detail}',
+    auto: 'Auto',
+    autoHint: 'Rafraîchir toutes les 10 s, uniquement quand cet onglet est visible',
     spid: 'SPID',
     user: 'Utilisateur',
     database: 'Catalogue',
