@@ -292,7 +292,30 @@ public sealed class StateStore : IDisposable
             ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$m", mdx), ("$ok", success ? 1 : 0),
             ("$d", durationMs), ("$n", cellCount), ("$e", (object?)error ?? DBNull.Value),
             ("$t", DateTime.UtcNow.ToString("O")));
+        Prune("QueryHistory", KeepHistory);
     }
+
+    /// <summary>Nombre d'exécutions conservées : au-delà, on perd un historique qu'on ne relit pas.</summary>
+    private const int KeepHistory = 5000;
+
+    /// <summary>Runs de profil conservés (même raisonnement que l'historique).</summary>
+    private const int KeepProfileRuns = 5000;
+
+    /// <summary>Déploiements conservés : bien plus rares, un millier couvre des années.</summary>
+    private const int KeepDeployLog = 1000;
+
+    /// <summary>
+    /// Borne une table « journal » aux <paramref name="keep"/> dernières lignes. Ces tables
+    /// grossissaient sans limite : les LIMIT du code ne portaient que sur la lecture, et
+    /// l'historique stocke le texte MDX complet à chaque exécution.
+    ///
+    /// L'Id étant AUTOINCREMENT, donc monotone, le seuil se calcule en une lecture indexée
+    /// plutôt qu'en comptant les lignes. Les suppressions ne créent des trous qu'en bas de
+    /// la plage : MAX(Id) - keep reste donc exact au fil des purges.
+    /// </summary>
+    private void Prune(string table, int keep)
+        => Exec($"DELETE FROM {table} WHERE Id <= (SELECT MAX(Id) FROM {table}) - $keep",
+            ("$keep", keep));
 
     public IReadOnlyList<HistoryEntry> GetHistory(int limit = 100)
     {
@@ -405,6 +428,7 @@ public sealed class StateStore : IDisposable
             ("$tot", totalMs), ("$se", storageEngineMs), ("$fe", formulaEngineMs),
             ("$sc", subcubeCount), ("$ch", cacheHits), ("$ah", aggregationHits),
             ("$t", DateTime.UtcNow.ToString("O")));
+        Prune("ProfileRun", KeepProfileRuns);
     }
 
     public IReadOnlyList<ProfileRun> GetProfileRuns(int limit = 50)
@@ -438,6 +462,7 @@ public sealed class StateStore : IDisposable
             """,
             ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$cube", cubeName), ("$p", projectPath),
             ("$n", scriptChars), ("$f", forced ? 1 : 0), ("$t", DateTime.UtcNow.ToString("O")));
+        Prune("DeployLog", KeepDeployLog);
     }
 
     public IReadOnlyList<DeployLogEntry> GetDeployLog(int limit = 100)

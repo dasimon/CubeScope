@@ -7,7 +7,18 @@ public class StateStoreTests : IDisposable
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db");
     private readonly StateStore _store;
 
+    /// <summary>Bases jetables créées en cours de test, supprimées au Dispose comme la principale.</summary>
+    private readonly List<string> _extraDbs = [];
+
     public StateStoreTests() => _store = new StateStore(_dbPath);
+
+    /// <summary>Un magasin isolé, dont le fichier sera nettoyé (sinon %TEMP% se remplit).</summary>
+    private StateStore NewStore()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db");
+        _extraDbs.Add(path);
+        return new StateStore(path);
+    }
 
     [Fact]
     public void RecentConnection_UpsertNoDuplicates_MostRecentFirst()
@@ -61,7 +72,7 @@ public class StateStoreTests : IDisposable
     [Fact]
     public void RecentProjects_UpsertAndOrderByLastUsed()
     {
-        using var store = new StateStore(Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db"));
+        using var store = NewStore();
         store.AddRecentProject(@"C:\proj\Cube1.cube");
         store.AddRecentProject(@"C:\proj\Cube2.cube");
         store.AddRecentProject(@"C:\proj\Cube1.cube"); // ré-ouverture → remonte en tête
@@ -205,10 +216,44 @@ public class StateStoreTests : IDisposable
         Assert.Null(_store.GetCaptionStamp(srv, cat, cube));
     }
 
+    [Fact]
+    public void History_BelowTheCap_KeepsEverythingMostRecentFirst()
+    {
+        using var store = NewStore();
+        for (int i = 0; i < 30; i++)
+            store.AddHistory("S", "C", $"SELECT {i}", true, 1, 1, null);
+
+        var all = store.GetHistory(10_000);
+
+        Assert.Equal(30, all.Count);
+        Assert.Equal("SELECT 29", all[0].Mdx);
+    }
+
+    [Fact]
+    public void History_AboveTheCap_DropsTheOldestRows()
+    {
+        // Le vrai comportement de purge : franchir le seuil de 5 000 et vérifier que ce sont
+        // les plus ANCIENNES qui disparaissent. Sans dépasser le seuil, le test passerait même
+        // si l'élagage ne faisait rien — il ne prouverait alors plus rien.
+        using var store = NewStore();
+        const int cap = 5000;
+        const int extra = 100;
+        for (int i = 0; i < cap + extra; i++)
+            store.AddHistory("S", "C", $"SELECT {i}", true, 1, 1, null);
+
+        var all = store.GetHistory(10_000);
+
+        Assert.Equal(cap, all.Count);
+        Assert.Equal($"SELECT {cap + extra - 1}", all[0].Mdx);       // la plus récente est là
+        Assert.DoesNotContain(all, h => h.Mdx == "SELECT 0");        // la plus ancienne est partie
+        Assert.Contains(all, h => h.Mdx == $"SELECT {extra}");       // la première conservée
+    }
+
     public void Dispose()
     {
         _store.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         File.Delete(_dbPath);
+        foreach (var p in _extraDbs) File.Delete(p);
     }
 }
