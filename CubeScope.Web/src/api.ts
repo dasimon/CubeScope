@@ -225,11 +225,37 @@ export const api = {
   impact: (oldScript: string, newScript: string) =>
     request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
 
+  // Comparaison de la même requête entre le catalogue courant et un autre du même serveur
+  compare: (mdx: string, catalog: string) =>
+    request<CatalogComparison>('POST', '/api/compare', { mdx, catalog }),
+
   // Sessions de l'instance (droits admin SSAS requis côté serveur)
   sessions: () => request<SsasSessionInfo[]>('GET', '/api/sessions'),
   // cancelled = false : la session avait déjà disparu (la liste affichée vieillit)
   cancelSession: (spid: number) =>
     request<{ spid: number; cancelled: boolean }>('POST', `/api/sessions/${spid}/cancel`),
+}
+
+/** Une cellule qui diffère entre les deux catalogues (expected = gauche, actual = droite). */
+export interface CellDiff {
+  row: number
+  column: string
+  expected: string | null
+  actual: string | null
+}
+
+/** Comparaison de la même requête entre deux catalogues. summary est null quand tout concorde. */
+export interface CatalogComparison {
+  leftCatalog: string
+  rightCatalog: string
+  leftCells: number
+  rightCells: number
+  leftMs: number
+  rightMs: number
+  match: boolean
+  summary: string | null
+  diffCount: number
+  diffs: CellDiff[]
 }
 
 /** Session ouverte sur l'instance SSAS. isMine = celle de CubeScope lui-même. */

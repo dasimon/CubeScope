@@ -38,6 +38,7 @@ builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<SessionsService>();
+builder.Services.AddSingleton<CatalogComparisonService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 // Arrêt automatique à la fermeture du navigateur — inactif en dev/tests (--no-browser),
 // sinon fermer la page couperait le serveur sous les pieds de Vite.
@@ -607,6 +608,16 @@ api.MapPost("/metadata/captions/refresh", (CaptionRefreshRequest req, MetadataSe
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Comparaison de la même requête entre le catalogue courant et un autre du même serveur :
+// « est-ce qu'un chiffre a bougé ? » après un changement de script.
+api.MapPost("/compare", async (CompareRequest req, CatalogComparisonService comparison,
+    CancellationToken ct) =>
+{
+    try { return Results.Ok(await comparison.CompareAsync(req.Mdx, req.Catalog, ct)); }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
 // Sessions ouvertes sur l'instance. Lecture réservée aux admins SSAS : en cas de refus on
 // renvoie le message tel quel, l'UI se dégrade (même parti pris que le Profiler).
 api.MapGet("/sessions", async (SessionsService sessions, CancellationToken ct) =>
@@ -663,6 +674,7 @@ app.Run();
 internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
+internal sealed record CompareRequest(string Mdx, string Catalog);
 internal sealed record DrillthroughRequest(string Mdx, int MaxRows);
 internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record AiOptimizeProfileRequest(string Mdx, QueryProfile Profile, string? Lang);

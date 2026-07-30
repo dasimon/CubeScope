@@ -211,6 +211,15 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   couperaient dès qu'on ferme la page. Donc en dev le serveur ne s'arrête jamais
   seul — c'est voulu, pas une panne. Rien ne s'arme tant qu'aucun client ne s'est
   connecté (l'exe ne peut pas se couper pendant l'ouverture du navigateur).
+- **Comparaison entre catalogues** (`CatalogComparisonService`) : la même requête est jouée
+  sur le catalogue courant (via la session, donc vue du Profiler) et sur un autre catalogue
+  du même serveur via `SsasSession.WithTransientConnectionAsync` — connexion neuve, **même
+  chaîne de connexion donc même locale**, sinon les libellés de colonnes différeraient et
+  `ResultComparer` verrait de faux écarts. Conséquence assumée : la requête de droite a son
+  propre SessionID, le Profiler ne la voit pas. ⚠️ La comparaison porte sur les valeurs
+  **formatées** (`CellSetMapper` privilégie `FormattedValue`, comme la non-régression) : un
+  simple changement de `FORMAT_STRING` entre deux catalogues apparaît donc comme un écart.
+  Diffs plafonnés à 200.
 - **Sessions SSAS** (`SessionsService`, panneau Sessions) : le moteur DMV n'accepte
   **ni JOIN, ni GROUP BY, ni LIKE, ni CAST** → `DISCOVER_SESSIONS` et
   `DISCOVER_COMMANDS` sont lues séparément puis rapprochées en C# sur `SESSION_SPID`.

@@ -6,11 +6,17 @@ import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Button from 'primevue/button'
 import ResultsGrid from './ResultsGrid.vue'
+import CompareDialog from './CompareDialog.vue'
 import { actions, store } from '../store'
+import { ref, computed } from 'vue'
 import { toCsv, toTsv, downloadCsv, copyToClipboard } from '../exportResults'
 
 const { t } = useI18n()
 const toast = useToast()
+
+// Comparaison entre catalogues : sans autre catalogue sur le serveur, le bouton n'a pas d'objet.
+const showCompare = ref(false)
+const canCompare = computed(() => store.catalogs.some((c) => c !== store.catalog))
 
 function exportCsv() {
   if (!store.result) return
@@ -78,7 +84,17 @@ function closeTab(e: MouseEvent, id: number) {
           size="small"
           @click="copyResults"
         />
+        <Button
+          :label="t('compare.button')"
+          icon="pi pi-arrow-right-arrow-left"
+          text
+          size="small"
+          :disabled="!canCompare"
+          :title="canCompare ? '' : t('compare.needCatalog')"
+          @click="showCompare = true"
+        />
       </div>
+      <CompareDialog v-model:visible="showCompare" />
       <div class="results-grid-wrapper">
         <ResultsGrid :columns="store.result.columns" :rows="store.result.rows" />
       </div>

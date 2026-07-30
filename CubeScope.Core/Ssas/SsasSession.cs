@@ -119,6 +119,27 @@ public sealed class SsasSession : IDisposable
         return _conn;
     }
 
+    /// <summary>
+    /// Exécute un travail sur une connexion NEUVE visant un autre catalogue du même serveur,
+    /// hors du verrou : sert à comparer un résultat entre deux catalogues sans perturber la
+    /// session courante. La chaîne de connexion est celle de la session — donc la même locale,
+    /// sinon les libellés de colonnes différeraient et la comparaison verrait de faux écarts.
+    /// Conséquence assumée : ces requêtes ont leur propre SessionID, le Profiler ne les voit pas.
+    /// </summary>
+    public Task<T> WithTransientConnectionAsync<T>(
+        string catalog, Func<AdomdConnection, T> work, CancellationToken ct = default)
+    {
+        var connectionString = _connectionString
+            ?? throw new InvalidOperationException("Aucune connexion ouverte.");
+        return Task.Run(() =>
+        {
+            using var conn = new AdomdConnection(connectionString);
+            conn.Open();
+            conn.ChangeDatabase(catalog);
+            return work(conn);
+        }, ct);
+    }
+
     /// <summary>Exécute une DMV $SYSTEM.* sur la connexion courante (métadonnées).</summary>
     public Task<DataTable> ExecuteDmvAsync(string query, CancellationToken ct = default)
         => WithConnectionAsync(conn => ExecuteDmv(conn, query), ct);
