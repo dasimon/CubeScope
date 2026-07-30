@@ -12,6 +12,7 @@ public sealed class SsasSession : IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AdomdConnection? _conn;
+    private string? _connectionString;
 
     public string? Server { get; private set; }
     public string? Catalog { get; private set; }
@@ -37,7 +38,8 @@ public sealed class SsasSession : IDisposable
             return await Task.Run(() =>
             {
                 _conn?.Dispose();
-                _conn = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;{LocaleClause(lang)}");
+                _connectionString = $"Data Source={server};Integrated Security=SSPI;{LocaleClause(lang)}";
+                _conn = new AdomdConnection(_connectionString);
                 _conn.Open();
                 Server = server;
                 Catalog = null;
@@ -54,8 +56,7 @@ public sealed class SsasSession : IDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            var conn = _conn ?? throw new InvalidOperationException("Aucune connexion ouverte.");
-            await Task.Run(() => conn.ChangeDatabase(catalog), ct);
+            await Task.Run(() => EnsureOpen().ChangeDatabase(catalog), ct);
             Catalog = catalog;
         }
         finally { _gate.Release(); }
@@ -67,10 +68,32 @@ public sealed class SsasSession : IDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            var conn = _conn ?? throw new InvalidOperationException("Aucune connexion ouverte.");
-            return await Task.Run(() => work(conn), ct);
+            return await Task.Run(() => work(EnsureOpen()), ct);
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Connexion utilisable, rouverte si ADOMD l'a fermée dans notre dos. Constaté en usage réel :
+    /// après l'annulation d'une requête, la requête suivante échouait sur « La connexion n'est pas
+    /// ouverte » (message ADOMD, pas le nôtre) — l'annulation passe par un &lt;Cancel&gt; XMLA, et
+    /// rien dans la doc ADOMD ne garantit que la session y survit. Plutôt que de renvoyer l'erreur
+    /// à l'utilisateur, on rétablit la connexion et son catalogue.
+    /// À appeler sous <see cref="_gate"/> — un seul travail à la fois sur la connexion.
+    /// </summary>
+    private AdomdConnection EnsureOpen()
+    {
+        var conn = _conn ?? throw new InvalidOperationException("Aucune connexion ouverte.");
+        if (conn.State == ConnectionState.Open) return conn;
+
+        // La trace rend l'hypothèse vérifiable : si le symptôme revient, cette ligne dit
+        // s'il s'agissait bien d'une connexion fermée, et à quel moment.
+        Console.WriteLine($"[CubeScope] Connexion SSAS trouvée {conn.State} — réouverture.");
+        conn.Dispose();
+        _conn = new AdomdConnection(_connectionString);
+        _conn.Open();
+        if (Catalog is not null) _conn.ChangeDatabase(Catalog);
+        return _conn;
     }
 
     /// <summary>Exécute une DMV $SYSTEM.* sur la connexion courante (métadonnées).</summary>
