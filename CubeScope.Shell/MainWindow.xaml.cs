@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly string _url;
     private readonly StateStore _store;
     private bool _fermetureConfirmee;
+    private bool _verificationEnCours;
 
     public MainWindow(string url, StateStore store)
     {
@@ -60,18 +61,27 @@ public partial class MainWindow : Window
     ///
     /// La réponse est asynchrone (`ExecuteScriptAsync`) alors que `Closing` est synchrone :
     /// on annule cette fermeture-ci, on interroge la page, puis on rappelle `Close()` une
-    /// fois la réponse connue. `_fermetureConfirmee` distingue les deux passages — et c'est
-    /// le second, celui de la fermeture effective, qui enregistre la géométrie (une fois).
+    /// fois la réponse connue. `_fermetureConfirmee` distingue les deux passages.
     /// </summary>
     private void AuMomentDeFermer(object? sender, CancelEventArgs e)
     {
-        if (_fermetureConfirmee)
-        {
-            EnregistrerGeometrie();
-            return;
-        }
+        // Enregistrée à CHAQUE passage, pas seulement sur la fermeture confirmée : WPF ignore
+        // `e.Cancel` quand la fermeture vient d'un `Application.Shutdown()` (fin de session
+        // Windows), et la géométrie serait alors perdue. L'écriture est un upsert d'une seule
+        // ligne : la rejouer ne coûte rien, et c'est toujours le dernier passage qui gagne.
+        EnregistrerGeometrie();
+
+        if (_fermetureConfirmee) return;
 
         e.Cancel = true;
+
+        // Sans ce garde, chaque clic sur la croix pendant la vérification en relance une :
+        // les continuations reprennent dans la pompe imbriquée de la première `MessageBox`
+        // (dialogues empilés), et le `Close()` du perdant lève sur une fenêtre déjà fermée.
+        // La fenêtre de tir s'élargit précisément quand la page est lente — donc quand
+        // l'utilisateur reclique.
+        if (_verificationEnCours) return;
+        _verificationEnCours = true;
         _ = ConfirmerPuisFermerAsync();
     }
 
@@ -81,9 +91,20 @@ public partial class MainWindow : Window
         {
             // Renvoie la chaîne JSON "true" ou "false" ; tout le reste (null, undefined,
             // page pas encore chargée) se lit comme « rien à perdre ».
-            string reponse = await Vue.CoreWebView2.ExecuteScriptAsync(
-                "window.__cubescopeDirty === true");
-            if (reponse == "true")
+            //
+            // Borné dans le temps : `ExecuteScriptAsync` est posté sur le thread JS du
+            // renderer, et tant qu'un traitement synchrone l'occupe la promesse ne se résout
+            // JAMAIS — sur ce produit ce n'est pas théorique (le panneau Script manipule
+            // des centaines de commandes). Sans délai, la croix deviendrait inerte : un
+            // garde-fou qui empêche de quitter l'application est pire que pas de garde-fou.
+            var interrogation = Vue.CoreWebView2.ExecuteScriptAsync("window.__cubescopeDirty === true");
+            if (await Task.WhenAny(interrogation, Task.Delay(TimeSpan.FromSeconds(2))) != interrogation)
+            {
+                FermerSansDemander();
+                return;
+            }
+
+            if (await interrogation == "true")
             {
                 var choix = MessageBox.Show(
                     this,
@@ -92,7 +113,12 @@ public partial class MainWindow : Window
                     "CubeScope",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
-                if (choix != MessageBoxResult.Yes) return; // la fenêtre reste ouverte
+                if (choix != MessageBoxResult.Yes)
+                {
+                    // La fenêtre reste ouverte, et la question sera reposée au prochain clic.
+                    _verificationEnCours = false;
+                    return;
+                }
             }
         }
         catch

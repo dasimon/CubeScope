@@ -341,10 +341,18 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
     `ExecuteScriptAsync` (réponse = **chaîne JSON** `"true"`/`"false"`, tout ce
     qui n'est pas exactement `true` valant « rien à perdre »), demande
     confirmation par `MessageBox` si besoin, puis rappelle `Close()` ;
-    `_fermetureConfirmee` distingue les deux passages et la géométrie ne
-    s'enregistre que sur le second. Toute défaillance de la vérification laisse
-    fermer (WebView2 non initialisée, page pas chargée) : un garde-fou qui
-    empêche de quitter l'application est pire que pas de garde-fou. **Limite
+    `_fermetureConfirmee` distingue les deux passages. Trois garde-fous rendent
+    la croix increvable, parce qu'un garde-fou qui empêche de QUITTER serait pire
+    que pas de garde-fou : (a) toute exception laisse fermer (WebView2 non
+    initialisée, page pas chargée) ; (b) l'interrogation est bornée à **2 s** par
+    un `Task.WhenAny` — `ExecuteScriptAsync` est posté sur le thread JS du
+    renderer et ne se résout jamais tant qu'un traitement synchrone l'occupe, ce
+    qui rendrait la croix inerte ; (c) un drapeau `_verificationEnCours` empêche
+    qu'un second clic sur la croix relance une vérification concurrente (dialogues
+    empilés, `Close()` qui lève sur une fenêtre déjà fermée). La géométrie est
+    enregistrée à CHAQUE passage et non sur le seul passage confirmé : WPF ignore
+    `e.Cancel` lors d'un `Application.Shutdown()` (fin de session Windows), où la
+    géométrie serait sinon perdue. **Limite
     assumée : il ne couvre que ce que la page expose** — seul le MDX Script d'un
     projet SSDT alimente ce drapeau (ni requête en cours, ni onglet de
     résultats), et si le panneau Script est démonté, la dernière valeur publiée
