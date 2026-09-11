@@ -8,6 +8,8 @@ public sealed record RecentConnection(string Server, string? Catalog, DateTime L
 public sealed record HistoryEntry(long Id, string Server, string? Catalog, string Mdx,
     bool Success, long DurationMs, int CellCount, string? Error, DateTime ExecutedUtc);
 
+public sealed record WindowState(double X, double Y, double Width, double Height, bool Maximized);
+
 /// <summary>
 /// État local dans UN fichier SQLite (décision actée : pas de fichiers de config éparpillés).
 /// Par défaut : %LOCALAPPDATA%\CubeScope\cubescope.db. Migrations par PRAGMA user_version.
@@ -143,6 +145,20 @@ public sealed class StateStore : IDisposable
                     Stamp TEXT NOT NULL, PRIMARY KEY (Server, Catalog, Cube)
                 );
                 PRAGMA user_version = 7;
+                """);
+        }
+        if (version < 8)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS WindowState (
+                    Id        INTEGER PRIMARY KEY CHECK (Id = 1),
+                    X         REAL NOT NULL,
+                    Y         REAL NOT NULL,
+                    Width     REAL NOT NULL,
+                    Height    REAL NOT NULL,
+                    Maximized INTEGER NOT NULL
+                );
+                PRAGMA user_version = 8;
                 """);
         }
     }
@@ -493,6 +509,41 @@ public sealed class StateStore : IDisposable
                     r.GetString(3), r.GetString(4), (int)r.GetInt64(5), r.GetInt64(6) != 0,
                     DateTime.Parse(r.GetString(7)).ToUniversalTime()));
             return list;
+        }
+    }
+
+    /// <summary>Géométrie de la fenêtre de bureau (une seule ligne, v8).</summary>
+    public void SaveWindowState(double x, double y, double width, double height, bool maximized)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO WindowState (Id, X, Y, Width, Height, Maximized)
+                VALUES (1, $x, $y, $w, $h, $m)
+                ON CONFLICT(Id) DO UPDATE SET
+                    X = $x, Y = $y, Width = $w, Height = $h, Maximized = $m
+                """;
+            cmd.Parameters.AddWithValue("$x", x);
+            cmd.Parameters.AddWithValue("$y", y);
+            cmd.Parameters.AddWithValue("$w", width);
+            cmd.Parameters.AddWithValue("$h", height);
+            cmd.Parameters.AddWithValue("$m", maximized ? 1 : 0);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Géométrie enregistrée, ou null au tout premier lancement.</summary>
+    public WindowState? GetWindowState()
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT X, Y, Width, Height, Maximized FROM WindowState WHERE Id = 1";
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return null;
+            return new WindowState(
+                r.GetDouble(0), r.GetDouble(1), r.GetDouble(2), r.GetDouble(3), r.GetInt32(4) != 0);
         }
     }
 

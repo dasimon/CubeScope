@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
+using CubeScope.Core.State;
 using CubeScope.Server;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Web.WebView2.Core;
 
@@ -51,7 +53,8 @@ public partial class App : Application
             return;
         }
 
-        var fenetre = new MainWindow(url);
+        var store = app.Services.GetRequiredService<StateStore>();
+        var fenetre = new MainWindow(url, store);
         fenetre.Closed += async (_, _) => await ArreterServeurAsync();
         MainWindow = fenetre;
         fenetre.Show();

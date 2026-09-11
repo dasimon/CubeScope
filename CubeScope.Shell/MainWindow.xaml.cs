@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using CubeScope.Core.State;
 using Microsoft.Web.WebView2.Core;
 
 namespace CubeScope.Shell;
@@ -9,12 +10,44 @@ namespace CubeScope.Shell;
 public partial class MainWindow : Window
 {
     private readonly string _url;
+    private readonly StateStore _store;
 
-    public MainWindow(string url)
+    public MainWindow(string url, StateStore store)
     {
         _url = url;
+        _store = store;
         InitializeComponent();
+        RestaurerGeometrie();
         Loaded += async (_, _) => await InitialiserVueAsync();
+        Closing += (_, _) => EnregistrerGeometrie();
+    }
+
+    private void RestaurerGeometrie()
+    {
+        var etat = _store.GetWindowState();
+        if (etat is null) return;
+
+        // Un écran débranché depuis la dernière session laisserait la fenêtre hors champ.
+        var bornes = SystemParameters.WorkArea;
+        if (etat.X < bornes.Left - etat.Width + 100 || etat.X > bornes.Right - 100) return;
+        if (etat.Y < bornes.Top || etat.Y > bornes.Bottom - 100) return;
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = etat.X;
+        Top = etat.Y;
+        Width = etat.Width;
+        Height = etat.Height;
+        if (etat.Maximized) WindowState = System.Windows.WindowState.Maximized;
+    }
+
+    private void EnregistrerGeometrie()
+    {
+        // RestoreBounds donne la géométrie d'avant l'agrandissement : sans ça, une
+        // fenêtre fermée maximisée rouvrirait plein écran puis, une fois restaurée,
+        // occuperait tout l'écran.
+        bool maximise = WindowState == System.Windows.WindowState.Maximized;
+        var r = maximise ? RestoreBounds : new Rect(Left, Top, Width, Height);
+        _store.SaveWindowState(r.X, r.Y, r.Width, r.Height, maximise);
     }
 
     private async Task InitialiserVueAsync()
