@@ -28,9 +28,13 @@ public partial class MainWindow : Window
         if (etat is null) return;
 
         // Un écran débranché depuis la dernière session laisserait la fenêtre hors champ.
-        var bornes = SystemParameters.WorkArea;
-        if (etat.X < bornes.Left - etat.Width + 100 || etat.X > bornes.Right - 100) return;
-        if (etat.Y < bornes.Top || etat.Y > bornes.Bottom - 100) return;
+        // VirtualScreen* couvre TOUS les moniteurs (WorkArea se limite au principal, ce qui
+        // rejetterait à tort toute position sur un écran secondaire).
+        bool utilisable = GeometrieDecider.GeometrieUtilisable(
+            etat.X, etat.Y, etat.Width, etat.Height,
+            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        if (!utilisable) return;
 
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = etat.X;
