@@ -10,8 +10,18 @@ DAX.** Ne jamais introduire d'abstraction multi-moteurs "au cas où".
 ## Décisions d'architecture (actées — ne pas rouvrir sans raison forte)
 
 - **Un seul exécutable** `cubescope.exe` : ASP.NET Core 10 (Kestrel, port libre
-  sur localhost) servant une SPA Vue 3. Au lancement, ouverture du navigateur
-  par défaut. Pas de WebView2 pour l'instant.
+  sur localhost) servant une SPA Vue 3. **Coquille native WPF/WebView2
+  (2026-09-11, `feat/coquille-webview2`) : décision changée.** Au lancement,
+  ouverture d'une fenêtre native `CubeScope.Shell` (WPF +
+  `Microsoft.Web.WebView2.Wpf`) plutôt que du navigateur par défaut — motif :
+  icône barre des tâches, titre de fenêtre propre, raccourcis clavier
+  applicatifs (F5, Ctrl+F…) qui ne doivent plus être happés par le chrome
+  d'un navigateur, arrêt du process lié à la fermeture de la fenêtre plutôt
+  qu'à un onglet qu'on peut laisser traîner. Le serveur Kestrel/SPA est resté
+  une bibliothèque réutilisable (`CubeScope.Server`), hébergée soit par
+  `CubeScope.Shell` (fenêtre native, exe publié), soit en repli navigateur via
+  `--force-browser` (comportement d'origine, conservé pour le cas où le
+  runtime WebView2 est absent). Détails techniques : voir « Pièges connus ».
 - **Solution** : `CubeScope.Core` (services métier, aucune dépendance web),
   `CubeScope.Server` (minimal API + SignalR + hébergement SPA),
   `CubeScope.Web` (Vue 3 + TypeScript + Vite).
@@ -260,6 +270,44 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
 - `en.ts` typé `typeof fr` impose la complétude des clés i18n à la
   compilation : une clé manquante devient une erreur TypeScript, pas un texte
   vide silencieux en prod.
+- **Coquille WPF/WebView2 (chantier 2026-09-11)** — pièges constatés en la
+  construisant :
+  - Par défaut, WebView2 crée son dossier de données **à côté de l'exe**
+    (`{nom}.exe.WebView2`) — ce qui casse un exécutable déplacé (doc
+    Microsoft). ⇒ imposer explicitement un dossier sous
+    `%LOCALAPPDATA%\CubeScope\WebView2` à `CoreWebView2Environment.CreateAsync`.
+  - `IHostApplicationLifetime.StopApplication()` ne déclenche **que**
+    `ApplicationStopping` ; le pont vers `ApplicationStopped` vit dans
+    `WaitForShutdownAsync()`, que `ServerHost.StartAsync` n'appelle pas.
+    S'abonner à `ApplicationStopped` depuis le Shell attendrait un événement
+    qui n'arrive jamais.
+  - `StopAsync()` ne libère **pas** les singletons `IDisposable` : c'est
+    `DisposeAsync()` sur l'hôte qui détruit le conteneur DI, et donc qui
+    déclenche le `Stop()`+`Drop()` de la trace SSAS dans
+    `ProfilerService.Dispose()`. `app.Run()` le faisait dans son `finally` ;
+    en pilotant le cycle de vie soi-même (Shell), on reprend cette
+    obligation — appeler les deux à la fermeture de la fenêtre.
+  - `SystemParameters.WorkArea` ne décrit que l'**écran principal**. Pour
+    raisonner sur plusieurs écrans (restauration de géométrie de fenêtre), il
+    faut `SystemParameters.VirtualScreenLeft/Top/Width/Height`.
+  - `AreBrowserAcceleratorKeysEnabled = false` coupe aussi le **zoom**
+    (Ctrl+Plus/Minus/0), qu'il faut rebrancher soi-même ; les autres
+    raccourcis coupés (Ctrl+F, F3, F5…) continuent d'atteindre le contenu
+    web, donc Monaco les récupère normalement.
+  - `-p:EmbedSpa=true` doit être **explicite** au publish : la cible vit dans
+    `CubeScope.Server.csproj`, qui n'est plus le projet publié (c'est
+    `CubeScope.Shell` désormais — voir README section Publish).
+  - **Sort de `WebView2Loader.dll` en single-file — constaté le 2026-09-11**
+    (tâche de vérification finale, exe isolé dans un dossier vierge, lancé
+    sans argument) : le loader **survit** au publish single-file. Il n'est
+    copié ni à côté de l'exe ni dans `publish/` — il s'auto-extrait au
+    lancement dans `%TEMP%\.net\cubescope\<hash>\WebView2Loader.dll` (le
+    mécanisme standard .NET `IncludeNativeLibrariesForSelfExtract`, pas un
+    comportement spécifique à WebView2). L'exe isolé a démarré normalement
+    (fenêtre « CubeScope », port local en écoute, endpoints `/api/*` et
+    `/hubs/stats` répondant 200) et aucun dossier `*.WebView2` n'est apparu
+    à côté de lui — les données sont bien allées sous
+    `%LOCALAPPDATA%\CubeScope\WebView2\EBWebView`, comme attendu.
 
 ## Conventions de travail
 
