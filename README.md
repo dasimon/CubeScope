@@ -201,7 +201,7 @@ default browser when the WebView2 runtime is unavailable, or when passed
 | **CubeScope.Core** | Business services — SSAS connectivity, DMV/metadata, cell-set mapping, profiler aggregation, MDX tokenizer, AI service. No web dependency. |
 | **CubeScope.Server** | Minimal API + SignalR hubs + SPA embedding (`EmbedSpa` MSBuild target). A library, referenced by both hosts below — it produces nothing on its own. |
 | **CubeScope.Shell** | WPF window hosting Kestrel and a WebView2 control. Produces `cubescope.exe`, the published executable. |
-| **CubeScope.Server.Cli** | Headless console host, no window — used for the local dev loop and by the test suite. Not published (`IsPublishable=false`). |
+| **CubeScope.Server.Cli** | Headless console host, no window — used for the local dev loop; the same entry point (`ServerHost`) is also what `CubeScope.Core.Tests` (e.g. `ServerHostTests`) exercises directly, not this Cli project. Not published (`IsPublishable=false`). |
 | **CubeScope.Web** | Vue 3 + TypeScript (strict) + Vite. Monaco editor, dockview layout, PrimeVue components. |
 | **CubeScope.Spike** | Read-only SSAS server-behaviour harness kept as a non-regression tool (`--discover`). |
 
