@@ -1,5 +1,7 @@
 // CubeScope.Server — hôte unique : minimal API + SPA Vue 3 embarquée.
-// Port libre sur localhost, ouverture du navigateur au démarrage (décisions actées).
+// Port libre sur localhost. L'affichage ne se décide PAS ici : StartAsync rend la main
+// avec l'URL sans rien ouvrir (le Shell affiche alors sa fenêtre native), seul RunAsync —
+// le chemin du Cli — ouvre le navigateur.
 
 using System.Diagnostics;
 using System.Reflection;

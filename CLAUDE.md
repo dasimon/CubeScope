@@ -23,7 +23,10 @@ DAX.** Ne jamais introduire d'abstraction multi-moteurs "au cas où".
   `--force-browser` (comportement d'origine, conservé pour le cas où le
   runtime WebView2 est absent). Détails techniques : voir « Pièges connus ».
 - **Solution** : `CubeScope.Core` (services métier, aucune dépendance web),
-  `CubeScope.Server` (minimal API + SignalR + hébergement SPA),
+  `CubeScope.Server` (bibliothèque : minimal API + SignalR + hébergement SPA),
+  `CubeScope.Shell` (WPF + WebView2, **projet publié** : héberge le serveur et
+  affiche la fenêtre native), `CubeScope.Server.Cli` (point d'entrée
+  console sans fenêtre pour la boucle de dev — `--port`, `--no-browser` ; non publié),
   `CubeScope.Web` (Vue 3 + TypeScript + Vite).
 - **Connectivité SSAS** : package NuGet
   `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` (jamais la
@@ -317,6 +320,35 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
     `/api/*` tous en 200) et aucun dossier `*.WebView2` n'est apparu à côté de
     lui — les données sont bien allées sous
     `%LOCALAPPDATA%\CubeScope\WebView2\EBWebView`, comme attendu.
+  - **Un arrêt de session Windows peut laisser une trace SSAS vivante**
+    (constaté au raisonnement le 2026-09-11, relecture finale — non reproduit
+    en vrai) : un redémarrage ou une déconnexion appelle `Shutdown()` et éteint
+    le Dispatcher sans garantir que la continuation de `StopAsync` reprenne. Le
+    `DisposeAsync` de l'hôte — donc le `Stop()` + `Drop()` de la trace — peut
+    être **sauté**, et `CubeScope_Profiler_<pid>` survivre au redémarrage.
+    Auto-guérissant (le nettoyage des orphelines, au prochain `Initialize`,
+    droppe les traces dont le PID est mort), mais entre-temps la trace tourne
+    sur un serveur SSAS partagé avec la production. Structurel : Windows ne
+    promet pas de temps supplémentaire à un process au logoff. Non corrigeable
+    proprement → assumé et documenté ici plutôt que rustiné.
+  - **`beforeunload` n'est jamais évalué dans la fenêtre native** : détruire un
+    contrôle WebView2 ne passe pas par le chemin de fermeture du navigateur, le
+    handler de `ScriptPanel.vue` ne sert donc plus qu'au repli
+    `--force-browser`. Le garde-fou est refait côté coquille depuis le
+    2026-09-11 : la page publie son état dans `window.__cubescopeDirty` (watch
+    sur `dirty`, `immediate`), et `MainWindow.Closing` — synchrone alors que la
+    réponse est asynchrone — annule la fermeture, lit le drapeau par
+    `ExecuteScriptAsync` (réponse = **chaîne JSON** `"true"`/`"false"`, tout ce
+    qui n'est pas exactement `true` valant « rien à perdre »), demande
+    confirmation par `MessageBox` si besoin, puis rappelle `Close()` ;
+    `_fermetureConfirmee` distingue les deux passages et la géométrie ne
+    s'enregistre que sur le second. Toute défaillance de la vérification laisse
+    fermer (WebView2 non initialisée, page pas chargée) : un garde-fou qui
+    empêche de quitter l'application est pire que pas de garde-fou. **Limite
+    assumée : il ne couvre que ce que la page expose** — seul le MDX Script d'un
+    projet SSDT alimente ce drapeau (ni requête en cours, ni onglet de
+    résultats), et si le panneau Script est démonté, la dernière valeur publiée
+    reste en place (au pire une question de trop, jamais une perte silencieuse).
 
 ## Conventions de travail
 
