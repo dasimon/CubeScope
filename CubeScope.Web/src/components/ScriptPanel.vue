@@ -718,6 +718,18 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
+/** Miroir du même état pour la coquille WPF : détruire un contrôle WebView2 ne passe PAS
+ *  par le chemin de fermeture du navigateur, `beforeunload` n'y est donc jamais évalué
+ *  (le handler ci-dessus ne sert plus qu'au repli `--force-browser`). La fenêtre native
+ *  lit ce drapeau par `ExecuteScriptAsync` avant de se fermer. */
+watch(
+  dirty,
+  (v) => {
+    ;(window as Window & { __cubescopeDirty?: boolean }).__cubescopeDirty = v
+  },
+  { immediate: true },
+)
+
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)

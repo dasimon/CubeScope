@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -11,6 +12,7 @@ public partial class MainWindow : Window
 {
     private readonly string _url;
     private readonly StateStore _store;
+    private bool _fermetureConfirmee;
 
     public MainWindow(string url, StateStore store)
     {
@@ -19,7 +21,66 @@ public partial class MainWindow : Window
         InitializeComponent();
         RestaurerGeometrie();
         Loaded += async (_, _) => await InitialiserVueAsync();
-        Closing += (_, _) => EnregistrerGeometrie();
+        Closing += AuMomentDeFermer;
+    }
+
+    /// <summary>
+    /// Le travail non enregistré du panneau Script était protégé par un `beforeunload` côté
+    /// page. Détruire un contrôle WebView2 ne passe PAS par le chemin de fermeture du
+    /// navigateur : ce handler n'est jamais évalué ici, et la croix de la fenêtre perdrait
+    /// le travail sans un mot. On repose donc la question nous-mêmes.
+    ///
+    /// La réponse est asynchrone (`ExecuteScriptAsync`) alors que `Closing` est synchrone :
+    /// on annule cette fermeture-ci, on interroge la page, puis on rappelle `Close()` une
+    /// fois la réponse connue. `_fermetureConfirmee` distingue les deux passages — et c'est
+    /// le second, celui de la fermeture effective, qui enregistre la géométrie (une fois).
+    /// </summary>
+    private void AuMomentDeFermer(object? sender, CancelEventArgs e)
+    {
+        if (_fermetureConfirmee)
+        {
+            EnregistrerGeometrie();
+            return;
+        }
+
+        e.Cancel = true;
+        _ = ConfirmerPuisFermerAsync();
+    }
+
+    private async Task ConfirmerPuisFermerAsync()
+    {
+        try
+        {
+            // Renvoie la chaîne JSON "true" ou "false" ; tout le reste (null, undefined,
+            // page pas encore chargée) se lit comme « rien à perdre ».
+            string reponse = await Vue.CoreWebView2.ExecuteScriptAsync(
+                "window.__cubescopeDirty === true");
+            if (reponse == "true")
+            {
+                var choix = MessageBox.Show(
+                    this,
+                    "Le script MDX contient des modifications non enregistrées.\n\n"
+                    + "Fermer CubeScope quand même ? Ces modifications seront perdues.",
+                    "CubeScope",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (choix != MessageBoxResult.Yes) return; // la fenêtre reste ouverte
+            }
+        }
+        catch
+        {
+            // WebView2 pas initialisée, page pas chargée, script en erreur : un garde-fou
+            // qui empêcherait de quitter l'application serait pire que pas de garde-fou.
+        }
+
+        FermerSansDemander();
+    }
+
+    /// <summary>Ferme en court-circuitant la question — chemin du repli navigateur et de la confirmation acquise.</summary>
+    internal void FermerSansDemander()
+    {
+        _fermetureConfirmee = true;
+        Close();
     }
 
     private void RestaurerGeometrie()
