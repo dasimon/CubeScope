@@ -14,13 +14,39 @@ using CubeScope.Core.Script;
 using CubeScope.Core.Ssas;
 using CubeScope.Core.State;
 using CubeScope.Server;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+// Sortie de Microsoft.NET.Sdk.Web (tâche 1, étape 5) : les using ASP.NET Core ci-dessus,
+// implicites sous le Web SDK, deviennent nécessaires en explicite avec le SDK standard.
 
-try { Console.Title = "CubeScope"; } catch { /* pas de console (service, redirection) */ }
+namespace CubeScope.Server;
 
-var builder = WebApplication.CreateBuilder(args);
+/// <summary>
+/// Hôte unique : minimal API + SPA Vue 3 embarquée. Port libre sur localhost.
+/// Deux points d'entrée : <see cref="StartAsync"/> rend la main avec l'URL (le Shell
+/// affiche alors sa fenêtre), <see cref="RunAsync"/> se comporte comme avant —
+/// ouverture du navigateur et attente de l'arrêt.
+/// </summary>
+public static class ServerHost
+{
+    /// <summary>
+    /// Démarre Kestrel et retourne l'URL réelle. N'ouvre AUCUN navigateur : c'est
+    /// l'appelant qui décide de la surface d'affichage.
+    /// L'appelant est responsable du couple StopAsync + DisposeAsync (cf. tâche 3).
+    /// </summary>
+    public static async Task<(WebApplication App, string Url)> StartAsync(
+        string[] args, bool browserLifetime)
+    {
+    try { Console.Title = "CubeScope"; } catch { /* pas de console (service, redirection) */ }
+
+    var builder = WebApplication.CreateBuilder(args);
 // Port libre choisi par l'OS par défaut ; --port <n> pour un port fixe (proxy Vite en dev)
 int portIdx = Array.IndexOf(args, "--port");
 string port = portIdx >= 0 && portIdx + 1 < args.Length ? args[portIdx + 1] : "0";
@@ -45,7 +71,7 @@ builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 builder.Services.AddSingleton(sp => new BrowserLifetime(
     sp.GetRequiredService<IHostApplicationLifetime>(),
     sp.GetRequiredService<ILogger<BrowserLifetime>>(),
-    enabled: !args.Contains("--no-browser")));
+    enabled: browserLifetime));
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -656,20 +682,39 @@ if (spa is not null)
 else
     app.MapFallbackToFile("index.html");
 
-// Ouverture du navigateur une fois Kestrel démarré (sauf --no-browser, utile en dev/tests)
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    var url = app.Urls.FirstOrDefault();
-    if (url is null || args.Contains("--no-browser")) return;
-    Console.WriteLine($"CubeScope démarré : {url}");
-    try
-    {
-        Process.Start(new ProcessStartInfo(url.Replace("127.0.0.1", "localhost")) { UseShellExecute = true });
+    await app.StartAsync();
+    string url = app.Urls.First();
+    return (app, url);
     }
-    catch { /* pas de navigateur : l'URL est affichée en console */ }
-});
 
-app.Run();
+    /// <summary>
+    /// Comportement historique, conservé pour la boucle de dev et les tests :
+    /// démarre, ouvre le navigateur (sauf --no-browser), attend l'arrêt.
+    /// </summary>
+    public static async Task RunAsync(string[] args)
+    {
+        bool browser = !args.Contains("--no-browser");
+        var (app, url) = await StartAsync(args, browserLifetime: browser);
+        try
+        {
+            Console.WriteLine($"CubeScope démarré : {url}");
+            if (browser)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(
+                        url.Replace("127.0.0.1", "localhost")) { UseShellExecute = true });
+                }
+                catch { /* pas de navigateur : l'URL est affichée en console */ }
+            }
+            await app.WaitForShutdownAsync();
+        }
+        finally
+        {
+            await app.DisposeAsync();
+        }
+    }
+}
 
 internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record CatalogRequest(string Catalog);

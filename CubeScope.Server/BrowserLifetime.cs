@@ -1,3 +1,8 @@
+// Sortie de Microsoft.NET.Sdk.Web (tâche 1, étape 5) : ces using, implicites sous le Web
+// SDK, deviennent nécessaires en explicite avec le SDK standard.
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
 namespace CubeScope.Server;
 
 /// <summary>

@@ -1,7 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\CubeScope.Core\CubeScope.Core.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -9,14 +10,6 @@
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Décision actée : un seul exécutable "cubescope.exe" -->
-    <AssemblyName>cubescope</AssemblyName>
-    <!-- Icône exe = même identité visuelle que favicon.svg (cube émeraude isométrique). -->
-    <ApplicationIcon>cubescope.ico</ApplicationIcon>
-    <!-- Embarque AUSSI les DLL natives (e_sqlite3, msalruntime…) dans l'exe et les
-         auto-extrait au démarrage → l'exe seul suffit (sinon SQLite/historique plante
-         une fois l'exe déplacé sans ses DLL voisines). -->
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <!-- Au publish (ou -p:EmbedSpa=true) : build de la SPA Vue puis embarquement du dist
