@@ -616,6 +616,12 @@ api.MapGet("/metadata/cube/{cube}", async (string cube, MetadataService meta,
 api.MapGet("/metadata/members", async ([FromQuery] string cube, [FromQuery] string hierarchy,
     MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetMembersAsync(cube, hierarchy, ct: ct)));
+// Un cran de l'arbre des membres (explorateur, façon SSMS). `hierarchy=true` au premier cran,
+// sous le dossier « Membres » ; `false` ensuite, quand `parent` est un membre.
+api.MapGet("/metadata/children", async ([FromQuery] string cube, [FromQuery] string parent,
+    [FromQuery] bool hierarchy, MetadataService meta, CancellationToken ct) =>
+    Results.Ok(await meta.GetChildrenAsync(cube, parent, hierarchy, ct: ct)));
+
 // Caption d'UN membre par unique name (lookup ciblé — pour le survol, indépendant du cap 1000)
 api.MapGet("/metadata/member", async ([FromQuery] string cube, [FromQuery] string name,
     MetadataService meta, CancellationToken ct) =>

@@ -142,6 +142,12 @@ export const api = {
       'GET',
       `/api/metadata/members?cube=${encodeURIComponent(cube)}&hierarchy=${encodeURIComponent(hierarchy)}`,
     ),
+  children: (cube: string, parent: string, hierarchy: boolean) =>
+    request<MemberChildren>(
+      'GET',
+      `/api/metadata/children?cube=${encodeURIComponent(cube)}` +
+        `&parent=${encodeURIComponent(parent)}&hierarchy=${hierarchy}`,
+    ),
   memberCaption: (cube: string, name: string) =>
     request<{ caption: string | null }>(
       'GET',
@@ -339,6 +345,24 @@ export interface DependencyGraph {
 export interface MemberMeta {
   caption: string
   uniqueName: string
+}
+
+/**
+ * Un cran de l'arbre des membres. `childrenCount` vaut le nombre RÉEL d'enfants :
+ * 0 = feuille (pas de flèche de dépliage), et au-delà du plafond il donne le nombre
+ * de membres masqués. -1 quand le serveur ne l'a pas renvoyé — le nœud reste alors
+ * dépliable, faute de quoi on le déclarerait feuille à tort.
+ */
+export interface MemberNode {
+  caption: string
+  uniqueName: string
+  childrenCount: number
+}
+
+export interface MemberChildren {
+  nodes: MemberNode[]
+  /** Le plafond a coupé : à annoncer, jamais à taire. */
+  hasMore: boolean
 }
 
 export interface CounterDelta {

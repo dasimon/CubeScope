@@ -64,7 +64,11 @@ const en: typeof fr = {
     dimensions: 'Dimensions ({n})',
     root: '(root)',
     refresh: 'Refresh metadata',
-    dblclick: 'Double-click: insert into editor',
+    dblclick: 'Double-click or drag: insert into editor',
+    members: 'Members',
+    more: '… {n} more member(s)',
+    moreUnknown: '… more members not shown',
+    membersError: 'Members unavailable',
   },
   history: {
     filterPlaceholder: 'Filter (MDX, catalog, error)…',

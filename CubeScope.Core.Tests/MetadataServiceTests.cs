@@ -95,6 +95,50 @@ public class MetadataServiceIntegrationTests : IDisposable
     private readonly StateStore _store =
         new(Path.Combine(Path.GetTempPath(), $"cubescope-meta-{Guid.NewGuid():N}.db"));
 
+    /// <summary>
+    /// Le drill-down de l'explorateur s'appuie sur CHILDREN_CARDINALITY pour deux décisions :
+    /// distinguer une feuille d'un nœud dépliable, et annoncer combien de membres le plafond
+    /// masque. Rien ne garantit a priori qu'un serveur le renvoie — ce test le CONSTATE, plutôt
+    /// que de laisser le code s'appuyer sur une supposition.
+    /// </summary>
+    [Fact]
+    public async Task GetChildren_DescendDeLaHierarchieAuxFeuilles()
+    {
+        // Lecture seule (aucun cache vidé) : le catalogue de référence convient, comme pour
+        // le test de métadonnées voisin.
+        await _session.ConnectAsync(TestTarget.Server);
+        await _session.SetCatalogAsync(TestTarget.Catalog);
+        var svc = new MetadataService(_session, _store);
+
+        var meta = await svc.GetCubeMetaAsync(TestTarget.Cube);
+        var hier = meta.Dimensions.SelectMany(d => d.Hierarchies).First(h => h.Levels.Count > 1);
+
+        // Cran 1 : sous « Membres », le sommet de la hiérarchie — le (All) habituel.
+        var racine = await svc.GetChildrenAsync(TestTarget.Cube, hier.UniqueName, isHierarchy: true);
+        Assert.NotEmpty(racine.Nodes);
+        Assert.All(racine.Nodes, n => Assert.NotEmpty(n.UniqueName));
+
+        // La cardinalité doit être renseignée, sinon tout l'arbre perd sa capacité à
+        // distinguer une feuille et à chiffrer ce qu'il masque.
+        Assert.All(racine.Nodes, n => Assert.NotEqual(-1, n.ChildrenCount));
+
+        // Cran 2 : les enfants du premier membre. Sur une hiérarchie à plusieurs niveaux,
+        // le sommet a forcément des enfants.
+        var sommet = racine.Nodes[0];
+        Assert.True(sommet.ChildrenCount > 0, $"attendu : {sommet.UniqueName} a des enfants");
+
+        var enfants = await svc.GetChildrenAsync(TestTarget.Cube, sommet.UniqueName, isHierarchy: false);
+        Assert.NotEmpty(enfants.Nodes);
+        Assert.All(enfants.Nodes, n => Assert.NotEqual(-1, n.ChildrenCount));
+
+        // Le plafond ne doit jamais couper en silence : ce qu'on rend tient dans la limite,
+        // et HasMore dit s'il en reste.
+        var plafonne = await svc.GetChildrenAsync(
+            TestTarget.Cube, sommet.UniqueName, isHierarchy: false, limit: 2);
+        Assert.True(plafonne.Nodes.Count <= 2);
+        Assert.Equal(sommet.ChildrenCount > 2, plafonne.HasMore);
+    }
+
     [Fact]
     public async Task GetCubeMeta_OnConfiguredCube_ReturnsRichTree()
     {

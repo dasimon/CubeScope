@@ -85,11 +85,41 @@ watch(
   },
 )
 
+/**
+ * Dépôt d'un membre glissé depuis l'explorateur. On insère là où l'utilisateur LÂCHE, pas au
+ * curseur : c'est tout l'intérêt du geste par rapport au double-clic, qui lui insère au curseur.
+ *
+ * `preventDefault` sur dragover est obligatoire, sinon le navigateur refuse le dépôt — et
+ * Monaco a son propre glisser interne (déplacement de sélection) : on ne traite que les dépôts
+ * porteurs de texte venus d'ailleurs.
+ */
+function onDragOver(e: DragEvent) {
+  if (!e.dataTransfer) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'copy'
+}
+
+function onDrop(e: DragEvent) {
+  const texte = e.dataTransfer?.getData('text/plain')
+  if (!editor || !texte) return
+  e.preventDefault()
+
+  const cible = editor.getTargetAtClientPoint(e.clientX, e.clientY)
+  const position = cible?.position ?? editor.getPosition()
+  if (!position) return
+
+  const range = new monaco.Range(
+    position.lineNumber, position.column, position.lineNumber, position.column)
+  editor.executeEdits('explorer-drop', [{ range, text: texte, forceMoveMarkers: true }])
+  editor.setPosition({ lineNumber: position.lineNumber, column: position.column + texte.length })
+  editor.focus()
+}
+
 onBeforeUnmount(() => editor?.dispose())
 </script>
 
 <template>
-  <div ref="host" class="editor-host" />
+  <div ref="host" class="editor-host" @dragover="onDragOver" @drop="onDrop" />
 </template>
 
 <style scoped>

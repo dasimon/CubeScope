@@ -62,7 +62,11 @@ export default {
     dimensions: 'Dimensions ({n})',
     root: '(racine)',
     refresh: 'Rafraîchir les métadonnées',
-    dblclick: "Double-clic : insérer dans l'éditeur",
+    dblclick: "Double-clic ou glisser : insérer dans l'éditeur",
+    members: 'Membres',
+    more: '… {n} membre(s) de plus',
+    moreUnknown: '… autres membres non affichés',
+    membersError: 'Membres illisibles',
   },
   history: {
     filterPlaceholder: 'Filtrer (MDX, catalogue, erreur)…',

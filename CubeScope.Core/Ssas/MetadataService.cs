@@ -83,6 +83,56 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
     private readonly ConcurrentDictionary<string, IReadOnlyList<MemberMeta>> _memberCache = new();
 
+    /// <summary>
+    /// Enfants d'un nœud de l'explorateur, un cran à la fois (voir <see cref="MemberChildrenQuery"/>
+    /// pour le choix du MDX plutôt que de la DMV). <paramref name="parent"/> est une hiérarchie
+    /// au premier cran, un membre ensuite.
+    ///
+    /// On demande <paramref name="limit"/> + 1 membres pour savoir si le plafond a coupé sans
+    /// avoir à compter séparément : la ligne en trop n'est jamais renvoyée, elle ne sert qu'à
+    /// répondre « il y en a d'autres ».
+    /// </summary>
+    public async Task<MemberChildren> GetChildrenAsync(
+        string cube, string parent, bool isHierarchy, int limit = 500, CancellationToken ct = default)
+    {
+        string key = $"c|{session.Server}|{session.Catalog}|{cube}|{isHierarchy}|{parent}|{limit}";
+        if (_childrenCache.TryGetValue(key, out var cached)) return cached;
+
+        string mdx = MemberChildrenQuery.Build(cube, parent, isHierarchy, limit + 1);
+        var result = await session.WithConnectionAsync(conn =>
+        {
+            using var cmd = new AdomdCommand(mdx, conn);
+            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { } });
+            var cs = cmd.ExecuteCellSet();
+
+            // Une requête à un seul axe n'a pas d'Axes[1] — et un membre sans enfant rend un
+            // axe à zéro position plutôt qu'une erreur.
+            var nodes = new List<MemberNode>();
+            if (cs.Axes.Count > 0)
+            {
+                foreach (Position pos in cs.Axes[0].Positions)
+                {
+                    var m = pos.Members[0];
+                    // ChildCount vient de CHILDREN_CARDINALITY demandé dans la requête. S'il
+                    // n'est pas remonté, -1 : le nœud reste dépliable et on le découvrira au
+                    // dépliage, plutôt que de le déclarer feuille à tort et de le rendre muet.
+                    long enfants;
+                    try { enfants = m.ChildCount; } catch { enfants = -1; }
+                    nodes.Add(new MemberNode(m.Caption, m.UniqueName, enfants));
+                }
+            }
+
+            bool hasMore = nodes.Count > limit;
+            if (hasMore) nodes.RemoveAt(nodes.Count - 1);
+            return new MemberChildren(nodes, hasMore);
+        }, ct);
+
+        _childrenCache[key] = result;
+        return result;
+    }
+
+    private readonly ConcurrentDictionary<string, MemberChildren> _childrenCache = new();
+
     // Cubes dont le stamp a déjà été validé cette session (un seul aller-retour DMV par
     // (serveur, catalogue, cube) : au premier accès on compare le stamp au cache SQLite et,
     // s'il diffère, on invalide le cache persistant).
