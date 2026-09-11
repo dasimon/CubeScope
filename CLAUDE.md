@@ -250,11 +250,17 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
   rien — c'est un mode de défaillance **distinct** de « La connexion n'est pas
   ouverte ». D'où `SsasSession.ResetAsync()`, appelé après avoir annulé sa propre
   session.
-- **Raccourcis clavier dans le navigateur** : `F12` est pris par les outils de
-  développement d'Edge/Chrome et **n'est pas interceptable** par le contenu de la
-  page — inutile de le lier dans Monaco. « Aller à la définition » utilise
-  `Alt+F12` et `Ctrl+Alt+G` (les deux vérifiés au navigateur), plus le menu
-  contextuel. `F5` est interceptable, lui (déjà utilisé pour l'exécution).
+- **Raccourcis clavier dans le navigateur** (repli `--force-browser`
+  uniquement — la fenêtre native par défaut ne l'utilise plus, voir ci-dessous) :
+  `F12` est pris par les outils de développement d'Edge/Chrome et **n'est pas
+  interceptable** par le contenu de la page — inutile de le lier dans Monaco.
+  « Aller à la définition » utilise `Alt+F12` et `Ctrl+Alt+G` (les deux
+  vérifiés au navigateur), plus le menu contextuel. `F5` est interceptable,
+  lui (déjà utilisé pour l'exécution). **Dans la fenêtre native
+  (`CubeScope.Shell`, cas par défaut depuis le 2026-09-11)** : `F12` est
+  libéré pour l'application (`AreBrowserAcceleratorKeysEnabled = false`
+  coupe la confiscation par les devtools Edge — voir le bloc « Coquille
+  WPF/WebView2 » plus bas), donc redevient liable dans Monaco si besoin.
 - Nom "MDX" pollué par Markdown+JSX dans l'écosystème npm/GitHub : ne pas
   nommer de packages `mdx-*` côté frontend.
 - Round-trip `.cube` (mode projet SSDT) : `XDocument.Load` doit utiliser
@@ -301,12 +307,15 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
     (tâche de vérification finale, exe isolé dans un dossier vierge, lancé
     sans argument) : le loader **survit** au publish single-file. Il n'est
     copié ni à côté de l'exe ni dans `publish/` — il s'auto-extrait au
-    lancement dans `%TEMP%\.net\cubescope\<hash>\WebView2Loader.dll` (le
-    mécanisme standard .NET `IncludeNativeLibrariesForSelfExtract`, pas un
-    comportement spécifique à WebView2). L'exe isolé a démarré normalement
-    (fenêtre « CubeScope », port local en écoute, endpoints `/api/*` et
-    `/hubs/stats` répondant 200) et aucun dossier `*.WebView2` n'est apparu
-    à côté de lui — les données sont bien allées sous
+    lancement (mécanisme standard .NET `IncludeNativeLibrariesForSelfExtract`,
+    pas un comportement spécifique à WebView2). **Preuve autoportante** :
+    relancé avec `DOTNET_BUNDLE_EXTRACT_BASE_DIR` pointé sur un dossier créé
+    pour l'occasion et confirmé **vide avant le lancement** (0 élément) —
+    `WebView2Loader.dll` y apparaît bien après coup, donc rien de préexistant
+    sur la machine n'a pu servir. L'exe isolé a démarré normalement (fenêtre
+    « CubeScope », port local en écoute, `GET /index.html`, `/assets/*.js`,
+    `/api/*` tous en 200) et aucun dossier `*.WebView2` n'est apparu à côté de
+    lui — les données sont bien allées sous
     `%LOCALAPPDATA%\CubeScope\WebView2\EBWebView`, comme attendu.
 
 ## Conventions de travail
