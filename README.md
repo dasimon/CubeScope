@@ -3,9 +3,10 @@
 **A modern workbench for SSAS Multidimensional developers.** Write, understand,
 measure and maintain MDX against existing cubes — with a built-in AI expert.
 
-CubeScope is the spiritual successor to MDX Studio: a single self-contained
-executable that launches a local web app in your browser. No install, no server
-component to deploy, no cloud.
+CubeScope is the spiritual successor to MDX Studio: the publish step produces
+a single executable, `cubescope.exe`, with no installer. It opens in a native
+window backed by the WebView2 runtime, falling back to your default browser
+if that runtime isn't present — no server component to deploy, no cloud.
 
 ![CubeScope in action](docs/screenshots/demo.gif)
 
@@ -131,9 +132,11 @@ then:
 .\cubescope.exe
 ```
 
-It starts Kestrel on a free localhost port and opens your default browser.
-Connect to your SSAS server (a hostname, or `host:port` for a named instance on
-a fixed port), pick a catalog, and start writing MDX.
+It starts Kestrel on a free localhost port and opens in a native window
+(WebView2) by default — falling back to your default browser if the WebView2
+runtime isn't available, or when passed `--force-browser`. Connect to your
+SSAS server (a hostname, or `host:port` for a named instance on a fixed port),
+pick a catalog, and start writing MDX.
 
 ---
 
@@ -156,8 +159,10 @@ Run the server and the Vite dev server side by side (Vite proxies `/api` and
 `/hubs` to Kestrel):
 
 ```powershell
-# Terminal 1 — API on a fixed port, no auto-open
-dotnet run --project CubeScope.Server -- --port 5199 --no-browser
+# Terminal 1 — API on a fixed port, no auto-open (CubeScope.Server.Cli is the
+# headless console host used for the dev loop; CubeScope.Server itself is a
+# library and cannot be run directly)
+dotnet run --project CubeScope.Server.Cli -- --port 5199 --no-browser
 
 # Terminal 2 — Vue dev server with HMR
 cd CubeScope.Web
@@ -167,24 +172,36 @@ npm run dev
 ### Publish the single executable
 
 ```powershell
-dotnet publish CubeScope.Server -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -o publish
+dotnet publish CubeScope.Shell -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:EmbedSpa=true -o publish
 ```
 
-This builds the Vue SPA, embeds it into `wwwroot`, and produces a single
-self-contained `publish/cubescope.exe` (~180 MB — it bundles the .NET runtime).
+`CubeScope.Shell` is the WPF host that produces `cubescope.exe` — publishing
+`CubeScope.Server` (a library) won't work. `-p:EmbedSpa=true` is explicit
+because the `EmbedSpa` MSBuild target lives in `CubeScope.Server.csproj`,
+which is no longer the published project; it builds the Vue SPA and embeds
+`CubeScope.Web/dist` into the `CubeScope.Server` assembly as an
+`EmbeddedResource` under the `spa/` prefix, served at runtime by
+`EmbeddedSpaFileProvider` (not extracted to a `wwwroot` folder on disk).
+This produces a single self-contained `publish/cubescope.exe`
+(209,651,609 bytes, ~200 MB — it bundles the .NET runtime).
 
 ---
 
 ## Architecture
 
-A single executable, `cubescope.exe`: ASP.NET Core 10 (Kestrel on a free
-localhost port) serving a Vue 3 SPA.
+A single executable, `cubescope.exe`: a WPF shell (`CubeScope.Shell`) that
+starts Kestrel in-process (ASP.NET Core 10, on a free localhost port) and
+displays the Vue 3 SPA in a native WebView2 window — falling back to your
+default browser when the WebView2 runtime is unavailable, or when passed
+`--force-browser`.
 
 | Project | Role |
 |---|---|
 | **CubeScope.Core** | Business services — SSAS connectivity, DMV/metadata, cell-set mapping, profiler aggregation, MDX tokenizer, AI service. No web dependency. |
-| **CubeScope.Server** | Minimal API + SignalR hubs + SPA hosting. Produces the executable. |
+| **CubeScope.Server** | Minimal API + SignalR hubs + SPA embedding (`EmbedSpa` MSBuild target). A library, referenced by both hosts below — it produces nothing on its own. |
+| **CubeScope.Shell** | WPF window hosting Kestrel and a WebView2 control. Produces `cubescope.exe`, the published executable. |
+| **CubeScope.Server.Cli** | Headless console host, no window — used for the local dev loop and by the test suite. Not published (`IsPublishable=false`). |
 | **CubeScope.Web** | Vue 3 + TypeScript (strict) + Vite. Monaco editor, dockview layout, PrimeVue components. |
 | **CubeScope.Spike** | Read-only SSAS server-behaviour harness kept as a non-regression tool (`--discover`). |
 
