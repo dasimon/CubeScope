@@ -20,8 +20,36 @@ public partial class MainWindow : Window
         _store = store;
         InitializeComponent();
         RestaurerGeometrie();
-        Loaded += async (_, _) => await InitialiserVueAsync();
+        Loaded += async (_, _) => await DemarrerVueAsync();
         Closing += AuMomentDeFermer;
+    }
+
+    /// <summary>
+    /// L'initialisation de WebView2 a échoué : la fenêtre est inutilisable, l'application
+    /// ne l'est pas. L'hôte (App) bascule sur le repli navigateur.
+    /// </summary>
+    internal event EventHandler<EchecInitialisationEventArgs>? EchecInitialisation;
+
+    /// <summary>
+    /// `Loaded` branche un `async void` : sans ce filet, une défaillance de
+    /// `CoreWebView2Environment.CreateAsync` / `EnsureCoreWebView2Async` (dossier de données
+    /// corrompu, disque plein, stratégie d'entreprise) devient une exception non gérée sur
+    /// le thread du Dispatcher, donc un crash brut au démarrage.
+    /// </summary>
+    private async Task DemarrerVueAsync()
+    {
+        try
+        {
+            await InitialiserVueAsync();
+        }
+        catch (Exception ex)
+        {
+            // Se retirer de l'écran AVANT de prévenir : le dialogue du repli ne doit pas
+            // s'afficher devant une fenêtre vide qui ne servira jamais.
+            Hide();
+            EchecInitialisation?.Invoke(this, new EchecInitialisationEventArgs(ex.Message));
+            FermerSansDemander();
+        }
     }
 
     /// <summary>
@@ -194,4 +222,10 @@ public partial class MainWindow : Window
             }
         };
     }
+}
+
+/// <summary>Raison lisible de l'échec d'initialisation de WebView2, à montrer à l'utilisateur.</summary>
+internal sealed class EchecInitialisationEventArgs(string raison) : EventArgs
+{
+    public string Raison { get; } = raison;
 }

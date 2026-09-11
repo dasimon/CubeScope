@@ -39,6 +39,13 @@ public sealed class BrowserLifetime(
     TimeSpan? closeGrace = null,
     TimeSpan? dropGrace = null)
 {
+    /// <summary>
+    /// Armable après coup. Le Shell démarre désarmé quand il part en mode fenêtre native,
+    /// mais il bascule sur le repli navigateur si WebView2 échoue à s'initialiser : l'exe
+    /// doit alors s'arrêter comme en mode navigateur, sinon il survit sans rien à l'écran.
+    /// </summary>
+    public bool Enabled { get; set; } = enabled;
+
     /// <summary>Page partie volontairement (fermeture / rechargement) : couvre le temps d'un F5.</summary>
     private readonly TimeSpan _closeGrace = closeGrace ?? TimeSpan.FromSeconds(10);
 
@@ -81,7 +88,7 @@ public sealed class BrowserLifetime(
     {
         lock (_gate)
         {
-            if (--_clients > 0 || !enabled) return;
+            if (--_clients > 0 || !Enabled) return;
             _clients = 0;
             CancelPending();
             Arm(_leaving ? _closeGrace : _dropGrace);

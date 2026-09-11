@@ -49,6 +49,13 @@ public sealed class ProfilerService : IDisposable
     {
         lock (_lock)
         {
+            // Course réelle : `ServerHost` lance Initialize en tâche de fond à la connexion,
+            // et la fermeture peut la gagner. Sans ce garde, Dispose() finit son ménage,
+            // relâche le verrou, puis Initialize crée et démarre une trace que plus personne
+            // ne libérera — trace `CubeScope_Profiler_<pid>` orpheline sur un serveur SSAS
+            // partagé avec la production, seule voie où DisposeAsync ne sert à rien.
+            if (_disposed) return;
+
             if (Status == ProfilerStatus.Ready && string.Equals(_amo?.Name, dataSource, StringComparison.OrdinalIgnoreCase))
                 return;
             Teardown();
