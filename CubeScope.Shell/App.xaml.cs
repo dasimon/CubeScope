@@ -31,7 +31,16 @@ public partial class App : Application
             // Repli : comportement historique à l'identique. BrowserLifetime est armé —
             // mais il arrête l'HÔTE WEB, pas l'application WPF. Sans ce relais, l'exe
             // survivrait sans fenêtre ni serveur, invisible et increvable.
-            app.Lifetime.ApplicationStopped.Register(
+            //
+            // ApplicationStopping, PAS ApplicationStopped : BrowserLifetime appelle
+            // IHostApplicationLifetime.StopApplication(), qui ne déclenche QUE
+            // ApplicationStopping. Le pont vers StopAsync() — et donc vers
+            // ApplicationStopped — vit dans WaitForShutdownAsync(), que StartAsync
+            // n'appelle pas (c'est RunAsync, le chemin du Cli, qui l'utilise).
+            // S'abonner à ApplicationStopped attendrait donc un événement qui n'arrive
+            // jamais. C'est ArreterServeurAsync qui DÉCLENCHE l'arrêt de l'hôte, elle
+            // n'en attend pas la confirmation.
+            app.Lifetime.ApplicationStopping.Register(
                 () => Dispatcher.Invoke(() => _ = ArreterServeurAsync()));
             try
             {

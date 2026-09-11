@@ -37,4 +37,30 @@ public class ServerHostTests
             await app.DisposeAsync();
         }
     }
+
+    [Fact]
+    public async Task StopApplication_declenche_Stopping_mais_pas_Stopped()
+    {
+        var (app, _) = await ServerHost.StartAsync(["--no-browser"], browserLifetime: false);
+        try
+        {
+            bool stopping = false, stopped = false;
+            app.Lifetime.ApplicationStopping.Register(() => stopping = true);
+            app.Lifetime.ApplicationStopped.Register(() => stopped = true);
+
+            // C'est ce que fait BrowserLifetime quand la dernière page est partie.
+            app.Lifetime.StopApplication();
+
+            // StartAsync n'appelle pas WaitForShutdownAsync : le pont vers StopAsync()
+            // n'existe pas ici. Un Shell abonné à ApplicationStopped n'entendrait donc
+            // jamais rien, et l'exe survivrait sans fenêtre ni serveur.
+            Assert.True(stopping, "ApplicationStopping doit se déclencher");
+            Assert.False(stopped, "ApplicationStopped ne se déclenche PAS sans WaitForShutdownAsync");
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+    }
 }
