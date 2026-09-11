@@ -35,6 +35,7 @@ export default {
   connect: {
     title: 'Connexion SSAS',
     server: 'Serveur',
+    devServer: 'Serveur de développement (déploiement de script autorisé)',
     serverPlaceholder: 'hôte ou hôte:port',
     recent: 'Récentes :',
     connect: 'Se connecter',
@@ -230,7 +231,7 @@ export default {
     deployHint: 'Remplace uniquement le MDX Script du cube cible (pas de redéploiement, pas de process). Les propriétés de calcul du serveur ne sont pas modifiées.',
     server: 'Serveur',
     catalog: 'Catalogue',
-    devWarning: 'Attention : « {catalog} » ne ressemble pas à un catalogue de dev.',
+    devWarning: "Le serveur « {server} » n'est pas déclaré comme serveur de développement : le déploiement sera refusé. Déclarez-le dans le dialogue de connexion si c'en est un.",
     differs: 'Le script du serveur diffère du projet — une retouche live serait écrasée. Vérifier ci-dessous avant de forcer.',
     serverScript: 'Script actuellement sur le serveur',
     diffHint: 'Serveur (gauche) → projet (droite)',

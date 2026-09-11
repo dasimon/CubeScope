@@ -37,6 +37,7 @@ const en: typeof fr = {
   connect: {
     title: 'SSAS connection',
     server: 'Server',
+    devServer: 'Development server (script deployment allowed)',
     serverPlaceholder: 'host or host:port',
     recent: 'Recent:',
     connect: 'Connect',
@@ -232,7 +233,7 @@ const en: typeof fr = {
     deployHint: 'Replaces only the MDX Script of the target cube (no full deploy, no processing). Server-side calculation properties are left untouched.',
     server: 'Server',
     catalog: 'Catalog',
-    devWarning: 'Warning: “{catalog}” does not look like a dev catalog.',
+    devWarning: 'Server “{server}” is not declared as a development server: deployment will be refused. Declare it in the connection dialog if it is one.',
     differs: 'The server script differs from the project — a live change would be overwritten. Review below before forcing.',
     serverScript: 'Script currently on the server',
     diffHint: 'Server (left) → project (right)',

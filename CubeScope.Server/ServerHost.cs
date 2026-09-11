@@ -335,7 +335,8 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     {
         var script = projects.Load(req.Path); // toujours l'état DISQUE du projet (l'UI sauvegarde avant)
         var result = await Task.Run(
-            () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText, req.Force), ct);
+            () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText,
+                req.Force, store.GetDevServers()), ct);
         if (result.Deployed)
             store.AddDeployLog(req.Server, req.Catalog, script.CubeName, req.Path, script.FullText.Length, req.Force);
         return Results.Ok(result);
@@ -616,6 +617,15 @@ api.MapGet("/metadata/cube/{cube}", async (string cube, MetadataService meta,
 api.MapGet("/metadata/members", async ([FromQuery] string cube, [FromQuery] string hierarchy,
     MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetMembersAsync(cube, hierarchy, ct: ct)));
+// Serveurs déclarés de développement : liste explicite, seul endroit d'où un déploiement de
+// script est permis. Le nom du catalogue ne discrimine plus rien (prod et dev portent le même).
+api.MapGet("/dev-servers", (StateStore store) => Results.Ok(store.GetDevServers()));
+api.MapPut("/dev-servers", (DevServerRequest req, StateStore store) =>
+{
+    store.SetDevServer(req.Server, req.IsDev);
+    return Results.Ok(store.GetDevServers());
+});
+
 // Un cran de l'arbre des membres (explorateur, façon SSMS). `hierarchy=true` au premier cran,
 // sous le dossier « Membres » ; `false` ensuite, quand `parent` est un membre.
 api.MapGet("/metadata/children", async ([FromQuery] string cube, [FromQuery] string parent,
@@ -735,6 +745,7 @@ internal sealed record GenerateMdxRequest(string Cube, string Question, string? 
 internal sealed record ProjectOpenRequest(string Path);
 internal sealed record ProjectSaveRequest(string Path, string FullText);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
+internal sealed record DevServerRequest(string Server, bool IsDev);
 internal sealed record CaptionsRequest(string Cube, string[] Names);
 internal sealed record CaptionRefreshRequest(string Cube);
 internal sealed record SnippetRequest(string Name, string Mdx);

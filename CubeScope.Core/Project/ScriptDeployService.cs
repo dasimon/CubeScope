@@ -9,13 +9,29 @@ namespace CubeScope.Core.Project;
 /// « Deploy MDX Script ») : remplace les Commands du MdxScript et Update(), sans
 /// redéployer le projet ni toucher aux CalculationProperties du serveur. Aucun
 /// process nécessaire : le script recalculé est actif immédiatement.
-/// Garde-fou : si le script serveur diffère du texte projet et force=false, ne
-/// déploie PAS et retourne le texte serveur (retouche live à ne pas écraser).
+/// Deux gardes, indépendantes :
+/// - SERVEUR : on ne déploie que vers un serveur explicitement déclaré de développement.
+///   `force` ne la contourne PAS — il ne veut dire que « écrase un script serveur qui a
+///   divergé », jamais « déploie en production ».
+/// - DIVERGENCE : si le script serveur diffère du texte projet et force=false, ne déploie
+///   PAS et retourne le texte serveur (retouche live à ne pas écraser).
 /// </summary>
 public sealed class ScriptDeployService
 {
-    public DeployScriptResult Deploy(string server, string catalog, string cubeName, string projectText, bool force)
+    /// <param name="devServers">
+    /// Serveurs où le déploiement est permis (liste explicite, voir <see cref="DevServerGuard"/>).
+    /// Vide = aucun : une configuration absente doit gêner, jamais autoriser.
+    /// </param>
+    public DeployScriptResult Deploy(string server, string catalog, string cubeName,
+        string projectText, bool force, IReadOnlyList<string> devServers)
     {
+        // AVANT toute connexion : une garde qui touche la cible pour découvrir qu'elle
+        // n'aurait pas dû ne garde rien. Message distinct de celui d'une connexion ratée.
+        if (!DevServerGuard.IsDev(devServers, server))
+            throw new InvalidOperationException(
+                $"Déploiement refusé : le serveur « {server} » n'est pas déclaré comme serveur "
+                + "de développement. Déclarez-le dans le dialogue de connexion si c'en est un.");
+
         var sw = Stopwatch.StartNew();
         using var amo = new Server();
         amo.Connect($"Data Source={server};Integrated Security=SSPI;");

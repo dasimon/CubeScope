@@ -83,8 +83,10 @@ public class SsasIntegrationTests : IDisposable
     [Fact]
     public async Task ClearCache_OnDevCatalogOnly_ResolvesIdViaAmoAndSucceeds()
     {
-        // Règle de sûreté : tout ce qui vide le cache cible un catalogue de DEV, jamais la prod.
-        await _session.ConnectAsync(Server);
+        // Règle de sûreté : tout ce qui vide le cache cible le SERVEUR de dev, jamais la prod.
+        // Le nom du catalogue ne protège plus rien — prod et dev portent le même.
+        TestTarget.AssertDevServerDistinct();
+        await _session.ConnectAsync(TestTarget.ServerDev);
         await _session.SetCatalogAsync(TestTarget.CatalogDev);
         var svc = new CacheService(_session);
 
@@ -93,7 +95,7 @@ public class SsasIntegrationTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(databaseId));
         Assert.True(durationMs >= 0);
         // L'ID résolu est mis en cache : 2ᵉ résolution sans AMO
-        var id2 = await svc.ResolveDatabaseIdAsync(Server, TestTarget.CatalogDev);
+        var id2 = await svc.ResolveDatabaseIdAsync(TestTarget.ServerDev, TestTarget.CatalogDev);
         Assert.Equal(databaseId, id2);
     }
 
@@ -119,10 +121,11 @@ public class SsasIntegrationTests : IDisposable
     {
         // Lit le script actuel du cube de DEV puis le redéploie à l'identique :
         // aucune divergence attendue (force=false suffit), et l'état final = l'état initial.
+        TestTarget.AssertDevServerDistinct();
         string text;
         using (var amo = new Microsoft.AnalysisServices.Server())
         {
-            amo.Connect($"Data Source={TestTarget.Server};Integrated Security=SSPI;");
+            amo.Connect($"Data Source={TestTarget.ServerDev};Integrated Security=SSPI;");
             try
             {
                 var cube = amo.Databases.GetByName(TestTarget.CatalogDev).Cubes.FindByName(TestTarget.Cube)
@@ -136,7 +139,8 @@ public class SsasIntegrationTests : IDisposable
         }
 
         var result = new CubeScope.Core.Project.ScriptDeployService()
-            .Deploy(TestTarget.Server, TestTarget.CatalogDev, TestTarget.Cube, text, force: false);
+            .Deploy(TestTarget.ServerDev, TestTarget.CatalogDev, TestTarget.Cube, text,
+                force: false, devServers: [TestTarget.ServerDev]);
 
         Assert.True(result.Deployed);
         Assert.False(result.Differs);

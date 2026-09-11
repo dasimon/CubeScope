@@ -413,11 +413,21 @@ rapport des `CalculationProperty` orphelines (référence à un membre/set
 calculé disparu — signalé, jamais supprimé automatiquement). Déploiement du
 script seul vers un cube de dev via AMO façon BIDS Helper
 (`ScriptDeployService`) avec garde de divergence (compare serveur vs projet,
-refuse sans `force` si différent) et garde catalogue dev (nom contenant
-« dev »). ⚠️ La garde catalogue dev est **uniquement côté UI** (`ScriptPanel.vue`) :
-`ScriptDeployService.Deploy` n'a que la garde de divergence, un appel direct à
-l'API la contourne. Écart assumé tant que le produit reste à usage perso.
-StateStore v2 (`RecentProject(Path, LastUsedUtc)`, `PRAGMA user_version = 2`).
+refuse sans `force` si différent) et **garde serveur de dev**.
+
+⚠️ **La garde serveur a changé de nature le 2026-09-11.** Elle reniflait le nom du
+catalogue (« contient dev ») et vivait **uniquement dans l'UI** — un appel direct à
+l'API la contournait. Deux raisons de la refaire : (a) quand le dev cesse de partager
+le serveur de la production, prod et dev portent le **même nom de catalogue** et le nom
+ne discrimine plus rien ; (b) une règle par sous-chaîne rangerait « SRV-DEV-PROD » du
+côté dev. Désormais : liste **explicite** de serveurs (`DevServerGuard`, table
+`DevServer` du StateStore, déclarée dans le dialogue de connexion — délibérément pas
+dans celui de déploiement, où le garde-fou se désarmerait sous la pression du geste).
+La garde est **dans `ScriptDeployService.Deploy`**, avant toute connexion AMO, et
+`force` ne la contourne pas : `force` veut dire « écrase un script serveur qui a
+divergé », jamais « déploie en production ». Liste vide = aucun serveur autorisé
+(fail-closed). Côté tests, `TestTarget.ServerDev` + `AssertDevServerDistinct()`
+interrompt tout test destructif dont le serveur de dev vaut celui de production.
 
 `cubescope.exe` est un single-file self-contained : SPA et DLL natives sont
 embarquées dans l'assembly (voir `EmbeddedSpaFileProvider` + la cible `EmbedSpa`

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Dialogue de connexion : serveur (Integrated Security uniquement — décision actée),
 // puis choix du catalogue. Pré-rempli par les connexions récentes.
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import { actions, store } from '../store'
 import { setLocale, type Locale } from '../i18n'
@@ -19,6 +20,19 @@ const LANGS: { label: string; value: Locale }[] = [
 ]
 
 const server = ref('')
+
+/**
+ * Déclarer un serveur de développement se fait ICI, pas au moment de déployer : si la case
+ * vivait dans le dialogue de déploiement, le garde-fou se désarmerait d'un clic sous la
+ * pression du geste en cours. La liste est persistée côté serveur (SQLite).
+ */
+const isDevServer = computed({
+  get: () =>
+    store.devServers.some((s) => s.trim().toLowerCase() === server.value.trim().toLowerCase()),
+  set: (v: boolean) => {
+    if (server.value.trim()) void actions.setDevServer(server.value.trim(), v)
+  },
+})
 const catalog = ref<string | null>(null)
 
 onMounted(async () => {
@@ -64,7 +78,7 @@ function pickRecent(r: { server: string; catalog: string | null }) {
     modal
     :header="t('connect.title')"
     :closable="store.connected"
-    :style="{ width: '28rem' }"
+    :style="{ width: '32rem' }"
   >
     <div class="connect-form">
       <div class="connect-lang">
@@ -88,6 +102,11 @@ function pickRecent(r: { server: string; catalog: string | null }) {
           @keydown.enter="connect"
         />
       </label>
+
+      <div class="connect-dev">
+        <Checkbox v-model="isDevServer" input-id="devServer" binary :disabled="!server.trim()" />
+        <label for="devServer">{{ t('connect.devServer') }}</label>
+      </div>
 
       <div v-if="store.recent.length" class="connect-recent">
         <span class="connect-recent-label">{{ t('connect.recent') }}</span>
@@ -138,6 +157,20 @@ function pickRecent(r: { server: string; catalog: string | null }) {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.9rem;
+}
+.connect-dev {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: -0.35rem;
+}
+/* `.connect-form label` met TOUS les libellés du formulaire en colonne (champ au-dessus
+   de son intitulé). Pour une case à cocher c'est l'inverse qu'il faut : le texte vient
+   à côté, pas dessous — sans cette remise en ligne, la case et son libellé s'empilent. */
+.connect-dev label {
+  flex-direction: row;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 .connect-recent {
   display: flex;

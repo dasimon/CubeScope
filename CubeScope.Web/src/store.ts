@@ -34,6 +34,8 @@ export const store = reactive({
   server: '',
   catalog: '' as string | null,
   catalogs: [] as string[],
+  /** Serveurs déclarés de développement : seuls ceux-là acceptent un déploiement de script. */
+  devServers: [] as string[],
   connected: false,
   connecting: false,
   connectError: '',
@@ -116,6 +118,7 @@ export const actions = {
       store.catalogs = r.catalogs
       store.catalog = null
       store.connected = true
+      void actions.loadDevServers()
       // La découverte perfmon côté serveur est asynchrone (~secondes) : statut différé
       setTimeout(() => void actions.loadStatsStatus(), 5000)
       return true
@@ -162,6 +165,20 @@ export const actions = {
   requestInsert(text: string): void {
     store.insertText = text
     store.insertRevision++
+  },
+
+  async loadDevServers(): Promise<void> {
+    try {
+      store.devServers = await api.devServers()
+    } catch {
+      // Liste illisible : on la laisse vide. Fail-closed — tout déploiement sera averti
+      // puis refusé par le serveur, plutôt que d'être autorisé sur une information absente.
+      store.devServers = []
+    }
+  },
+
+  async setDevServer(server: string, isDev: boolean): Promise<void> {
+    store.devServers = await api.setDevServer(server, isDev)
   },
 
   async loadStatsStatus(): Promise<void> {

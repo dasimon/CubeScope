@@ -142,6 +142,9 @@ export const api = {
       'GET',
       `/api/metadata/members?cube=${encodeURIComponent(cube)}&hierarchy=${encodeURIComponent(hierarchy)}`,
     ),
+  devServers: () => request<string[]>('GET', '/api/dev-servers'),
+  setDevServer: (server: string, isDev: boolean) =>
+    request<string[]>('PUT', '/api/dev-servers', { server, isDev }),
   children: (cube: string, parent: string, hierarchy: boolean) =>
     request<MemberChildren>(
       'GET',

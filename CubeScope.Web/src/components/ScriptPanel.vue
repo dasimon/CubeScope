@@ -521,7 +521,13 @@ async function loadDeployLog() {
   }
 }
 
-const isDevCatalog = computed(() => deployCatalog.value.toLowerCase().includes('dev'))
+// Le discriminant prod/dev est le SERVEUR, et seulement via la liste explicite tenue dans le
+// dialogue de connexion. L'ancienne règle reniflait le nom du catalogue (« contient dev ») :
+// elle ne vaut plus rien depuis que le dev a son propre serveur et le MÊME nom de catalogue
+// que la production. Le serveur refuse de toute façon — ceci ne fait que le dire à l'avance.
+const isDevServer = computed(() =>
+  store.devServers.some((s) => s.trim().toLowerCase() === deployServer.value.trim().toLowerCase()),
+)
 
 const diffHost = ref<HTMLElement | null>(null)
 let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null
@@ -581,8 +587,9 @@ watch(serverText, (text) => {
 
 function showDeployDialog() {
   deployServer.value = store.server
-  // Catalogue par défaut = premier catalogue « dev » de la connexion courante
-  deployCatalog.value = store.catalogs.find((c) => c.toLowerCase().includes('dev')) ?? store.catalog ?? ''
+  // Le catalogue courant : il n'y a plus de nom « dev » à reconnaître, c'est le serveur qui
+  // porte la distinction.
+  deployCatalog.value = store.catalog ?? ''
   deployDiffers.value = false
   serverText.value = ''
   deployError.value = ''
@@ -896,8 +903,8 @@ onBeforeUnmount(() => {
         <label>{{ t('project.server') }}<InputText v-model="deployServer" /></label>
         <label>{{ t('project.catalog') }}<InputText v-model="deployCatalog" /></label>
       </div>
-      <Message v-if="!isDevCatalog && deployCatalog" severity="warn">
-        {{ t('project.devWarning', { catalog: deployCatalog }) }}
+      <Message v-if="!isDevServer && deployServer" severity="warn">
+        {{ t('project.devWarning', { server: deployServer }) }}
       </Message>
       <Message v-if="deployError" severity="error">{{ deployError }}</Message>
       <template v-if="deployDiffers">

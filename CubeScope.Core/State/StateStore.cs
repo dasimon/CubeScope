@@ -161,6 +161,47 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 8;
                 """);
         }
+
+        if (version < 9)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS DevServer (
+                    Name TEXT PRIMARY KEY COLLATE NOCASE
+                );
+                PRAGMA user_version = 9;
+                """);
+        }
+    }
+
+    // --- Serveurs de développement (v9) : liste EXPLICITE des serveurs où un déploiement de
+    // script est permis. Le nom du catalogue ne discrimine plus rien depuis que le dev a son
+    // propre serveur et porte le même nom de catalogue que la production.
+
+    /// <summary>
+    /// Marque ou démarque un serveur. Un nom vide n'est jamais enregistré : il rendrait « dev »
+    /// une connexion sans serveur. COLLATE NOCASE sur la clé : un nom de serveur Windows est
+    /// insensible à la casse, deux graphies ne doivent pas créer deux lignes.
+    /// </summary>
+    public void SetDevServer(string server, bool isDev)
+    {
+        string nom = (server ?? "").Trim();
+        if (nom.Length == 0) return;
+        if (isDev) Exec("INSERT OR IGNORE INTO DevServer (Name) VALUES ($n)", ("$n", nom));
+        else Exec("DELETE FROM DevServer WHERE Name = $n", ("$n", nom));
+    }
+
+    /// <summary>Serveurs déclarés de développement. Vide au premier lancement, à dessein.</summary>
+    public IReadOnlyList<string> GetDevServers()
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT Name FROM DevServer ORDER BY Name";
+            using var r = cmd.ExecuteReader();
+            var list = new List<string>();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
     }
 
     // --- Cache persistant des captions de membres (v7) : évite de re-DMV chaque membre
