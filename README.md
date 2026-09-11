@@ -80,6 +80,10 @@ component to deploy, no cloud.
 
 - **Windows** (x64). CubeScope uses Windows-only perfmon APIs and Integrated
   Security — it is a Windows tool by design.
+- **WebView2 Runtime** — pre-installed on Windows 11 and on up-to-date
+  Windows 10 (1803+). It may be missing on Windows Server and LTSC editions;
+  CubeScope then falls back to your default browser instead of refusing to
+  start. Pass `--force-browser` to take that path on purpose.
 - **Network access** to an SSAS **Multidimensional** instance. All connections
   use **Windows Integrated Security** — no credentials are stored anywhere.
 - **SSAS administrator rights** on the target instance are required for the
