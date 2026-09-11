@@ -4,6 +4,11 @@
 publish/
 *.user
 
+# Exe publié déposé à la racine pour une vérification manuelle (~200 Mo) : `publish/`
+# est ignoré, celui-là ne l'était pas. Un `git add -A` le committait sans bruit et
+# GitHub refusait ensuite le push (blob > 100 Mo), avec réécriture d'historique à la clé.
+/cubescope.exe
+
 # ─── SPA générée (build Vite ; embarquée au publish via la cible EmbedSpa) ───
 CubeScope.Server/wwwroot/
 
