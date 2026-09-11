@@ -370,7 +370,7 @@ suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
 ## Statut
 
 **Roadmap terminée, produit en usage quotidien.** Publié sur
-`github.com/dasimon/CubeScope`, versions taguées jusqu'à **v0.10.0** (chaque tag
+`github.com/dasimon/CubeScope`, versions taguées jusqu'à **v0.14.0** (chaque tag
 déclenche la Release GitHub Actions). Historique détaillé et daté de chaque
 évolution : `docs/PROJET.md` (source de vérité — cette section n'en est que le
 résumé).
