@@ -3,5 +3,6 @@
   <Project Path="CubeScope.Core/CubeScope.Core.csproj" />
   <Project Path="CubeScope.Server/CubeScope.Server.csproj" />
   <Project Path="CubeScope.Server.Cli/CubeScope.Server.Cli.csproj" />
+  <Project Path="CubeScope.Shell/CubeScope.Shell.csproj" />
   <Project Path="CubeScope.Spike/CubeScope.Spike.csproj" />
 </Solution>
