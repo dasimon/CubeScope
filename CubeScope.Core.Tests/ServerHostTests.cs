@@ -63,4 +63,19 @@ public class ServerHostTests
             await app.DisposeAsync();
         }
     }
+
+    [Fact]
+    public async Task DisposeAsync_libere_les_singletons_IDisposable()
+    {
+        var (app, _) = await ServerHost.StartAsync(["--no-browser"], browserLifetime: false);
+        var profiler = app.Services.GetRequiredService<ProfilerService>();
+
+        await app.StopAsync();
+        await app.DisposeAsync();
+
+        // ObjectDisposedException = le conteneur a bien disposé ses singletons ; c'est
+        // ce chemin-là qui exécute le Stop() + Drop() de la trace SSAS. Sans le
+        // DisposeAsync, la trace CubeScope_Profiler_<pid> survit au process.
+        Assert.Throws<ObjectDisposedException>(() => profiler.EnsureNotDisposed());
+    }
 }

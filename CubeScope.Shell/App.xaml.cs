@@ -51,8 +51,10 @@ public partial class App : Application
             return;
         }
 
-        MainWindow = new MainWindow(url);
-        MainWindow.Show();
+        var fenetre = new MainWindow(url);
+        fenetre.Closed += async (_, _) => await ArreterServeurAsync();
+        MainWindow = fenetre;
+        fenetre.Show();
     }
 
     /// <summary>

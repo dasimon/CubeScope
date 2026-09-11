@@ -156,9 +156,22 @@ public sealed class ProfilerService : IDisposable
         StatusDetail = null;
     }
 
+    private bool _disposed;
+
+    /// <summary>
+    /// Lève si le service a déjà été libéré. Existe pour qu'un test puisse constater que
+    /// la destruction du conteneur DI a bien atteint ce singleton : c'est ce même chemin
+    /// qui exécute le Stop() + Drop() de la trace SSAS.
+    /// </summary>
+    public void EnsureNotDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
     public void Dispose()
     {
-        lock (_lock) Teardown();
+        lock (_lock)
+        {
+            _disposed = true;
+            Teardown();
+        }
     }
 
     /// <summary>Une trace CubeScope_Profiler_&lt;pid&gt; est orpheline si son process local n'existe plus.</summary>
