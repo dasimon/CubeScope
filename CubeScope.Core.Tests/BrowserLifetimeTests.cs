@@ -33,7 +33,7 @@ public class BrowserLifetimeTests
     private static async Task AssertStopsAsync(FakeLifetime host)
     {
         var stopped = await Task.WhenAny(host.Stopping, Task.Delay(TimeSpan.FromSeconds(10)));
-        Assert.True(stopped == host.Stopping, "L'arrêt n'a pas été déclenché dans les 10 s.");
+        Assert.True(stopped == host.Stopping, "Shutdown was not triggered within 10 s.");
     }
 
     /// <summary>

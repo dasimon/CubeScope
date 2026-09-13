@@ -294,7 +294,7 @@ export async function prefetchMemberCaptions(
   const total = refs.length
   onProgress?.(0, total)
   if (total === 0) return
-  // BATCHED lookup: instead of ~400 single HTTP calls, split into chunks of 150 and
+  // BATCHED lookup: instead of ~400 single HTTP calls, split into chunks of 50 and
   // resolve each chunk in a single POST. Low concurrency (2): leave connections
   // to the UI and do not hammer SSAS. Best effort, failures are ignored.
   const CHUNK = 50

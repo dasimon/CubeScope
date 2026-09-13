@@ -108,11 +108,11 @@ public class SsasIntegrationTests : IDisposable
 
         var script = await svc.GetScriptAsync(TestTarget.Cube);
 
-        Assert.False(string.IsNullOrWhiteSpace(script.FullText), "script vide");
+        Assert.False(string.IsNullOrWhiteSpace(script.FullText), "empty script");
         Assert.NotEmpty(script.Commands);
         // A real cube has dozens of calculated measures in its script
         Assert.True(script.Commands.Count(c => c.Kind == "CalculatedMember") > 10,
-            $"attendu : dizaines de membres calculés, obtenu {script.Commands.Count(c => c.Kind == "CalculatedMember")}");
+            $"expected: dozens of calculated members, got {script.Commands.Count(c => c.Kind == "CalculatedMember")}");
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class SsasIntegrationTests : IDisposable
             try
             {
                 var cube = amo.Databases.GetByName(TestTarget.CatalogDev).Cubes.FindByName(TestTarget.Cube)
-                    ?? throw new InvalidOperationException($"Cube introuvable : {TestTarget.Cube}");
+                    ?? throw new InvalidOperationException($"Cube not found: {TestTarget.Cube}");
                 text = string.Join("\n\n", cube.MdxScripts[0].Commands
                     .Cast<Microsoft.AnalysisServices.Command>()
                     .Select(c => c.Text?.Trim())

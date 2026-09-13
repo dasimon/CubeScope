@@ -111,7 +111,7 @@ public sealed class SsasSession : IDisposable
 
         // The log line makes the hypothesis checkable: if the symptom comes back, this line tells
         // whether it really was a closed connection, and when.
-        Console.WriteLine($"[CubeScope] Connexion SSAS trouvée {conn.State} — réouverture.");
+        Console.WriteLine($"[CubeScope] SSAS connection found {conn.State} — reopening.");
         conn.Dispose();
         _conn = new AdomdConnection(_connectionString);
         _conn.Open();

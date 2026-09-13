@@ -223,7 +223,7 @@ api.MapGet("/script/{cube}/dependencies", async (string cube, [FromQuery] string
         return Results.BadRequest(new { error = ex.GetBaseException().Message });
     }
 });
-// AI tracer: explains in French how a calculated member / set builds its value,
+// AI tracer: explains how a calculated member / set builds its value (in the UI language, French by default),
 // from its expression + the expressions of the calculated members it depends on
 // (transitive, through the existing dependency graph).
 api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name,
@@ -715,7 +715,7 @@ else
         var (app, url) = await StartAsync(args, browserLifetime: browser);
         try
         {
-            Console.WriteLine($"CubeScope démarré : {url}");
+            Console.WriteLine($"CubeScope started: {url}");
             if (browser)
             {
                 try

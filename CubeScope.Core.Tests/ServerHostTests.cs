@@ -54,8 +54,8 @@ public class ServerHostTests
             // StartAsync does not call WaitForShutdownAsync: the bridge to StopAsync()
             // does not exist here. A Shell subscribed to ApplicationStopped would therefore
             // never hear anything, and the exe would survive with neither window nor server.
-            Assert.True(stopping, "ApplicationStopping doit se déclencher");
-            Assert.False(stopped, "ApplicationStopped ne se déclenche PAS sans WaitForShutdownAsync");
+            Assert.True(stopping, "ApplicationStopping must fire");
+            Assert.False(stopped, "ApplicationStopped does NOT fire without WaitForShutdownAsync");
         }
         finally
         {

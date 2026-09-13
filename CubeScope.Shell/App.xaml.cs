@@ -62,7 +62,7 @@ public partial class App : Application
             // Nominal fallback case: no dialog to close on every launch — the
             // browser opening IS the signal that the application is running. A
             // log entry remains for diagnostics, since the exe is a WinExe without a console.
-            app.Logger.LogInformation("Repli navigateur : interface ouverte sur {Url}", url);
+            app.Logger.LogInformation("Browser fallback: interface opened at {Url}", url);
             if (!OuvrirNavigateur(url)) await ArreterServeurAsync();
             return;
         }

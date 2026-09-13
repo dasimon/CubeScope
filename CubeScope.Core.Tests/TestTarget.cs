@@ -34,8 +34,8 @@ internal static class TestTarget
     {
         if (string.Equals(Server, ServerDev, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
-                $"CUBESCOPE_TEST_SERVER_DEV vaut le serveur de production ({Server}). "
-                + "Test destructif interrompu : posez un serveur de dev distinct.");
+                $"CUBESCOPE_TEST_SERVER_DEV equals the production server ({Server}). "
+                + "Destructive test aborted: set a distinct dev server.");
     }
     public static string Catalog => Env("CUBESCOPE_TEST_CATALOG", "SsasDb");
     public static string CatalogDev => Env("CUBESCOPE_TEST_CATALOG_DEV", "SsasDbDev");

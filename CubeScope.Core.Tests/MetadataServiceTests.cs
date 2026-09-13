@@ -125,7 +125,7 @@ public class MetadataServiceIntegrationTests : IDisposable
         // Step 2: the children of the first member. On a multi-level hierarchy, the top
         // necessarily has children.
         var sommet = racine.Nodes[0];
-        Assert.True(sommet.ChildrenCount > 0, $"attendu : {sommet.UniqueName} a des enfants");
+        Assert.True(sommet.ChildrenCount > 0, $"expected: {sommet.UniqueName} has children");
 
         var enfants = await svc.GetChildrenAsync(TestTarget.Cube, sommet.UniqueName, isHierarchy: false);
         Assert.NotEmpty(enfants.Nodes);
@@ -150,8 +150,8 @@ public class MetadataServiceIntegrationTests : IDisposable
         Assert.Contains(TestTarget.Cube, cubes);
 
         var meta = await svc.GetCubeMetaAsync(TestTarget.Cube);
-        Assert.True(meta.MeasureFolders.Sum(f => f.Measures.Count) > 100, "attendu : centaines de mesures");
-        Assert.True(meta.Dimensions.Count > 10, "attendu : dizaines de dimensions");
+        Assert.True(meta.MeasureFolders.Sum(f => f.Measures.Count) > 100, "expected: hundreds of measures");
+        Assert.True(meta.Dimensions.Count > 10, "expected: dozens of dimensions");
         Assert.All(meta.Dimensions, d => Assert.NotEmpty(d.UniqueName));
         // At least one hierarchy with levels
         Assert.Contains(meta.Dimensions.SelectMany(d => d.Hierarchies), h => h.Levels.Count > 0);

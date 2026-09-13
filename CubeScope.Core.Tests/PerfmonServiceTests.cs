@@ -58,7 +58,7 @@ public class PerfmonServiceIntegrationTests
 
         Assert.Equal(PerfmonStatus.Ready, svc.Status);
         var snap = svc.Snapshot();
-        Assert.True(snap.Count > 20, $"attendu : dizaines de compteurs, obtenu {snap.Count}");
+        Assert.True(snap.Count > 20, $"expected: dozens of counters, got {snap.Count}");
         Assert.Contains(snap.Keys, k => k.Contains("MDX", StringComparison.OrdinalIgnoreCase));
     }
 }

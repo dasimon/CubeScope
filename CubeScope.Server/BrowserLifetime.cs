@@ -124,7 +124,7 @@ public sealed class BrowserLifetime(
         }
 
         logger.LogInformation(
-            "Plus aucune fenêtre depuis {Grace}s : arrêt de CubeScope.", grace.TotalSeconds);
+            "No window left for {Grace}s: stopping CubeScope.", grace.TotalSeconds);
         lifetime.StopApplication();
     }
 }

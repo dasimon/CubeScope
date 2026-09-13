@@ -38,7 +38,7 @@ internal static class ProfileSpike
     public static int Run(string server, string catalog)
     {
         Console.WriteLine("==============================================================");
-        Console.WriteLine($" CubeScope.Spike — Profiler (trace SSAS) — {server} / {catalog}");
+        Console.WriteLine($" CubeScope.Spike — Profiler (SSAS trace) — {server} / {catalog}");
         Console.WriteLine("==============================================================");
 
         const string traceName = "CubeScope_Profiler_Spike";
@@ -51,7 +51,7 @@ internal static class ProfileSpike
         {
             amo = new Server();
             amo.Connect($"Data Source={server};Integrated Security=SSPI;");
-            Console.WriteLine($"AMO connecté (ServerMode={amo.ServerMode}, Version={amo.Version}).");
+            Console.WriteLine($"AMO connected (ServerMode={amo.ServerMode}, Version={amo.Version}).");
 
             var stale = amo.Traces.FindByName(traceName);
             stale?.Drop();
@@ -84,16 +84,16 @@ internal static class ProfileSpike
                     pruned++;
                 }
             }
-            Console.WriteLine($"Trace créée : {trace.Events.Count} événements suivis " +
-                $"({pruned} colonne(s) invalide(s) élaguée(s) automatiquement).");
+            Console.WriteLine($"Trace created: {trace.Events.Count} events tracked " +
+                $"({pruned} invalid column(s) pruned automatically).");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ÉCHEC création de trace : [{ex.GetType().Name}] {ex.GetBaseException().Message}");
-            Console.WriteLine("→ Cause probable : droits insuffisants (créer une trace exige le rôle " +
-                "administrateur de l'instance SSAS), ou AMO .NET Core ne supporte pas cette opération.");
+            Console.WriteLine($"FAILED trace creation: [{ex.GetType().Name}] {ex.GetBaseException().Message}");
+            Console.WriteLine("→ Likely cause: insufficient rights (creating a trace requires the SSAS instance " +
+                "administrator role), or AMO .NET Core does not support this operation.");
             amo?.Disconnect();
-            PrintVerdict(false, "création de trace impossible");
+            PrintVerdict(false, "trace creation impossible");
             return 1;
         }
 
@@ -111,14 +111,14 @@ internal static class ProfileSpike
                 SafeStr(() => e.SessionID),
                 null));
         };
-        trace.Stopped += (_, _) => Console.WriteLine("(trace arrêtée côté serveur)");
+        trace.Stopped += (_, _) => Console.WriteLine("(trace stopped server-side)");
 
         string? ourSession = null;
         long queryMs = 0;
         try
         {
             trace.Start();
-            Console.WriteLine("Trace démarrée (souscription live). Exécution de la requête test…");
+            Console.WriteLine("Trace started (live subscription). Running the test query…");
 
             using var conn = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;");
             conn.Open();
@@ -147,7 +147,7 @@ internal static class ProfileSpike
             }
             sw.Stop();
             queryMs = sw.ElapsedMilliseconds;
-            Console.WriteLine($"Requête exécutée en {queryMs} ms. Attente du flush des événements…");
+            Console.WriteLine($"Query executed in {queryMs} ms. Waiting for the events to flush…");
 
             // Trace events arrive asynchronously: give the XMLA push time.
             for (int i = 0; i < 20 && eventCount == 0; i++) Thread.Sleep(150);
@@ -155,7 +155,7 @@ internal static class ProfileSpike
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ÉCHEC exécution/souscription : [{ex.GetType().Name}] {ex.GetBaseException().Message}");
+            Console.WriteLine($"FAILED execution/subscription: [{ex.GetType().Name}] {ex.GetBaseException().Message}");
         }
         finally
         {
@@ -166,23 +166,23 @@ internal static class ProfileSpike
 
         // --- 3. Analysis ---
         var all = captured.ToList();
-        Console.WriteLine($"\nÉvénements capturés : {all.Count} (toutes sessions).");
+        Console.WriteLine($"\nEvents captured: {all.Count} (all sessions).");
         if (all.Count == 0)
         {
-            Console.WriteLine("Aucun événement reçu → soit AMO .NET Core ne pousse pas les événements " +
-                "en live (Trace.OnEvent inopérant), soit la requête n'a produit aucun événement suivi.");
-            PrintVerdict(false, "aucun événement live reçu");
+            Console.WriteLine("No event received → either AMO .NET Core does not push events " +
+                "live (Trace.OnEvent not working), or the query produced no tracked event.");
+            PrintVerdict(false, "no live event received");
             return 1;
         }
 
         var mine = all.Where(c => string.Equals(c.Session, ourSession, StringComparison.OrdinalIgnoreCase)).ToList();
         var scope = mine.Count > 0 ? mine : all; // no session match: show everything
-        Console.WriteLine($"Événements de NOTRE session : {mine.Count}" +
-            (mine.Count == 0 ? " (pas de match SessionID — affichage global)" : ""));
+        Console.WriteLine($"Events from OUR session: {mine.Count}" +
+            (mine.Count == 0 ? " (no SessionID match — showing all)" : ""));
 
-        Console.WriteLine("\n--- Détail (par classe d'événement) ---");
+        Console.WriteLine("\n--- Detail (by event class) ---");
         foreach (var g in scope.GroupBy(c => c.EventClass).OrderByDescending(g => g.Count()))
-            Console.WriteLine($"  {g.Key,-28} : {g.Count(),3} évt, durée cumulée {g.Sum(c => c.Duration),6} ms");
+            Console.WriteLine($"  {g.Key,-28} : {g.Count(),3} evt, total duration {g.Sum(c => c.Duration),6} ms");
 
         long total = scope.Where(c => c.EventClass == "QueryEnd").Sum(c => c.Duration);
         if (total == 0) total = queryMs;
@@ -192,14 +192,14 @@ internal static class ProfileSpike
         int aggHits = scope.Count(c => c.EventClass == "GetDataFromAggregation");
         long fe = Math.Max(0, total - se);
 
-        Console.WriteLine("\n--- Découpage type profiler ---");
-        Console.WriteLine($"  Durée totale requête   : {total} ms");
+        Console.WriteLine("\n--- Profiler-style breakdown ---");
+        Console.WriteLine($"  Total query duration   : {total} ms");
         Console.WriteLine($"  Storage Engine (SE)    : {se} ms  ({subcubes} Query Subcube)");
         Console.WriteLine($"  Formula Engine (FE)    : {fe} ms  (total - SE)");
-        Console.WriteLine($"  Hits cache             : {cacheHits}");
-        Console.WriteLine($"  Hits agrégation        : {aggHits}");
+        Console.WriteLine($"  Cache hits             : {cacheHits}");
+        Console.WriteLine($"  Aggregation hits       : {aggHits}");
 
-        PrintVerdict(true, $"{all.Count} événements live, découpage FE/SE obtenu");
+        PrintVerdict(true, $"{all.Count} live events, FE/SE breakdown obtained");
         return 0;
     }
 
