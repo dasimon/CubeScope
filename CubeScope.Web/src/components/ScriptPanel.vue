@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Panneau Script : MDX Script du cube (Monaco) — lecture seule en mode cube live,
-// lecture/écriture en mode projet SSDT (.cube). Liste des membres calculés / sets /
-// scopes groupée par région (#region en mode projet), clic = aller à la définition,
-// arbre de dépendances de l'élément sélectionné (double sens), export de la doc
-// Markdown du cube (mode cube live uniquement).
+// Script panel: the cube's MDX Script (Monaco) — read-only in live cube mode,
+// read/write in SSDT project mode (.cube). List of calculated members / sets /
+// scopes grouped by region (#region in project mode), click = go to definition,
+// dependency tree of the selected item (both directions), export of the cube's
+// Markdown doc (live cube mode only).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -45,7 +45,7 @@ const error = ref('')
 const filter = ref('')
 const selected = ref<ScriptCommand | null>(null)
 
-// Pré-chargement des captions de membres en arrière-plan (indicateur discret)
+// Background preloading of member captions (discreet indicator)
 const prefetchDone = ref(0)
 const prefetchTotal = ref(0)
 const prefetchActive = ref(false)
@@ -57,22 +57,22 @@ function runPrefetch(text: string) {
   prefetchDone.value = 0
   prefetchTotal.value = 0
   prefetchActive.value = true
-  // Le pré-chargement est très rapide (MDX direct) : on laisse la barre visible ~1 s à la fin
-  // pour un retour visuel, sinon elle disparaît avant qu'on la voie.
+  // Preloading is very fast (direct MDX): the bar stays visible ~1 s at the end
+  // for visual feedback, otherwise it disappears before anyone sees it.
   prefetchMemberCaptions(text, (done, total) => {
     prefetchDone.value = done
     prefetchTotal.value = total
   }).finally(() => setTimeout(() => (prefetchActive.value = false), 1000))
 }
 
-// Rafraîchit les libellés de membres : vide le cache persistant serveur (le cube a pu être
-// reprocessé) + le cache client, puis relance le pré-chargement groupé sur le script courant.
+// Refreshes member captions: clears the persistent server cache (the cube may have been
+// reprocessed) + the client cache, then restarts the batched preload on the current script.
 async function refreshCaptions() {
   if (!store.cube) return
   try {
     await api.refreshCaptions(store.cube)
   } catch {
-    /* best effort : le cache serveur se revalidera de toute façon au prochain stamp */
+    /* best effort: the server cache will revalidate at the next stamp anyway */
   }
   clearCaptionCache()
   runPrefetch(fullScriptText.value)
@@ -81,10 +81,10 @@ async function refreshCaptions() {
 const graph = ref<DependencyGraph | null>(null)
 const graphLoading = ref(false)
 
-// --- Recherche plein texte dans le script (distincte du filtre de la liste des commandes,
-// qui ne filtre que par NOM). Balaie tout le texte (expressions de membres, corps SCOPE,
-// commentaires) ligne par ligne, insensible à la casse, plafonnée pour rester réactive
-// sur un script de plusieurs milliers de lignes. ---
+// --- Full-text search in the script (separate from the command list filter,
+// which only filters by NAME). Scans the whole text (member expressions, SCOPE bodies,
+// comments) line by line, case-insensitive, capped to stay responsive
+// on a script of several thousand lines. ---
 const textSearch = ref('')
 const SEARCH_HITS_CAP = 200
 
@@ -111,8 +111,8 @@ const searchHits = computed<SearchHit[]>(() => {
 
 const searchCapped = computed(() => searchHits.value.length >= SEARCH_HITS_CAP)
 
-/** Va à la ligne dans Monaco et sélectionne l'occurrence recherchée sur cette ligne quand
- *  on peut la retrouver (le texte peut avoir bougé depuis le calcul des hits, cas rare). */
+/** Goes to the line in Monaco and selects the searched occurrence on that line when it
+ *  can be found again (the text may have moved since the hits were computed, a rare case). */
 function goToLine(line: number) {
   if (!editor) return
   editor.revealLineNearTop(line)
@@ -131,8 +131,8 @@ function goToLine(line: number) {
   editor.focus()
 }
 
-/** Références textuelles brutes du membre/set sélectionné (complémentaire du graphe
- *  sémantique usedBy déjà affiché) : réutilise la recherche plein texte ci-dessus. */
+/** Raw textual references of the selected member/set (complementing the semantic
+ *  usedBy graph already shown): reuses the full-text search above. */
 function findReferences() {
   if (!selected.value) return
   textSearch.value = selected.value.name
@@ -141,7 +141,7 @@ function findReferences() {
 const host = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
-// --- Mode projet SSDT (édition) vs cube live (lecture seule) ---
+// --- SSDT project mode (editing) vs live cube (read-only) ---
 const project = ref<ProjectScript | null>(null)
 const dirty = ref(false)
 const saving = ref(false)
@@ -158,8 +158,8 @@ let savePromise: Promise<boolean> | null = null
 
 const isProject = computed(() => project.value !== null)
 
-// --- Propriétés de calcul (FormatString/DisplayFolder/Description) du membre sélectionné ---
-// Chargées une fois par projet ouvert (pas par sélection) : select() relit ce cache local.
+// --- Calculation properties (FormatString/DisplayFolder/Description) of the selected member ---
+// Loaded once per opened project (not per selection): select() reads this local cache.
 const calcProps = ref<CalculationProp[]>([])
 const propFormatString = ref('')
 const propDisplayFolder = ref('')
@@ -198,11 +198,11 @@ async function saveCalcProps() {
   }
 }
 
-// --- Renommage sûr d'un membre calculé / set nommé (définition + toutes les références
-// textuelles), via /api/script/rename (MemberRenamer côté serveur). Aperçu = appel serveur
-// sans toucher l'éditeur ; Appliquer = même appel (texte courant, potentiellement modifié
-// depuis l'aperçu) puis remplace le contenu de l'éditeur — le listener onDidChangeModelContent
-// marque alors le projet dirty naturellement (pas de setEditorText, qui force dirty=false). ---
+// --- Safe rename of a calculated member / named set (definition + all textual
+// references), via /api/script/rename (MemberRenamer on the server side). Preview = server call
+// without touching the editor; Apply = same call (current text, possibly modified
+// since the preview) then replaces the editor content — the onDidChangeModelContent listener
+// then marks the project dirty naturally (no setEditorText, which forces dirty=false). ---
 const showRename = ref(false)
 const renameNewName = ref('')
 const renamePreview = ref<RenameResult | null>(null)
@@ -216,8 +216,8 @@ const canRename = computed(
     (selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet'),
 )
 
-// --- Tracer IA : explique comment un membre calculé / set nommé construit sa valeur
-// (expression + dépendances calculées, transitif). Dispo en mode projet ET cube live. ---
+// --- AI tracer: explains how a calculated member / named set builds its value
+// (expression + calculated dependencies, transitive). Available in project mode AND live cube. ---
 const showExplain = ref(false)
 const explainLoading = ref(false)
 const explainText = ref('')
@@ -288,7 +288,7 @@ async function applyRename() {
   try {
     const text = editor?.getValue() ?? project.value?.fullText ?? ''
     const r = await api.renameMember(text, selected.value.name, renameNewName.value.trim())
-    editor?.setValue(r.newScript) // déclenche onDidChangeModelContent → dirty = true
+    editor?.setValue(r.newScript) // triggers onDidChangeModelContent → dirty = true
     showRename.value = false
     toast.add({ severity: 'success', summary: t('rename.done', { n: r.occurrences }), life: 4000 })
   } catch (e) {
@@ -307,7 +307,7 @@ const filteredCommands = computed(() => {
   return f ? commands.value.filter((c) => c.name.toLowerCase().includes(f)) : commands.value
 })
 
-/** Liste groupée par section (#region) — les commandes hors région en dernier. */
+/** List grouped by section (#region) — commands outside any region come last. */
 const groupedCommands = computed(() => {
   const groups = new Map<string, ScriptCommand[]>()
   for (const c of filteredCommands.value) {
@@ -331,7 +331,7 @@ async function load(refresh = false) {
     script.value = await api.script(store.cube, refresh)
     ensureEditor()
     if (!isProject.value) setEditorText(script.value.fullText, true)
-    runPrefetch(script.value.fullText) // captions en arrière-plan (survol instantané)
+    runPrefetch(script.value.fullText) // captions in the background (instant hover)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     script.value = null
@@ -391,8 +391,8 @@ async function browse(path?: string) {
     listing.value = await api.fsList(path)
     browsing.value = true
   } catch (e) {
-    // Navigation échouée : on garde le dossier courant affiché (l'utilisateur reste
-    // où il était et peut réessayer ailleurs), l'erreur s'affiche au-dessus.
+    // Navigation failed: keep the current folder displayed (the user stays
+    // where they were and can try elsewhere), the error is shown above.
     browseError.value = e instanceof Error ? e.message : String(e)
   }
 }
@@ -411,7 +411,7 @@ async function openProject(path?: string) {
     ensureEditor()
     setEditorText(proj.fullText, !proj.canEdit)
     toast.add({ severity: 'success', summary: t('project.opened', { cube: proj.cubeName }), life: 3000 })
-    runPrefetch(proj.fullText) // captions en arrière-plan (survol instantané)
+    runPrefetch(proj.fullText) // captions in the background (instant hover)
     calcProps.value = []
     if (proj.canEdit) void loadCalcProps(p)
   } catch (e) {
@@ -428,25 +428,25 @@ function closeProject() {
   setEditorText(script.value?.fullText ?? '', true)
 }
 
-/** Corps réel de la sauvegarde (wrappé par saveProject pour dédupliquer les appels concurrents). */
+/** Actual body of the save (wrapped by saveProject to deduplicate concurrent calls). */
 async function performSaveProject(): Promise<boolean> {
   saving.value = true
-  // Identité du projet visé par CETTE sauvegarde — capturée avant tout await. Si l'utilisateur
-  // ouvre un autre projet (ou ferme) pendant les awaits ci-dessous, `project.value` aura changé
-  // au retour : l'écriture disque pour `savedPath` a quand même eu lieu (c'est ce qui compte),
-  // mais il ne faut alors surtout pas réassigner project.value/dirty/warnings ni toaster —
-  // ça cibleraient/afficheraient l'état du MAUVAIS projet (celui maintenant ouvert à l'écran).
+  // Identity of the project targeted by THIS save — captured before any await. If the user
+  // opens another project (or closes it) during the awaits below, `project.value` will have
+  // changed on return: the disk write for `savedPath` did happen (that is what matters),
+  // but project.value/dirty/warnings must then absolutely not be reassigned, nor a toast shown —
+  // they would target/display the state of the WRONG project (the one now open on screen).
   const savedPath = project.value!.path
   try {
     const text = editor?.getValue() ?? project.value!.fullText
     const r = await api.projectSave(savedPath, text)
-    // Recharge la liste des commandes (sections/lignes à jour) sans toucher à l'éditeur
+    // Reloads the command list (up-to-date sections/lines) without touching the editor
     const proj = await api.projectOpen(savedPath)
     if (project.value?.path !== savedPath) return true
     warnings.value = r.warnings
     project.value = proj
-    // Si l'utilisateur a continué à taper pendant les awaits ci-dessus, `text` n'est plus
-    // le contenu courant de l'éditeur : ne pas effacer le flag dirty dans ce cas.
+    // If the user kept typing during the awaits above, `text` is no longer
+    // the current editor content: do not clear the dirty flag in that case.
     const stillSame = (editor?.getValue() ?? '') === text
     dirty.value = !stillSame
     toast.add({ severity: 'success', summary: t('project.saved'), life: 3000 })
@@ -463,8 +463,8 @@ async function performSaveProject(): Promise<boolean> {
   }
 }
 
-/** Sauvegarde dans le .cube ; retourne true si OK (ou rien à sauver). Les appels concurrents
- *  attendent la même sauvegarde en cours plutôt que de renvoyer true immédiatement. */
+/** Saves to the .cube; returns true if OK (or nothing to save). Concurrent calls
+ *  wait for the same save in progress rather than returning true immediately. */
 async function saveProject(): Promise<boolean> {
   if (!project.value || !project.value.canEdit) return true
   if (!dirty.value) return true
@@ -477,7 +477,7 @@ async function saveProject(): Promise<boolean> {
   }
 }
 
-// --- Déploiement du script seul (idée BIDS Helper) ---
+// --- Script-only deployment (BIDS Helper idea) ---
 const showDeploy = ref(false)
 const deployServer = ref('')
 const deployCatalog = ref('')
@@ -521,10 +521,10 @@ async function loadDeployLog() {
   }
 }
 
-// Le discriminant prod/dev est le SERVEUR, et seulement via la liste explicite tenue dans le
-// dialogue de connexion. L'ancienne règle reniflait le nom du catalogue (« contient dev ») :
-// elle ne vaut plus rien depuis que le dev a son propre serveur et le MÊME nom de catalogue
-// que la production. Le serveur refuse de toute façon — ceci ne fait que le dire à l'avance.
+// The prod/dev discriminator is the SERVER, and only via the explicit list kept in the
+// connection dialog. The old rule sniffed the catalog name ("contains dev"):
+// it is worthless since dev has its own server and the SAME catalog name
+// as production. The server refuses anyway — this only says so in advance.
 const isDevServer = computed(() =>
   store.devServers.some((s) => s.trim().toLowerCase() === deployServer.value.trim().toLowerCase()),
 )
@@ -532,7 +532,7 @@ const isDevServer = computed(() =>
 const diffHost = ref<HTMLElement | null>(null)
 let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null
 
-/** Crée le diff editor (serveur → projet) si le conteneur est monté et rien n'existe déjà. */
+/** Creates the diff editor (server → project) if the container is mounted and none exists yet. */
 function mountDiff() {
   if (diffEditor || !diffHost.value) return
   diffEditor = monaco.editor.createDiffEditor(diffHost.value, {
@@ -549,7 +549,7 @@ function mountDiff() {
   })
 }
 
-/** Détruit le diff editor et ses modèles — sinon fuite mémoire à chaque déploiement divergent. */
+/** Disposes of the diff editor and its models — otherwise a memory leak on every diverging deployment. */
 function disposeDiff() {
   if (!diffEditor) return
   const model = diffEditor.getModel()
@@ -572,8 +572,8 @@ watch(showDeploy, (visible) => {
   if (!visible) disposeDiff()
 })
 
-// Le serveur peut renvoyer un texte différent d'un essai de déploiement à l'autre (le projet a
-// été sauvegardé entre-temps) : reconstruire les modèles plutôt que de garder l'ancien diff affiché.
+// The server may return a different text from one deployment attempt to the next (the project was
+// saved in the meantime): rebuild the models rather than keeping the old diff displayed.
 watch(serverText, (text) => {
   if (!deployDiffers.value || !diffEditor) return
   const model = diffEditor.getModel()
@@ -587,8 +587,8 @@ watch(serverText, (text) => {
 
 function showDeployDialog() {
   deployServer.value = store.server
-  // Le catalogue courant : il n'y a plus de nom « dev » à reconnaître, c'est le serveur qui
-  // porte la distinction.
+  // The current catalog: there is no longer a "dev" name to recognize, the server carries
+  // the distinction.
   deployCatalog.value = store.catalog ?? ''
   deployDiffers.value = false
   serverText.value = ''
@@ -604,7 +604,7 @@ async function deploy(force = false) {
   deployBusy.value = true
   deployError.value = ''
   try {
-    if (!(await saveProject())) return // l'état DISQUE est déployé : sauvegarde d'abord
+    if (!(await saveProject())) return // the DISK state is deployed: save first
     const r = await api.projectDeploy(
       project.value.path, deployServer.value.trim(), deployCatalog.value.trim(), force)
     if (r.differs && !r.deployed) {
@@ -670,22 +670,22 @@ const depTree = computed<TreeNode[]>(() =>
   graph.value ? toTreeNodes(graph.value.root).children ?? [] : [],
 )
 
-// (Re)charger quand le cube change / à la connexion
+// (Re)load when the cube changes / on connection
 watch(
   () => store.cube,
   (c) => {
     script.value = null
     selected.value = null
     graph.value = null
-    // En mode projet SSDT, l'éditeur affiche déjà le contenu du .cube : pas d'aller-retour
-    // réseau vers /api/script.
+    // In SSDT project mode, the editor already shows the .cube content: no network
+    // round trip to /api/script.
     if (c && !isProject.value) void load()
   },
   { immediate: true },
 )
 
-// « Aller à la définition » demandé depuis l'éditeur MDX (F12). L'onglet est activé par
-// App.vue ; ici on charge le script au besoin, puis on se positionne sur la commande.
+// "Go to definition" requested from the MDX editor (F12). The tab is activated by
+// App.vue; here the script is loaded if needed, then the command is located.
 watch(
   () => store.gotoDefinitionRevision,
   async () => {
@@ -702,7 +702,7 @@ watch(
       })
       return
     }
-    filter.value = '' // sinon la commande visée peut être masquée par le filtre courant
+    filter.value = '' // otherwise the target command may be hidden by the current filter
     await select(cmd)
   },
 )
@@ -715,9 +715,9 @@ function exportDoc() {
   a.click()
 }
 
-/** Averti le navigateur (prompt natif) en cas de fermeture/rechargement d'onglet avec des
- *  modifications non enregistrées — le panneau Script est un vrai éditeur d'écriture, pas
- *  seulement une visionneuse. */
+/** Warns through the browser (native prompt) when the tab is closed/reloaded with unsaved
+ *  changes — the Script panel is a real editor that writes, not
+ *  just a viewer. */
 function handleBeforeUnload(e: BeforeUnloadEvent) {
   if (dirty.value) {
     e.preventDefault()
@@ -725,10 +725,10 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
-/** Miroir du même état pour la coquille WPF : détruire un contrôle WebView2 ne passe PAS
- *  par le chemin de fermeture du navigateur, `beforeunload` n'y est donc jamais évalué
- *  (le handler ci-dessus ne sert plus qu'au repli `--force-browser`). La fenêtre native
- *  lit ce drapeau par `ExecuteScriptAsync` avant de se fermer. */
+/** Mirror of the same state for the WPF shell: disposing of a WebView2 control does NOT go
+ *  through the browser's close path, so `beforeunload` is never evaluated there
+ *  (the handler above now only serves the `--force-browser` fallback). The native window
+ *  reads this flag through `ExecuteScriptAsync` before closing. */
 watch(
   dirty,
   (v) => {

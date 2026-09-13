@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Sessions ouvertes sur l'instance SSAS, et annulation d'une session par son SPID.
-// ⚠️ La liste ne contient PAS que les sessions de CubeScope : les jobs de production et les
-// autres utilisateurs y figurent. D'où la confirmation détaillée avant toute annulation —
-// annuler la mauvaise ligne fait échouer une alimentation.
-// Lecture réservée aux admins SSAS : sans droits, le serveur refuse et on affiche le message.
+// Sessions open on the SSAS instance, and cancelling a session by its SPID.
+// ⚠️ The list does NOT contain only CubeScope's sessions: production jobs and other
+// users show up in it too. Hence the detailed confirmation before any cancellation —
+// cancelling the wrong row makes a data load fail.
+// Reading is restricted to SSAS admins: without permissions, the server refuses and the message is shown.
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
@@ -60,13 +60,13 @@ async function confirmCancel() {
     })
   } finally {
     cancelling.value = false
-    // Rafraîchir dans tous les cas : après un échec, la liste affichée est justement
-    // celle dont on vient de constater qu'elle n'était plus à jour.
+    // Refresh in every case: after a failure, the displayed list is precisely
+    // the one that was just found to be out of date.
     await load()
   }
 }
 
-/** Millisecondes → durée lisible ; les sessions vivent parfois depuis des heures. */
+/** Milliseconds → readable duration; sessions sometimes live for hours. */
 function duration(ms: number): string {
   if (ms < 1000) return `${ms} ms`
   const s = Math.floor(ms / 1000)
@@ -76,15 +76,15 @@ function duration(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`
 }
 
-/** Texte le plus parlant : la commande en cours, sinon la dernière connue. */
+/** Most meaningful text: the running command, otherwise the last known one. */
 function commandOf(s: SsasSessionInfo): string {
   return (s.commandText || s.lastCommand || '').replace(/\s+/g, ' ').trim()
 }
 
 /**
- * Aperçu borné. Une commande MDX fait couramment plusieurs milliers de caractères : la
- * laisser entière rendrait la barre de défilement horizontale inutilisable. On en montre
- * assez pour reconnaître la requête, le texte complet est à un clic.
+ * Bounded preview. An MDX command is commonly several thousand characters long: leaving
+ * it whole would make the horizontal scrollbar unusable. Enough is shown to recognize
+ * the query; the full text is one click away.
  */
 const PREVIEW = 300
 function preview(s: SsasSessionInfo): string {
@@ -92,7 +92,7 @@ function preview(s: SsasSessionInfo): string {
   return c.length > PREVIEW ? c.slice(0, PREVIEW) + '…' : c
 }
 
-/** Commande affichée en entier (clic sur la cellule). */
+/** Command shown in full (click on the cell). */
 const full = ref<SsasSessionInfo | null>(null)
 
 async function copyCommand() {
@@ -101,19 +101,19 @@ async function copyCommand() {
     await navigator.clipboard.writeText(commandOf(full.value))
     toast.add({ severity: 'success', summary: t('sessions.commandCopied'), life: 3000 })
   } catch {
-    /* presse-papiers indisponible */
+    /* clipboard unavailable */
   }
 }
 
-// Le panneau peut être monté avant la connexion (dockview crée tous les panneaux au
-// démarrage) : sans ce watch, il resterait vide jusqu'à un rafraîchissement manuel.
+// The panel can be mounted before connecting (dockview creates every panel at
+// startup): without this watch, it would stay empty until a manual refresh.
 watch(() => store.connected, (c) => { if (c) void load() })
 
-// --- Rafraîchissement automatique ---------------------------------------------------
-// Chaque cycle coûte DEUX requêtes DMV sur le serveur SSAS. On ne tourne donc que quand
-// le panneau est réellement visible : dockview garde les onglets inactifs montés mais
-// masqués, et sans cette garde on interrogerait la prod en continu sans que personne
-// ne regarde. Idem quand l'onglet du navigateur passe en arrière-plan.
+// --- Automatic refresh ----------------------------------------------------------------
+// Each cycle costs TWO DMV queries on the SSAS server. So it only runs when the panel
+// is actually visible: dockview keeps inactive tabs mounted but hidden, and without
+// this guard prod would be queried continuously with nobody looking.
+// Same when the browser tab goes to the background.
 const AUTO_KEY = 'cubescope.sessions.auto'
 const PERIOD_MS = 10_000
 
@@ -123,13 +123,13 @@ let timer: number | undefined
 
 watch(auto, (on) => localStorage.setItem(AUTO_KEY, on ? 'on' : 'off'))
 
-/** Visible = onglet dockview actif (offsetParent non nul) ET onglet navigateur au premier plan. */
+/** Visible = active dockview tab (non-null offsetParent) AND browser tab in the foreground. */
 function isVisible(): boolean {
   return document.visibilityState === 'visible' && root.value?.offsetParent != null
 }
 
 function tick() {
-  // `loading` évite d'empiler les appels si le serveur répond plus lentement que la période.
+  // `loading` avoids stacking calls if the server responds more slowly than the period.
   if (auto.value && store.connected && !loading.value && isVisible()) void load()
 }
 
@@ -320,8 +320,8 @@ onBeforeUnmount(() => window.clearInterval(timer))
   background: var(--p-primary-color);
   color: var(--p-primary-contrast-color);
 }
-/* Pas de troncature CSS : le texte force la largeur du tableau, ce qui fait apparaître la
-   barre de défilement horizontale. L'aperçu est borné en JS pour qu'elle reste utilisable. */
+/* No CSS truncation: the text forces the table width, which brings up the horizontal
+   scrollbar. The preview is bounded in JS so that the scrollbar stays usable. */
 .cmd {
   display: inline-block;
   white-space: nowrap;

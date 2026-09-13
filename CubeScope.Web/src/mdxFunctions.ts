@@ -1,7 +1,7 @@
-// Signatures + doc courte des fonctions MDX les plus courantes, pour l'autocomplétion
-// (detail/documentation) et le HoverProvider. Clé = nom de fonction en MAJUSCULES.
-// Couverture volontairement partielle : mieux vaut omettre une fonction que deviner
-// une signature fausse. Aligné sur (sous-ensemble de) FUNCTIONS dans monaco-mdx.ts.
+// Signatures + short doc of the most common MDX functions, for autocompletion
+// (detail/documentation) and the HoverProvider. Key = function name in UPPERCASE.
+// Deliberately partial coverage: better to omit a function than to guess
+// a wrong signature. Aligned with (a subset of) FUNCTIONS in monaco-mdx.ts.
 export interface MdxFunctionDoc {
   signature: string
   doc: string

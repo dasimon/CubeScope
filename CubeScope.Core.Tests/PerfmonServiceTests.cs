@@ -5,14 +5,14 @@ namespace CubeScope.Core.Tests;
 public class PerfmonServiceUnitTests
 {
     [Theory]
-    // Localisé FR (OS serveur français) — séparateur " : " AVEC espaces
+    // FR-localized (French server OS) — " : " separator WITH spaces
     [InlineData("MSAS16 : MDX", true)]
     [InlineData("MSAS16 : cache", true)]
     [InlineData("MSAS16 : requête du moteur de stockage", true)]
-    // Anglais (autre serveur possible)
+    // English (another possible server)
     [InlineData("MSAS16:MDX", true)]
     [InlineData("MSAS16:Storage Engine Query", true)]
-    // Catégories non voulues
+    // Unwanted categories
     [InlineData("MSAS16 : mémoire", false)]
     [InlineData("MSAS16 : threads", false)]
     [InlineData("MSAS16:Reliability Metrics", false)]
@@ -43,7 +43,7 @@ public class PerfmonServiceUnitTests
         svc.Initialize("SERVEUR-INEXISTANT");
         Assert.Equal(PerfmonStatus.Unavailable, svc.Status);
         Assert.NotNull(svc.StatusDetail);
-        Assert.Empty(svc.Snapshot()); // toujours sans exception
+        Assert.Empty(svc.Snapshot()); // still no exception
     }
 }
 
@@ -54,7 +54,7 @@ public class PerfmonServiceIntegrationTests
     public void Initialize_OnRealServer_FindsCounters()
     {
         using var svc = new PerfmonService();
-        svc.Initialize($"{TestTarget.Server}:9999"); // le port doit être ignoré pour perfmon
+        svc.Initialize($"{TestTarget.Server}:9999"); // the port must be ignored for perfmon
 
         Assert.Equal(PerfmonStatus.Ready, svc.Status);
         var snap = svc.Snapshot();

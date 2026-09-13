@@ -4,9 +4,9 @@ namespace CubeScope.Core.Tests;
 
 public class CalculationPropertyTests : IDisposable
 {
-    // Squelette minimal fidèle d'un .cube SSDT, nom de cube NEUTRE (pas un vrai nom de
-    // production) : un MdxScript à 1 Command (2 membres calculés) + CalculationProperties
-    // avec une seule propriété déjà renseignée (FormatString + DisplayFolder).
+    // Minimal but faithful skeleton of an SSDT .cube, NEUTRAL cube name (not a real production
+    // name): an MdxScript with 1 Command (2 calculated members) + CalculationProperties
+    // with a single property already filled in (FormatString + DisplayFolder).
     private const string SampleCube = """
         <?xml version="1.0" encoding="utf-8"?>
         <Cube xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
@@ -82,11 +82,11 @@ public class CalculationPropertyTests : IDisposable
         var reloaded = svc.GetCalculationProperties(path).Single(p => p.Reference == "[Measures].[Marge]");
         Assert.Equal("'#,##0'", reloaded.FormatString);
 
-        // Le reste du document (annotations designer) est intact
+        // The rest of the document (designer annotations) is intact
         string xml = File.ReadAllText(path);
         Assert.Contains("DiagramLayout", xml);
 
-        // La Command du MdxScript n'a pas bougé
+        // The MdxScript Command has not moved
         var script = svc.Load(path);
         Assert.Contains("CREATE MEMBER CURRENTCUBE.[Measures].[Marge]", script.FullText);
         Assert.Contains("CREATE MEMBER CURRENTCUBE.[Measures].[Brut]", script.FullText);
@@ -117,8 +117,8 @@ public class CalculationPropertyTests : IDisposable
         var svc = new CubeProjectService();
         string path = WriteFixture(SampleCube);
 
-        // DisplayFolder existant -> null : doit disparaître. FormatString repassé à sa
-        // valeur d'origine : doit rester intact (pas de perte croisée entre champs).
+        // Existing DisplayFolder -> null: must disappear. FormatString set back to its
+        // original value: must stay intact (no cross-field loss).
         svc.SaveCalculationProperty(path, "[Measures].[Marge]", "'#,##0.00'", null, null);
 
         var marge = svc.GetCalculationProperties(path).Single(p => p.Reference == "[Measures].[Marge]");
@@ -135,7 +135,7 @@ public class CalculationPropertyTests : IDisposable
         var svc = new CubeProjectService();
         string path = WriteFixture(SampleCube);
 
-        // [Measures].[Brut] n'a pas encore de CalculationProperty : on en crée une.
+        // [Measures].[Brut] has no CalculationProperty yet: one is created.
         svc.SaveCalculationProperty(path, "[Measures].[Brut]", "'#,##0'", null, null);
 
         var marge = svc.GetCalculationProperties(path).Single(p => p.Reference == "[Measures].[Marge]");

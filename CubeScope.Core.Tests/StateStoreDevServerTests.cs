@@ -10,8 +10,8 @@ public class StateStoreDevServerTests
     [Fact]
     public void Aucun_serveur_de_dev_au_depart()
     {
-        // Fail-closed : un poste neuf ne déclare rien, donc tout déploiement est traité
-        // comme visant la production.
+        // Fail-closed: a fresh machine declares nothing, so every deployment is treated
+        // as targeting production.
         using var store = Neuf();
         Assert.Empty(store.GetDevServers());
     }
@@ -62,8 +62,8 @@ public class StateStoreDevServerTests
     [Fact]
     public void Un_nom_vide_n_est_pas_enregistre()
     {
-        // Une entrée vide rendrait « dev » une connexion sans serveur si la garde
-        // comparait naïvement.
+        // An empty entry would make a connection with no server "dev" if the guard
+        // compared naively.
         using var store = Neuf();
         store.SetDevServer("   ", true);
         Assert.Empty(store.GetDevServers());

@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>cubescope-server</AssemblyName>
-    <!-- Jamais publié : c'est l'hôte console de la boucle de dev et des tests.
-         L'artefact distribué est CubeScope.Shell. -->
+    <!-- Never published: this is the console host for the dev loop and the tests.
+         The distributed artifact is CubeScope.Shell. -->
     <IsPublishable>false</IsPublishable>
   </PropertyGroup>
 

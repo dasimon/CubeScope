@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Historique des requêtes (SQLite côté serveur). Filtre texte local (les entrées chargées),
-// double-clic ou bouton crayon : recharge le MDX dans l'éditeur ; bouton copie : presse-papiers.
+// Query history (SQLite on the server side). Local text filter (over the loaded entries),
+// double-click or pencil button: reloads the MDX into the editor; copy button: clipboard.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'

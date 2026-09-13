@@ -1,8 +1,8 @@
-// i18n (vue-i18n) — FR par défaut (usage quotidien de l'auteur), EN pour la communauté.
-// Choix persisté en localStorage. La langue est aussi envoyée au connect (Locale Identifier)
-// → les libellés du cube (mesures, membres) reviennent dans cette langue s'il a des
-// traductions. Restent dans la langue de l'OS serveur (hors contrôle) : erreurs SSAS et
-// libellés perfmon. Changer de langue APRÈS connexion ne re-traduit pas le cube (reconnecter).
+// i18n (vue-i18n) — FR by default (the author's daily use), EN for the community.
+// Choice persisted in localStorage. The language is also sent on connect (Locale Identifier)
+// → the cube's captions (measures, members) come back in that language if it has
+// translations. Still in the server OS language (out of our control): SSAS errors and
+// perfmon labels. Changing language AFTER connecting does not re-translate the cube (reconnect).
 import { createI18n } from 'vue-i18n'
 import fr from './locales/fr'
 import en from './locales/en'
@@ -33,5 +33,5 @@ export function currentLocale(): Locale {
   return i18n.global.locale.value as Locale
 }
 
-// Traduction hors composant (store, api) — même catalogue.
+// Translation outside components (store, api) — same catalog.
 export const t = i18n.global.t

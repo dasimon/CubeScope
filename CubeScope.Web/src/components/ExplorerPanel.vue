@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Explorateur de métadonnées : mesures (par dossier) + dimensions → hiérarchies → niveaux,
-// et sous chaque hiérarchie un dossier « Membres » qui descend jusqu'aux feuilles (façon SSMS).
-// Double-clic ou glisser vers l'éditeur : insère l'UniqueName.
+// Metadata explorer: measures (by folder) + dimensions → hierarchies → levels,
+// and under each hierarchy a "Members" folder that goes down to the leaves (SSMS-style).
+// Double-click or drag to the editor: inserts the UniqueName.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tree from 'primevue/tree'
@@ -14,14 +14,14 @@ import { actions, store } from '../store'
 const { t } = useI18n()
 
 
-// Crans déjà chargés, par clé de nœud. Séparé de l'arbre lui-même parce que `nodes` est un
-// computed : le recalculer (changement de cube, rafraîchissement) écraserait des enfants
-// stockés dans les nœuds, alors qu'ici ils survivent.
+// Levels already loaded, by node key. Kept apart from the tree itself because `nodes` is a
+// computed: recomputing it (cube change, refresh) would overwrite children stored in the
+// nodes, whereas here they survive.
 const loaded = ref(new Map<string, { nodes: MemberNode[]; hasMore: boolean }>())
 const pending = ref(new Set<string>())
 const failed = ref(new Set<string>())
 
-/** Construit récursivement le sous-arbre déjà chargé sous une clé. */
+/** Recursively builds the already-loaded subtree under a key. */
 function buildMembers(key: string, parentCount: number): TreeNode[] {
   const cran = loaded.value.get(key)
   if (!cran) return []
@@ -32,16 +32,16 @@ function buildMembers(key: string, parentCount: number): TreeNode[] {
     icon: 'pi pi-circle-fill',
     data: m.uniqueName,
     title: m.uniqueName,
-    // childrenCount === 0 : vraie feuille, pas de flèche. -1 : inconnu, on laisse dépliable
-    // plutôt que de la déclarer feuille à tort et de la rendre muette.
+    // childrenCount === 0: true leaf, no arrow. -1: unknown, keep it expandable
+    // rather than wrongly declaring it a leaf and making it silent.
     leaf: m.childrenCount === 0,
     loading: pending.value.has(`m:${m.uniqueName}`),
     children: buildMembers(`m:${m.uniqueName}`, m.childrenCount),
   }))
 
   if (cran.hasMore) {
-    // Le nombre exact vient de la cardinalité du parent, que le serveur a déjà donnée ;
-    // il n'a donc pas eu à recompter. Inconnue (-1) → on le dit sans chiffre.
+    // The exact number comes from the parent's cardinality, which the server already gave;
+    // so it did not have to count again. Unknown (-1) → say so without a number.
     const reste = parentCount - cran.nodes.length
     enfants.push({
       key: `${key}:more`,
@@ -58,7 +58,7 @@ async function onNodeExpand(node: TreeNode): Promise<void> {
   const key = node.key as string
   if (!store.cube) return
   if (loaded.value.has(key) || pending.value.has(key)) return
-  // Ni le dossier « Membres » ni un membre : mesures, dimensions, niveaux restent statiques.
+  // Neither the "Members" folder nor a member: measures, dimensions, levels stay static.
   const estHierarchie = key.startsWith('mb:')
   if (!estHierarchie && !key.startsWith('m:')) return
 
@@ -69,8 +69,8 @@ async function onNodeExpand(node: TreeNode): Promise<void> {
     const cran = await api.children(store.cube, parent, estHierarchie)
     loaded.value = new Map(loaded.value).set(key, cran)
   } catch {
-    // Un cran illisible (droits, membre disparu depuis le chargement des métadonnées) ne doit
-    // pas laisser un nœud à tourner indéfiniment : on le marque et l'utilisateur peut replier.
+    // An unreadable level (permissions, member gone since the metadata was loaded) must not
+    // leave a node spinning forever: mark it, and the user can collapse it.
     failed.value = new Set(failed.value).add(key)
   } finally {
     const p = new Set(pending.value)
@@ -97,7 +97,7 @@ const nodes = computed<TreeNode[]>(() => {
       leaf: true,
     })),
   }))
-  // Dossier racine seul → remonter ses mesures directement sous "Mesures"
+  // Root folder only → lift its measures directly under "Measures"
   const measuresNode: TreeNode = {
     key: 'measures',
     label: t('explorer.measures', { n: meta.measureFolders.reduce((n, f) => n + f.measures.length, 0) }),
@@ -120,8 +120,8 @@ const nodes = computed<TreeNode[]>(() => {
       icon: 'pi pi-sitemap',
       data: h.uniqueName,
       children: [
-        // Le dossier « Membres » s'AJOUTE aux niveaux, il ne les remplace pas : c'est la
-        // disposition de SSMS, et les niveaux restent utiles à l'insertion dans l'éditeur.
+        // The "Members" folder is ADDED to the levels, it does not replace them: that is the
+        // SSMS layout, and the levels remain useful for inserting into the editor.
         {
           key: `mb:${h.uniqueName}`,
           label: failed.value.has(`mb:${h.uniqueName}`)
@@ -131,7 +131,7 @@ const nodes = computed<TreeNode[]>(() => {
           selectable: false,
           leaf: false,
           loading: pending.value.has(`mb:${h.uniqueName}`),
-          // -1 : au premier cran on n'a pas de cardinalité de parent à annoncer.
+          // -1: at the first level there is no parent cardinality to announce.
           children: buildMembers(`mb:${h.uniqueName}`, -1),
         },
         ...h.levels.map((l) => ({
@@ -156,8 +156,8 @@ function onNodeDblClick(node: TreeNode) {
 }
 
 /**
- * Le glisser transporte l'UniqueName en texte brut : l'éditeur le dépose à l'endroit lâché,
- * là où le double-clic insère au curseur courant. Les deux gestes restent utiles.
+ * Dragging carries the UniqueName as plain text: the editor drops it where it is released,
+ * whereas double-click inserts at the current cursor. Both gestures remain useful.
  */
 function onDragStart(e: DragEvent, node: TreeNode) {
   if (typeof node.data !== 'string' || !e.dataTransfer) return

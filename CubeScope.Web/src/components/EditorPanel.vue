@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Panneau éditeur MDX (Monaco). store.mdx est la source de vérité ;
-// mdxRevision signale un remplacement externe (chargement depuis l'historique).
+// MDX editor panel (Monaco). store.mdx is the source of truth;
+// mdxRevision signals an external replacement (load from history).
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { monaco } from '../monaco-mdx'
-// L'import nommé suffit à charger le module, qui enregistre au passage les providers
-// d'autocomplétion et de survol (effet de bord).
+// The named import is enough to load the module, which registers the autocompletion
+// and hover providers along the way (side effect).
 import { normalizeRef, refAtColumn } from '../mdx-completion'
 import { actions, store } from '../store'
 
@@ -28,25 +28,25 @@ onMounted(() => {
   editor.onDidChangeModelContent(() => {
     store.mdx = editor!.getValue()
   })
-  // Sélection courante : si non vide, F5/Ctrl+Entrée n'exécutent qu'elle (store.run())
+  // Current selection: if non-empty, F5/Ctrl+Enter execute only that (store.run())
   editor.onDidChangeCursorSelection(() => {
     const m = editor!.getModel()
     const sel = editor!.getSelection()
     store.selectedMdx = m && sel && !sel.isEmpty() ? m.getValueInRange(sel) : ''
   })
-  // Exécution : Ctrl+Entrée et F5 (le F5 navigateur est intercepté au niveau app)
+  // Execution: Ctrl+Enter and F5 (the browser F5 is intercepted at app level)
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void actions.run())
   editor.addCommand(monaco.KeyCode.F5, () => void actions.run())
 
-  // Aller à la définition : saute au CREATE MEMBER / SET du MDX Script. Ce n'est pas un
-  // DefinitionProvider Monaco (F12 natif), car la cible est un AUTRE éditeur, dans un autre
-  // panneau dockview — un provider doit renvoyer une position du modèle courant.
+  // Go to definition: jumps to the CREATE MEMBER / SET in the MDX Script. This is not a
+  // Monaco DefinitionProvider (native F12), because the target is ANOTHER editor, in another
+  // dockview panel — a provider must return a position in the current model.
   editor.addAction({
     id: 'mdx.gotoDefinition',
     label: t('editor.gotoDefinition'),
-    // PAS F12 : dans Edge/Chrome, F12 ouvre les outils de développement et n'est pas
-    // interceptable par le contenu de la page. Alt+F12 (le « Peek Definition » de VS Code)
-    // et Ctrl+Alt+G passent, eux — vérifiés au navigateur.
+    // NOT F12: in Edge/Chrome, F12 opens the developer tools and cannot be
+    // intercepted by page content. Alt+F12 (VS Code's "Peek Definition")
+    // and Ctrl+Alt+G do get through — checked in the browser.
     keybindings: [
       monaco.KeyMod.Alt | monaco.KeyCode.F12,
       monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyG,
@@ -64,7 +64,7 @@ onMounted(() => {
   })
 })
 
-// Remplacement externe du MDX (historique) sans boucle de réédition
+// External replacement of the MDX (history) without an edit loop
 watch(
   () => store.mdxRevision,
   () => {
@@ -72,7 +72,7 @@ watch(
   },
 )
 
-// Insertion au curseur (explorateur → double-clic sur un nœud)
+// Insert at the cursor (explorer → double-click on a node)
 watch(
   () => store.insertRevision,
   () => {
@@ -86,12 +86,12 @@ watch(
 )
 
 /**
- * Dépôt d'un membre glissé depuis l'explorateur. On insère là où l'utilisateur LÂCHE, pas au
- * curseur : c'est tout l'intérêt du geste par rapport au double-clic, qui lui insère au curseur.
+ * Drop of a member dragged from the explorer. The text is inserted where the user RELEASES, not at
+ * the cursor: that is the whole point of the gesture compared with double-click, which inserts at the cursor.
  *
- * `preventDefault` sur dragover est obligatoire, sinon le navigateur refuse le dépôt — et
- * Monaco a son propre glisser interne (déplacement de sélection) : on ne traite que les dépôts
- * porteurs de texte venus d'ailleurs.
+ * `preventDefault` on dragover is required, otherwise the browser refuses the drop — and
+ * Monaco has its own internal drag (moving the selection): only drops carrying text that
+ * come from elsewhere are handled.
  */
 function onDragOver(e: DragEvent) {
   if (!e.dataTransfer) return

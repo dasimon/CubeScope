@@ -19,10 +19,10 @@ public class MemberRenamerTests
 
         var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[Marge brute]");
 
-        Assert.Equal(2, result.Occurrences); // la définition + la référence dans [Taux de marge]
+        Assert.Equal(2, result.Occurrences); // the definition + the reference in [Taux de marge]
         Assert.DoesNotContain("[Measures].[Marge]", result.NewScript);
         Assert.Contains("[Measures].[Marge brute]", result.NewScript);
-        // Les références à [CA] et [Coûts] (autres membres) restent inchangées.
+        // References to [CA] and [Coûts] (other members) stay unchanged.
         Assert.Contains("[Measures].[CA]", result.NewScript);
         Assert.Contains("[Measures].[Coûts]", result.NewScript);
     }
@@ -39,7 +39,7 @@ public class MemberRenamerTests
         var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[MargeBrute]");
 
         Assert.Equal(0, result.Occurrences);
-        // Le texte du commentaire et de la chaîne n'a pas bougé.
+        // The comment text and the string text have not moved.
         Assert.Contains("-- TODO : revoir [Measures].[Marge] plus tard", result.NewScript);
         Assert.Contains("\"Référence : [Measures].[Marge]\"", result.NewScript);
         Assert.DoesNotContain("MargeBrute", result.NewScript);
@@ -56,7 +56,7 @@ public class MemberRenamerTests
 
         var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[MargeX]");
 
-        // Définition + 1 référence dans [Marge Ratio] + 1 référence dans [MargeBis] = 3.
+        // Definition + 1 reference in [Marge Ratio] + 1 reference in [MargeBis] = 3.
         Assert.Equal(3, result.Occurrences);
         Assert.Contains("[Measures].[Marge Ratio]", result.NewScript);
         Assert.Contains("[Measures].[MargeBis]", result.NewScript);

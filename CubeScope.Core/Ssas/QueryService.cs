@@ -5,14 +5,14 @@ using Microsoft.AnalysisServices.AdomdClient;
 
 namespace CubeScope.Core.Ssas;
 
-/// <summary>Exécution MDX → QueryResult, avec timing et annulation (AdomdCommand.Cancel).</summary>
+/// <summary>MDX execution → QueryResult, with timing and cancellation (AdomdCommand.Cancel).</summary>
 public sealed class QueryService(SsasSession session)
 {
     public Task<QueryResult> ExecuteAsync(string mdx, CancellationToken ct = default)
         => session.WithConnectionAsync(conn =>
         {
             using var cmd = new AdomdCommand(mdx, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* déjà terminé */ } });
+            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* already finished */ } });
             var sw = Stopwatch.StartNew();
             var cs = cmd.ExecuteCellSet();
             sw.Stop();
@@ -21,10 +21,10 @@ public sealed class QueryService(SsasSession session)
         }, ct);
 
     /// <summary>
-    /// Enveloppe la requête MDX courante dans DRILLTHROUGH et retourne le rowset source.
-    /// Limitation connue : pas de drillthrough précis par cellule (CellSetMapper ne garde que
-    /// les Captions, pas les UniqueName) — fonctionne pour une requête « drillthroughable »
-    /// côté serveur (typiquement une cellule unique).
+    /// Wraps the current MDX query in DRILLTHROUGH and returns the source rowset.
+    /// Known limitation: no precise per-cell drillthrough (CellSetMapper only keeps
+    /// the Captions, not the UniqueNames) — works for a query that is "drillthroughable"
+    /// server-side (typically a single cell).
     /// </summary>
     public Task<QueryResult> ExecuteDrillthroughAsync(string mdx, int maxRows, CancellationToken ct = default)
     {
@@ -32,7 +32,7 @@ public sealed class QueryService(SsasSession session)
         return session.WithConnectionAsync(conn =>
         {
             using var cmd = new AdomdCommand(stmt, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* déjà terminé */ } });
+            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* already finished */ } });
             var sw = Stopwatch.StartNew();
             using var reader = cmd.ExecuteReader();
             var table = new DataTable();
@@ -45,7 +45,7 @@ public sealed class QueryService(SsasSession session)
         }, ct);
     }
 
-    /// <summary>Construit l'instruction DRILLTHROUGH ; ne double pas l'enveloppe si déjà présente.</summary>
+    /// <summary>Builds the DRILLTHROUGH statement; does not wrap twice if already present.</summary>
     internal static string BuildDrillthrough(string mdx, int maxRows)
     {
         var trimmed = mdx.Trim();
@@ -55,7 +55,7 @@ public sealed class QueryService(SsasSession session)
         return $"DRILLTHROUGH MAXROWS {clamped} {trimmed}";
     }
 
-    /// <summary>Aplati un rowset de drillthrough (DataTable) en QueryResult pour la grille.</summary>
+    /// <summary>Flattens a drillthrough rowset (DataTable) into a QueryResult for the grid.</summary>
     internal static QueryResult MapTable(DataTable table, long durationMs)
     {
         var columns = table.Columns.Cast<DataColumn>()

@@ -56,8 +56,8 @@ public class ScriptParserRegionTests
     [Fact]
     public void Section_FirstStatement_WithLeadingBlankLines_UsesRegion()
     {
-        // Script commençant par des lignes blanches AVANT le premier #region : le
-        // premier statement doit quand même se voir attribuer la bonne région.
+        // Script starting with blank lines BEFORE the first #region: the first
+        // statement must still be assigned the right region.
         var cmds = ScriptParser.Parse("\n\n// #region X\nCREATE SET CURRENTCUBE.[S] AS [D].[H].Members;");
         Assert.Equal("X", cmds.Single().Section);
     }
@@ -65,7 +65,7 @@ public class ScriptParserRegionTests
     [Fact]
     public void Section_FirstStatement_WithLeadingBlankLines_OutsideRegion_IsNull()
     {
-        // Même scénario mais sans aucune région dans le script : doit rester null.
+        // Same scenario but with no region at all in the script: must stay null.
         var cmds = ScriptParser.Parse("\n\nCREATE SET CURRENTCUBE.[S] AS [D].[H].Members;");
         Assert.Null(cmds.Single().Section);
     }

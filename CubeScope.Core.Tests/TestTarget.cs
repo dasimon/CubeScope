@@ -1,19 +1,19 @@
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Cible des tests d'intégration, paramétrée par variables d'environnement pour ne
-/// coder aucun identifiant réel dans le dépôt public. Les tests [Category=Integration]
-/// nécessitent un vrai serveur SSAS Multidimensional ; définir les variables ci-dessous
-/// pour les lancer localement (sinon valeurs neutres qui ne pointent nulle part) :
+/// Target of the integration tests, parameterized by environment variables so that no
+/// real identifier is hard-coded in the public repository. The [Category=Integration] tests
+/// require a real SSAS Multidimensional server; set the variables below to run them
+/// locally (otherwise neutral values that point nowhere):
 ///   CUBESCOPE_TEST_SERVER, CUBESCOPE_TEST_SERVER_DEV, CUBESCOPE_TEST_CATALOG,
 ///   CUBESCOPE_TEST_CATALOG_DEV, CUBESCOPE_TEST_CUBE, CUBESCOPE_TEST_HIERARCHY,
 ///   CUBESCOPE_TEST_MEASURE.
 ///
-/// ⚠️ DEV EST UN SERVEUR, PLUS UN CATALOGUE. Tant que le dev vivait sur le serveur de
-/// production sous un autre nom de catalogue, « Server + CatalogDev » suffisait à viser le
-/// dev. Depuis qu'il a son propre serveur, les deux catalogues portent le MÊME nom : cette
-/// combinaison viserait la production. Tout test destructif (ClearCache, déploiement) doit
-/// utiliser <see cref="ServerDev"/>, et appeler <see cref="AssertDevServerDistinct"/>.
+/// ⚠️ DEV IS A SERVER, NO LONGER A CATALOG. As long as dev lived on the production server
+/// under another catalog name, "Server + CatalogDev" was enough to target dev. Since it got
+/// its own server, both catalogs carry the SAME name: that combination would target
+/// production. Every destructive test (ClearCache, deployment) must use
+/// <see cref="ServerDev"/>, and call <see cref="AssertDevServerDistinct"/>.
 /// </summary>
 internal static class TestTarget
 {
@@ -22,13 +22,13 @@ internal static class TestTarget
 
     public static string Server => Env("CUBESCOPE_TEST_SERVER", "localhost");
 
-    /// <summary>Serveur de développement — seule cible permise aux tests destructifs.</summary>
+    /// <summary>Development server — the only target allowed for destructive tests.</summary>
     public static string ServerDev => Env("CUBESCOPE_TEST_SERVER_DEV", "localhost-dev");
 
     /// <summary>
-    /// Refuse de continuer si le serveur de dev est le serveur de production. Une variable
-    /// oubliée ne doit pas pouvoir faire tomber un ClearCache ou un déploiement sur la prod
-    /// en silence : mieux vaut un test rouge qu'un cube de production modifié.
+    /// Refuses to continue if the dev server is the production server. A forgotten variable
+    /// must not be able to silently land a ClearCache or a deployment on prod: better a red
+    /// test than a modified production cube.
     /// </summary>
     public static void AssertDevServerDistinct()
     {

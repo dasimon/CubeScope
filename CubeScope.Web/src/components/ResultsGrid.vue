@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Grille de résultats v1 : PrimeVue DataTable virtualisé, derrière une interface
-// columns/rows volontairement minimale — si les crossjoins larges rament un jour,
-// on branche AG Grid ici sans toucher au reste (décision actée).
+// Results grid v1: virtualized PrimeVue DataTable, behind a deliberately minimal
+// columns/rows interface — if wide crossjoins ever get sluggish, AG Grid gets
+// plugged in here without touching anything else (settled decision).
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useToast } from 'primevue/usetoast'
@@ -16,8 +16,8 @@ defineProps<{
 const toast = useToast()
 const { t } = useI18n()
 
-// Une cellule en erreur porte son message sous une clé jumelle "<field>__err"
-// (posée par CellSetMapper) : le serveur SSAS a renvoyé un <Error><Description>.
+// A cell in error carries its message under a twin key "<field>__err"
+// (set by CellSetMapper): the SSAS server returned an <Error><Description>.
 const ERROR_SUFFIX = '__err'
 
 function cellError(row: Record<string, unknown>, field: string): string | null {
@@ -31,7 +31,7 @@ async function showCellError(message: string) {
     await navigator.clipboard.writeText(message)
     detail = `${message}\n\n(${t('results.cellErrorCopied')})`
   } catch {
-    /* presse-papiers indisponible : on affiche quand même le message */
+    /* clipboard unavailable: show the message anyway */
   }
   toast.add({ severity: 'error', summary: t('results.cellErrorHint'), detail, life: 12000 })
 }

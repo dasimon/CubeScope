@@ -1,6 +1,6 @@
-// Autocomplétion MDX : mots-clés + fonctions (statique), mesures/dimensions/hiérarchies/
-// niveaux (métadonnées du cube courant), membres en lazy après ".&" ou "." (cache serveur
-// + cache client). Approche pragmatique par regex, alignée sur le tokenizer (~95 %).
+// MDX autocompletion: keywords + functions (static), measures/dimensions/hierarchies/
+// levels (current cube metadata), members lazily after ".&" or "." (server cache
+// + client cache). Pragmatic regex-based approach, aligned with the tokenizer (~95%).
 import { monaco } from './monaco-mdx'
 import { api, type MemberMeta } from './api'
 import { store } from './store'
@@ -20,9 +20,9 @@ const FUNCTION_SUGGESTIONS = [
   'CoalesceEmpty(', 'IsEmpty(', 'ParallelPeriod(', 'PeriodsToDate(', 'Ytd(', 'Qtd(', 'Mtd(',
 ]
 
-// Cache client des membres par hiérarchie (le serveur cache aussi — double filet assumé)
+// Client cache of members per hierarchy (the server caches too — deliberate double safety net)
 const memberCache = new Map<string, MemberMeta[]>()
-const captionCache = new Map<string, string | null>() // unique name → caption (survol)
+const captionCache = new Map<string, string | null>() // unique name → caption (hover)
 
 async function membersOf(hierarchy: string): Promise<MemberMeta[]> {
   if (!store.cube) return []
@@ -37,13 +37,13 @@ async function membersOf(hierarchy: string): Promise<MemberMeta[]> {
   }
 }
 
-/** Vide les caches (changement de catalogue/cube). */
+/** Clears the caches (catalog/cube change). */
 export function resetCompletionCache(): void {
   memberCache.clear()
   captionCache.clear()
 }
 
-/** Vide uniquement le cache client des captions (rafraîchissement manuel des libellés). */
+/** Clears only the client caption cache (manual refresh of captions). */
 export function clearCaptionCache(): void {
   captionCache.clear()
 }
@@ -56,12 +56,12 @@ function suggestion(
   detail?: string,
   documentation?: string,
 ): monaco.languages.CompletionItem {
-  // filterText couvre le nom crocheté ET l'unique name : taper "[Sales" doit matcher
-  // la mesure "Sales Amount" (insérée comme [Measures].[Sales Amount])
+  // filterText covers the bracketed name AND the unique name: typing "[Sales" must match
+  // the measure "Sales Amount" (inserted as [Measures].[Sales Amount])
   return { label, insertText, kind, range, detail, documentation, filterText: `[${label}] ${insertText}` }
 }
 
-/** Suggestion de fonction MDX : signature (detail) + doc courte (documentation) si connue. */
+/** MDX function suggestion: signature (detail) + short doc (documentation) when known. */
 function functionSuggestion(f: string, range: monaco.IRange): monaco.languages.CompletionItem {
   const name = f.replace(/\($/, '').toUpperCase()
   const sig = mdxFunctions[name]
@@ -76,11 +76,11 @@ monaco.languages.registerCompletionItemProvider('mdx', {
     const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1)
     const word = model.getWordUntilPosition(position)
 
-    // Cas 1 : ".&[" ou "." après un unique name crocheté → membres réels + fonctions membres
+    // Case 1: ".&[" or "." after a bracketed unique name → actual members + member functions
     const afterDot = line.match(/((?:\[(?:[^\]]|\]\])+\])(?:\.\[(?:[^\]]|\]\])+\])*)\.(?:&?\[?)?([\w]*)$/)
     if (afterDot && meta) {
       const uniqueName = afterDot[1]
-      // La cible peut être une hiérarchie, ou un niveau (→ membres de sa hiérarchie)
+      // The target can be a hierarchy, or a level (→ members of its hierarchy)
       const hierarchies = meta.dimensions.flatMap((d) => d.hierarchies)
       const hier =
         hierarchies.find((h) => h.uniqueName === uniqueName) ??
@@ -97,7 +97,7 @@ monaco.languages.registerCompletionItemProvider('mdx', {
       )
       if (hier) {
         const members = await membersOf(hier.uniqueName)
-        // Insertion du suffixe membre : "[Dates].[Année].&[2026]" → on insère "&[2026]" après le "."
+        // Inserting the member suffix: "[Dates].[Année].&[2026]" → insert "&[2026]" after the "."
         for (const m of members) {
           const suffix = m.uniqueName.startsWith(uniqueName + '.')
             ? m.uniqueName.slice(uniqueName.length + 1)
@@ -110,7 +110,7 @@ monaco.languages.registerCompletionItemProvider('mdx', {
       return { suggestions: items }
     }
 
-    // Cas 2 : contexte général — plage = depuis le "[" ouvert éventuel, sinon le mot courant
+    // Case 2: general context — range = from the open "[" if any, otherwise the current word
     const openBracket = line.match(/\[[^\]]*$/)
     const startColumn = openBracket ? position.column - openBracket[0].length : word.startColumn
     const range: monaco.IRange = {
@@ -154,24 +154,24 @@ monaco.languages.registerCompletionItemProvider('mdx', {
   },
 })
 
-// Survol : d'abord une référence de mesure/membre du cube ([Dim].[Hier].[…]) → caption +
-// description (métadonnées) ; sinon repli sur une fonction MDX connue (signature + doc).
+// Hover: first a cube measure/member reference ([Dim].[Hier].[…]) → caption +
+// description (metadata); otherwise fallback to a known MDX function (signature + doc).
 interface RefEntry {
   caption: string
   description?: string
   kind: string
 }
 
-/** "[Measures] . [X]" → "[Measures].[X]" ; gère aussi la clé "] . & [" → "].&[". */
+/** "[Measures] . [X]" → "[Measures].[X]"; also handles the key "] . & [" → "].&[". */
 export function normalizeRef(s: string): string {
   return s.replace(/\]\s*\.\s*(&?)\s*\[/g, (_m, amp) => '].' + amp + '[')
 }
 
 /**
- * Résout un membre référencé (ex. [Dim].[Hier].[Level].&[Clé] ou [Dim].[Hier].[Nom]) vers son
- * caption via un lookup ciblé côté serveur (MDSCHEMA_MEMBERS filtré sur MEMBER_UNIQUE_NAME) :
- * fonctionne pour N'IMPORTE QUEL membre, indépendamment de la taille de la dimension (contrairement
- * au chargement plafonné à 1000). Résultat caché par unique name. Null si non résolu.
+ * Resolves a referenced member (e.g. [Dim].[Hier].[Level].&[Key] or [Dim].[Hier].[Name]) to its
+ * caption via a targeted server-side lookup (MDSCHEMA_MEMBERS filtered on MEMBER_UNIQUE_NAME):
+ * works for ANY member, regardless of the dimension size (unlike the load capped at 1000).
+ * Result cached by unique name. Null if not resolved.
  */
 async function resolveMemberCaption(normRef: string): Promise<string | null> {
   if (!store.cube) return null
@@ -186,7 +186,7 @@ async function resolveMemberCaption(normRef: string): Promise<string | null> {
   return caption
 }
 
-/** Table uniqueName normalisé → caption/description, construite depuis le cube courant. */
+/** Map of normalized uniqueName → caption/description, built from the current cube. */
 function buildRefLookup(): Map<string, RefEntry> {
   const map = new Map<string, RefEntry>()
   const meta = store.cubeMeta
@@ -208,13 +208,13 @@ function buildRefLookup(): Map<string, RefEntry> {
   return map
 }
 
-// Motif d'une chaîne de référence : segments [..] reliés par "." / ".&" / "&" collé (clé
-// composite &[k1]&[k2]), avec ]] échappé. Nouvelle instance à chaque usage (flag g = stateful).
+// Pattern for a reference chain: [..] segments joined by "." / ".&" / adjacent "&" (composite
+// key &[k1]&[k2]), with escaped ]]. New instance on each use (g flag = stateful).
 const REF_PATTERN =
   String.raw`\[(?:[^\]]|\]\])*\](?:\s*\.\s*&?\s*\[(?:[^\]]|\]\])*\]|&\s*\[(?:[^\]]|\]\])*\])*`
 
-/** Chaîne de référence crochetée contenant la colonne (1-based), ou null. Gère le ]] échappé,
- *  les qualificateurs de clé `.&[clé]` et les clés composites `&[k1]&[k2]`. */
+/** Bracketed reference chain containing the column (1-based), or null. Handles escaped ]],
+ *  key qualifiers `.&[key]` and composite keys `&[k1]&[k2]`. */
 export function refAtColumn(line: string, column: number): { text: string; start: number; end: number } | null {
   const re = new RegExp(REF_PATTERN, 'g')
   const col0 = column - 1
@@ -232,7 +232,7 @@ monaco.languages.registerHoverProvider('mdx', {
     if (ref) {
       const normRef = normalizeRef(ref.text)
       const range = new monaco.Range(position.lineNumber, ref.start, position.lineNumber, ref.end)
-      // 1) Mesure / dimension / hiérarchie / niveau (métadonnées synchrones) → caption + description
+      // 1) Measure / dimension / hierarchy / level (synchronous metadata) → caption + description
       const entry = buildRefLookup().get(normRef)
       if (entry) {
         const contents: { value: string }[] = [
@@ -242,12 +242,12 @@ monaco.languages.registerHoverProvider('mdx', {
         contents.push({ value: '`' + normRef + '`' })
         return { range, contents }
       }
-      // 2) Membre (clé &[…] ou nom) → caption chargé à la volée depuis la hiérarchie
+      // 2) Member (key &[…] or name) → caption loaded on the fly from the hierarchy
       const caption = await resolveMemberCaption(normRef)
       if (caption)
         return { range, contents: [{ value: '**' + caption + '** _(membre)_' }, { value: '`' + normRef + '`' }] }
     }
-    // 3) Repli : fonction MDX connue → signature + doc courte
+    // 3) Fallback: known MDX function → signature + short doc
     const word = model.getWordAtPosition(position)
     if (!word) return null
     const fn = mdxFunctions[word.word.toUpperCase()]
@@ -260,10 +260,10 @@ monaco.languages.registerHoverProvider('mdx', {
 })
 
 /**
- * Pré-charge en arrière-plan les captions des membres référencés dans un script (throttlé,
- * non bloquant) pour des survols instantanés. Extrait les références « membre » (clé &[…] ou
- * ≥3 segments crochetés, hors métadonnées déjà résolues), dédupliquées et plafonnées, puis
- * lookup ciblé en parallèle (concurrence limitée). Best effort : les échecs sont ignorés.
+ * Preloads in the background the captions of members referenced in a script (throttled,
+ * non-blocking) for instant hovers. Extracts "member" references (key &[…] or
+ * ≥3 bracketed segments, excluding metadata already resolved), deduplicated and capped, then
+ * a targeted lookup in parallel (limited concurrency). Best effort: failures are ignored.
  */
 export async function prefetchMemberCaptions(
   scriptText: string,
@@ -277,16 +277,16 @@ export async function prefetchMemberCaptions(
   const re = new RegExp(REF_PATTERN, 'g')
   const seen = new Set<string>()
   const refs: string[] = []
-  const MAX = 400 // au-delà, résolution à la demande au survol (reste fonctionnel)
+  const MAX = 400 // beyond that, on-demand resolution on hover (still works)
   let m: RegExpExecArray | null
   while ((m = re.exec(scriptText)) !== null) {
     const norm = normalizeRef(m[0])
     if (seen.has(norm)) continue
     seen.add(norm)
     if (lookup.has(norm) || captionCache.has(norm)) continue
-    // Uniquement les membres à clé &[…] : ce sont ceux qu'on veut (portefeuilles, titres,
-    // notations…). Les refs par nom/niveau ([Dim].[Hier].[Level]) sont souvent des niveaux ou
-    // des fragments d'expression qui font échouer StrToMember — elles se résolvent au survol.
+    // Only members with a &[…] key: those are the ones we want (portfolios, securities,
+    // ratings…). Name/level refs ([Dim].[Hier].[Level]) are often levels or
+    // expression fragments that make StrToMember fail — they get resolved on hover.
     if (!norm.includes('&[')) continue
     refs.push(norm)
     if (refs.length >= MAX) break
@@ -294,9 +294,9 @@ export async function prefetchMemberCaptions(
   const total = refs.length
   onProgress?.(0, total)
   if (total === 0) return
-  // Lookup GROUPÉ : au lieu de ~400 appels HTTP unitaires, on découpe en tranches de 150 et
-  // on résout chaque tranche en un seul POST. Concurrence basse (2) : laisser des connexions
-  // à l'UI et ne pas marteler SSAS. Best effort, les échecs sont ignorés.
+  // BATCHED lookup: instead of ~400 single HTTP calls, split into chunks of 150 and
+  // resolve each chunk in a single POST. Low concurrency (2): leave connections
+  // to the UI and do not hammer SSAS. Best effort, failures are ignored.
   const CHUNK = 50
   const CONCURRENCY = 2
   const cube = store.cube
@@ -311,7 +311,7 @@ export async function prefetchMemberCaptions(
         const res = await api.memberCaptions(cube, chunk)
         for (const name of chunk) captionCache.set(name, res[name] ?? null)
       } catch {
-        // échec de la tranche : on ne cache rien, résolution à la demande au survol
+        // chunk failed: cache nothing, on-demand resolution on hover
       }
       done += chunk.length
       onProgress?.(done, total)

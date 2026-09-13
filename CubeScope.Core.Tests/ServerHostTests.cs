@@ -6,10 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Le refactor de Program.cs en ServerHost doit garder deux propriétés : l'URL réelle
-/// (port libre attribué par l'OS) est lisible APRÈS démarrage, et le conteneur DI se
-/// construit entièrement — c'est ce second point qui attrape une dépendance cassée,
-/// invisible au build.
+/// Refactoring Program.cs into ServerHost must keep two properties: the actual URL
+/// (free port assigned by the OS) is readable AFTER startup, and the DI container
+/// builds completely — it is this second point that catches a broken dependency,
+/// invisible at build time.
 /// </summary>
 public class ServerHostTests
 {
@@ -22,11 +22,11 @@ public class ServerHostTests
         try
         {
             Assert.StartsWith("http://127.0.0.1:", url);
-            // Port 0 = « choisis-en un » : après démarrage il doit être résolu.
+            // Port 0 = "pick one": after startup it must be resolved.
             Assert.DoesNotContain(":0", url);
 
-            // Force l'instanciation de chaque singleton : une dépendance non résolvable
-            // lève ici, alors que le build reste vert.
+            // Forces every singleton to be instantiated: an unresolvable dependency
+            // throws here, while the build stays green.
             using var scope = app.Services.CreateScope();
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<SsasSession>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ProfilerService>());
@@ -48,12 +48,12 @@ public class ServerHostTests
             app.Lifetime.ApplicationStopping.Register(() => stopping = true);
             app.Lifetime.ApplicationStopped.Register(() => stopped = true);
 
-            // C'est ce que fait BrowserLifetime quand la dernière page est partie.
+            // This is what BrowserLifetime does when the last page has gone.
             app.Lifetime.StopApplication();
 
-            // StartAsync n'appelle pas WaitForShutdownAsync : le pont vers StopAsync()
-            // n'existe pas ici. Un Shell abonné à ApplicationStopped n'entendrait donc
-            // jamais rien, et l'exe survivrait sans fenêtre ni serveur.
+            // StartAsync does not call WaitForShutdownAsync: the bridge to StopAsync()
+            // does not exist here. A Shell subscribed to ApplicationStopped would therefore
+            // never hear anything, and the exe would survive with neither window nor server.
             Assert.True(stopping, "ApplicationStopping doit se déclencher");
             Assert.False(stopped, "ApplicationStopped ne se déclenche PAS sans WaitForShutdownAsync");
         }
@@ -73,9 +73,9 @@ public class ServerHostTests
         await app.StopAsync();
         await app.DisposeAsync();
 
-        // ObjectDisposedException = le conteneur a bien disposé ses singletons ; c'est
-        // ce chemin-là qui exécute le Stop() + Drop() de la trace SSAS. Sans le
-        // DisposeAsync, la trace CubeScope_Profiler_<pid> survit au process.
+        // ObjectDisposedException = the container did dispose its singletons; it is
+        // this path that runs the Stop() + Drop() of the SSAS trace. Without the
+        // DisposeAsync, the CubeScope_Profiler_<pid> trace outlives the process.
         Assert.Throws<ObjectDisposedException>(() => profiler.EnsureNotDisposed());
     }
 }

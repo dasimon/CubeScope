@@ -1,5 +1,5 @@
-// État partagé de l'application (un seul utilisateur, une seule session SSAS) :
-// un module réactif suffit — pas de Pinia pour si peu.
+// Shared application state (a single user, a single SSAS session):
+// a reactive module is enough — no Pinia for so little.
 import { reactive } from 'vue'
 import { currentLocale, t } from './i18n'
 import {
@@ -30,11 +30,11 @@ export interface ResultTab {
 const MAX_RESULT_TABS = 8
 
 export const store = reactive({
-  // Connexion
+  // Connection
   server: '',
   catalog: '' as string | null,
   catalogs: [] as string[],
-  /** Serveurs déclarés de développement : seuls ceux-là acceptent un déploiement de script. */
+  /** Servers declared as development: only these accept a script deployment. */
   devServers: [] as string[],
   connected: false,
   connecting: false,
@@ -42,47 +42,47 @@ export const store = reactive({
   recent: [] as RecentConnection[],
   showConnect: true,
 
-  // Métadonnées du cube courant
+  // Metadata of the current cube
   cubes: [] as string[],
   cube: '' as string | null,
   cubeMeta: null as CubeMeta | null,
   metaLoading: false,
 
-  // Éditeur / exécution
+  // Editor / execution
   mdx: DEFAULT_MDX,
-  mdxRevision: 0, // incrémenté quand le MDX est remplacé de l'extérieur (historique)
-  selectedMdx: '', // sélection courante dans Monaco ; non vide → exécutée en priorité sur store.mdx
-  insertText: '', // texte à insérer au curseur (explorateur)
+  mdxRevision: 0, // incremented when the MDX is replaced from outside (history)
+  selectedMdx: '', // current selection in Monaco; non-empty → executed in preference to store.mdx
+  insertText: '', // text to insert at the cursor (explorer)
   insertRevision: 0,
-  // « Aller à la définition » : point de rendez-vous entre l'éditeur MDX et le panneau Script,
-  // qui vivent dans deux racines dockview distinctes. La révision permet de redemander deux
-  // fois de suite la MÊME définition (sinon le watch ne se redéclencherait pas).
+  // "Go to definition": meeting point between the MDX editor and the Script panel,
+  // which live in two separate dockview roots. The revision allows requesting the SAME
+  // definition twice in a row (otherwise the watch would not fire again).
   gotoDefinition: '' as string,
   gotoDefinitionRevision: 0,
   running: false,
   result: null as QueryResult | null,
   queryError: '',
 
-  // Onglets de résultats (derniers runs, fermables)
+  // Result tabs (latest runs, closable)
   results: [] as ResultTab[],
   activeResultId: 0,
 
-  // Historique
+  // History
   history: [] as HistoryEntry[],
 
-  // Stats perfmon (poussées par SignalR après chaque requête)
+  // Perfmon stats (pushed by SignalR after each query)
   stats: [] as CounterDelta[],
   statsQueryDurationMs: 0,
   statsStatus: null as StatsStatus | null,
 
-  // Profiler (trace SSAS, poussé par SignalR après chaque requête)
+  // Profiler (SSAS trace, pushed by SignalR after each query)
   profile: null as QueryProfile | null,
   profilerStatus: null as StatsStatus | null,
   profilerHistory: [] as ProfileRun[],
 
-  // Panneau IA
+  // AI panel
   aiConfigured: null as boolean | null,
-  aiModel: 'claude-opus-4-8', // modèle actif (Anthropic par défaut, ou LLM compatible OpenAI configuré)
+  aiModel: 'claude-opus-4-8', // active model (Anthropic by default, or a configured OpenAI-compatible LLM)
   aiRunning: false,
   aiAction: null as AiAction | null,
   aiResult: '',
@@ -92,10 +92,10 @@ export const store = reactive({
 
 let abort: AbortController | null = null
 let aiAbort: AbortController | null = null
-let resultSeq = 0 // compteur monotone d'onglets de résultats (pas de Date.now/Math.random)
+let resultSeq = 0 // monotonic counter of result tabs (no Date.now/Math.random)
 
 export const actions = {
-  /** Demande au panneau Script de se positionner sur la définition d'un membre/set calculé. */
+  /** Asks the Script panel to move to the definition of a calculated member/set. */
   requestDefinition(name: string): void {
     store.gotoDefinition = name
     store.gotoDefinitionRevision++
@@ -119,7 +119,7 @@ export const actions = {
       store.catalog = null
       store.connected = true
       void actions.loadDevServers()
-      // La découverte perfmon côté serveur est asynchrone (~secondes) : statut différé
+      // Perfmon discovery on the server side is asynchronous (~seconds): deferred status
       setTimeout(() => void actions.loadStatsStatus(), 5000)
       return true
     } catch (e) {
@@ -161,7 +161,7 @@ export const actions = {
     }
   },
 
-  /** Demande d'insertion au curseur de l'éditeur (explorateur → Monaco). */
+  /** Request to insert at the editor cursor (explorer → Monaco). */
   requestInsert(text: string): void {
     store.insertText = text
     store.insertRevision++
@@ -171,8 +171,8 @@ export const actions = {
     try {
       store.devServers = await api.devServers()
     } catch {
-      // Liste illisible : on la laisse vide. Fail-closed — tout déploiement sera averti
-      // puis refusé par le serveur, plutôt que d'être autorisé sur une information absente.
+      // Unreadable list: leave it empty. Fail-closed — any deployment will be warned about
+      // then refused by the server, rather than allowed on missing information.
       store.devServers = []
     }
   },
@@ -209,7 +209,7 @@ export const actions = {
     try {
       store.profilerHistory = await api.profilerHistory()
     } catch {
-      /* non bloquant */
+      /* non-blocking */
     }
   },
 
@@ -246,7 +246,7 @@ export const actions = {
     }
   },
 
-  /** Génère du MDX depuis une demande en langage naturel + les métadonnées du cube. */
+  /** Generates MDX from a natural-language request + the cube metadata. */
   async generateMdx(question: string): Promise<void> {
     if (store.aiRunning) return
     if (!store.cube || !question.trim()) return
@@ -271,7 +271,7 @@ export const actions = {
     }
   },
 
-  /** Optimisation IA adossée au profil d'exécution réel (nécessite un profil capturé). */
+  /** AI optimization backed by the actual execution profile (requires a captured profile). */
   async runAiOptimizeProfile(): Promise<void> {
     if (store.aiRunning) return
     if (!store.profile) {
@@ -305,7 +305,7 @@ export const actions = {
     aiAbort?.abort()
   },
 
-  /** Applique le premier bloc ```mdx de la réponse IA à l'éditeur (Formater/Optimiser). */
+  /** Applies the first ```mdx block of the AI response to the editor (Format/Optimize). */
   applyAiMdx(): void {
     const match = store.aiResult.match(/```mdx\s*\n([\s\S]*?)```/i) ?? store.aiResult.match(/```\s*\n([\s\S]*?)```/)
     if (!match) return
@@ -318,7 +318,7 @@ export const actions = {
     const mdx = store.selectedMdx.trim() ? store.selectedMdx : store.mdx
     store.running = true
     store.queryError = ''
-    store.stats = [] // les deltas de la nouvelle requête arriveront par SignalR
+    store.stats = [] // the new query's deltas will arrive through SignalR
     abort = new AbortController()
     try {
       const result = await api.query(mdx, abort.signal)
@@ -346,10 +346,10 @@ export const actions = {
   },
 
   /**
-   * Enveloppe la requête courante dans DRILLTHROUGH et affiche les lignes sources dans un
-   * nouvel onglet de résultats. Limitation connue : pas de drillthrough précis par cellule
-   * (clic droit) — la requête ENTIÈRE est enveloppée, ce qui n'est « drillthroughable » côté
-   * serveur que pour une requête à une cellule.
+   * Wraps the current query in DRILLTHROUGH and shows the source rows in a new
+   * result tab. Known limitation: no precise per-cell drillthrough (right-click) —
+   * the ENTIRE query is wrapped, which the server only accepts as "drillthroughable"
+   * for a single-cell query.
    */
   async runDrillthrough(maxRows = 1000): Promise<void> {
     if (store.running || !store.connected || !store.catalog) return
@@ -377,7 +377,7 @@ export const actions = {
     }
   },
 
-  /** Active un onglet de résultats existant (grille = son résultat). */
+  /** Activates an existing result tab (grid = its result). */
   selectResult(id: number): void {
     const tab = store.results.find((r) => r.id === id)
     if (!tab) return
@@ -385,7 +385,7 @@ export const actions = {
     store.result = tab.result
   },
 
-  /** Ferme un onglet de résultats ; réactive le plus récent restant si c'était l'actif. */
+  /** Closes a result tab; re-activates the most recent remaining one if it was the active tab. */
   closeResult(id: number): void {
     const idx = store.results.findIndex((r) => r.id === id)
     if (idx === -1) return
@@ -406,7 +406,7 @@ export const actions = {
     try {
       store.history = await api.history()
     } catch {
-      /* non bloquant */
+      /* non-blocking */
     }
   },
 

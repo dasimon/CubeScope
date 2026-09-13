@@ -3,20 +3,20 @@ using System.Text.RegularExpressions;
 
 namespace CubeScope.Core.Script;
 
-/// <summary>Résultat d'un renommage : script réécrit + nombre d'occurrences remplacées.</summary>
+/// <summary>Result of a rename: rewritten script + number of occurrences replaced.</summary>
 public sealed record RenameResult(string NewScript, int Occurrences);
 
 /// <summary>
-/// Renommage sûr d'un membre calculé / set nommé dans le MDX Script : réécrit la
-/// définition ET toutes les références textuelles à son unique name. Réutilise le
-/// motif de balayage caractère par caractère de <see cref="ScriptParser.SplitStatements"/>
-/// ('/"' chaînes, '//'/'--' commentaires de ligne, '/* */' commentaires de bloc,
-/// '[bracket ids]' avec échappement ']]') : chaînes et commentaires sont recopiés tels
-/// quels sans y chercher de référence. Hors chaîne/commentaire, chaque '[' amorce la
-/// lecture de la chaîne maximale de segments `[...]` reliés par des points (espaces
-/// tolérées autour du point, comme <see cref="ScriptParser"/>.Normalize) — la comparaison
-/// et le remplacement portent sur la chaîne ENTIÈRE, jamais un segment isolé : ainsi
-/// [Measures].[Marge] ne matche jamais à l'intérieur de [Measures].[Marge Ratio] ni de
+/// Safe rename of a calculated member / named set in the MDX Script: rewrites the
+/// definition AND every textual reference to its unique name. Reuses the
+/// character-by-character scanning pattern of <see cref="ScriptParser.SplitStatements"/>
+/// ('/"' strings, '//'/'--' line comments, '/* */' block comments,
+/// '[bracket ids]' with ']]' escaping): strings and comments are copied as
+/// is without looking for references in them. Outside strings/comments, each '[' starts
+/// reading the longest chain of `[...]` segments joined by dots (whitespace
+/// allowed around the dot, as in <see cref="ScriptParser"/>.Normalize) — comparison
+/// and replacement apply to the WHOLE chain, never a single segment: so
+/// [Measures].[Marge] never matches inside [Measures].[Marge Ratio] or
 /// [Measures].[MargeBis].
 /// </summary>
 public static class MemberRenamer
@@ -96,15 +96,15 @@ public static class MemberRenamer
         return new RenameResult(sb.ToString(), count);
     }
 
-    /// <summary>"[Measures] . [X]" → "[Measures].[X]" (espaces autour des points).</summary>
+    /// <summary>"[Measures] . [X]" → "[Measures].[X]" (whitespace around the dots).</summary>
     private static string Normalize(string name) =>
         Regex.Replace(name, @"\]\s*\.\s*\[", "].[");
 
     /// <summary>
-    /// Lit la chaîne maximale de segments `[...]` reliés par des points (espaces tolérées
-    /// autour du point) à partir de <paramref name="start"/> (qui pointe sur un '['). Gère
-    /// l'échappement `]]` (un `]` littéral à l'intérieur d'un segment). Retourne l'index
-    /// juste après le dernier `]` de la chaîne.
+    /// Reads the longest chain of `[...]` segments joined by dots (whitespace allowed
+    /// around the dot) starting at <paramref name="start"/> (which points to a '['). Handles
+    /// the `]]` escape (a literal `]` inside a segment). Returns the index
+    /// just after the last `]` of the chain.
     /// </summary>
     private static int ReadChain(string s, int start)
     {
@@ -112,12 +112,12 @@ public static class MemberRenamer
         int i = start;
         while (true)
         {
-            i++; // saute le '[' d'ouverture
+            i++; // skip the opening '['
             while (i < n)
             {
                 if (s[i] == ']')
                 {
-                    if (i + 1 < n && s[i + 1] == ']') { i += 2; continue; } // ']]' échappé
+                    if (i + 1 < n && s[i + 1] == ']') { i += 2; continue; } // escaped ']]'
                     i++;
                     break;
                 }

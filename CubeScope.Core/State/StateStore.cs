@@ -11,8 +11,8 @@ public sealed record HistoryEntry(long Id, string Server, string? Catalog, strin
 public sealed record WindowState(double X, double Y, double Width, double Height, bool Maximized);
 
 /// <summary>
-/// État local dans UN fichier SQLite (décision actée : pas de fichiers de config éparpillés).
-/// Par défaut : %LOCALAPPDATA%\CubeScope\cubescope.db. Migrations par PRAGMA user_version.
+/// Local state in ONE SQLite file (settled decision: no scattered config files).
+/// Default: %LOCALAPPDATA%\CubeScope\cubescope.db. Migrations via PRAGMA user_version.
 /// </summary>
 public sealed class StateStore : IDisposable
 {
@@ -26,9 +26,9 @@ public sealed class StateStore : IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CubeScope", "cubescope.db");
 
     /// <summary>
-    /// Seuils de rétention effectifs. <paramref name="journalCap"/> les remplace tous les trois :
-    /// il n'existe que pour les tests, qui doivent franchir le seuil pour prouver que la purge
-    /// agit — le faire avec les valeurs réelles coûterait 5 000 insertions committées une à une.
+    /// Effective retention thresholds. <paramref name="journalCap"/> overrides all three:
+    /// it only exists for tests, which must cross the threshold to prove that the purge
+    /// works — doing it with the real values would cost 5,000 inserts committed one by one.
     /// </summary>
     public StateStore(string? dbPath = null, int? journalCap = null)
     {
@@ -50,8 +50,8 @@ public sealed class StateStore : IDisposable
             Exec("""
                 CREATE TABLE IF NOT EXISTS RecentConnection (
                     Server      TEXT NOT NULL,
-                    -- '' = pas de catalogue : un NULL dans une PK composite SQLite ne déclenche
-                    -- jamais ON CONFLICT (NULL <> NULL) et ferait des doublons
+                    -- '' = no catalog: a NULL in an SQLite composite PK never triggers
+                    -- ON CONFLICT (NULL <> NULL) and would create duplicates
                     Catalog     TEXT NOT NULL DEFAULT '',
                     LastUsedUtc TEXT NOT NULL,
                     PRIMARY KEY (Server, Catalog)
@@ -173,14 +173,14 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    // --- Serveurs de développement (v9) : liste EXPLICITE des serveurs où un déploiement de
-    // script est permis. Le nom du catalogue ne discrimine plus rien depuis que le dev a son
-    // propre serveur et porte le même nom de catalogue que la production.
+    // --- Development servers (v9): EXPLICIT list of the servers where a script deployment
+    // is allowed. The catalog name no longer tells anything apart since dev got its
+    // own server and carries the same catalog name as production.
 
     /// <summary>
-    /// Marque ou démarque un serveur. Un nom vide n'est jamais enregistré : il rendrait « dev »
-    /// une connexion sans serveur. COLLATE NOCASE sur la clé : un nom de serveur Windows est
-    /// insensible à la casse, deux graphies ne doivent pas créer deux lignes.
+    /// Marks or unmarks a server. An empty name is never stored: it would make a connection
+    /// with no server "dev". COLLATE NOCASE on the key: a Windows server name is
+    /// case-insensitive, two spellings must not create two rows.
     /// </summary>
     public void SetDevServer(string server, bool isDev)
     {
@@ -190,7 +190,7 @@ public sealed class StateStore : IDisposable
         else Exec("DELETE FROM DevServer WHERE Name = $n", ("$n", nom));
     }
 
-    /// <summary>Serveurs déclarés de développement. Vide au premier lancement, à dessein.</summary>
+    /// <summary>Servers declared as development servers. Empty on first launch, by design.</summary>
     public IReadOnlyList<string> GetDevServers()
     {
         lock (_lock)
@@ -204,11 +204,11 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    // --- Cache persistant des captions de membres (v7) : évite de re-DMV chaque membre
-    // référencé à chaque session. Invalidé quand le cube a été reprocessé (stamp).
+    // --- Persistent cache of member captions (v7): avoids re-querying the DMV for every
+    // referenced member in every session. Invalidated when the cube was reprocessed (stamp).
 
-    /// <summary>Captions en cache pour les <paramref name="names"/> demandés (seulement ceux
-    /// trouvés). Le IN est découpé à ≤ 500 paramètres (limite de variables SQLite).</summary>
+    /// <summary>Cached captions for the requested <paramref name="names"/> (only those
+    /// found). The IN is split into ≤ 500 parameters (SQLite variable limit).</summary>
     public IReadOnlyDictionary<string, string> GetCachedCaptions(
         string server, string catalog, string cube, IReadOnlyCollection<string> names)
     {
@@ -242,7 +242,7 @@ public sealed class StateStore : IDisposable
         return result;
     }
 
-    /// <summary>Insère/remplace les captions fournies (une seule transaction, sous verrou).</summary>
+    /// <summary>Inserts/replaces the supplied captions (a single transaction, under the lock).</summary>
     public void PutCachedCaptions(
         string server, string catalog, string cube, IReadOnlyDictionary<string, string> captions)
     {
@@ -292,7 +292,7 @@ public sealed class StateStore : IDisposable
             """,
             ("$s", server), ("$c", catalog), ("$cube", cube), ("$st", stamp));
 
-    /// <summary>Vide le cache de captions ET le stamp d'un cube (reprocessing / refresh manuel).</summary>
+    /// <summary>Clears the caption cache AND the stamp of a cube (reprocessing / manual refresh).</summary>
     public void InvalidateCubeCaptions(string server, string catalog, string cube)
     {
         Exec("DELETE FROM MemberCaption WHERE Server = $s AND Catalog = $c AND Cube = $cube",
@@ -363,23 +363,23 @@ public sealed class StateStore : IDisposable
         Prune("QueryHistory", _keepHistory);
     }
 
-    /// <summary>Nombre d'exécutions conservées : au-delà, on perd un historique qu'on ne relit pas.</summary>
+    /// <summary>Number of executions kept: beyond that, we lose history nobody reads again.</summary>
     private const int KeepHistory = 5000;
 
-    /// <summary>Runs de profil conservés (même raisonnement que l'historique).</summary>
+    /// <summary>Profile runs kept (same reasoning as the history).</summary>
     private const int KeepProfileRuns = 5000;
 
-    /// <summary>Déploiements conservés : bien plus rares, un millier couvre des années.</summary>
+    /// <summary>Deployments kept: far rarer, a thousand covers years.</summary>
     private const int KeepDeployLog = 1000;
 
     /// <summary>
-    /// Borne une table « journal » aux <paramref name="keep"/> dernières lignes. Ces tables
-    /// grossissaient sans limite : les LIMIT du code ne portaient que sur la lecture, et
-    /// l'historique stocke le texte MDX complet à chaque exécution.
+    /// Caps a "log" table to its last <paramref name="keep"/> rows. These tables
+    /// grew without limit: the LIMITs in the code only applied to reading, and
+    /// the history stores the full MDX text on every execution.
     ///
-    /// L'Id étant AUTOINCREMENT, donc monotone, le seuil se calcule en une lecture indexée
-    /// plutôt qu'en comptant les lignes. Les suppressions ne créent des trous qu'en bas de
-    /// la plage : MAX(Id) - keep reste donc exact au fil des purges.
+    /// Since Id is AUTOINCREMENT, hence monotonic, the threshold is computed with one indexed read
+    /// rather than by counting rows. Deletions only create gaps at the bottom of
+    /// the range: so MAX(Id) - keep stays exact across purges.
     /// </summary>
     private void Prune(string table, int keep)
         => Exec($"DELETE FROM {table} WHERE Id <= (SELECT MAX(Id) FROM {table}) - $keep",
@@ -405,9 +405,9 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    /// <summary>Insère un snippet et retourne son Id généré. INSERT + last_insert_rowid() sous
-    /// le même verrou (et la même connexion SQLite, jamais poolée) pour éviter qu'une écriture
-    /// concurrente ne s'intercale entre les deux appels.</summary>
+    /// <summary>Inserts a snippet and returns its generated Id. INSERT + last_insert_rowid() under
+    /// the same lock (and the same SQLite connection, never pooled) to prevent a concurrent
+    /// write from slipping in between the two calls.</summary>
     public long AddSnippet(string name, string mdx)
     {
         lock (_lock)
@@ -443,8 +443,8 @@ public sealed class StateStore : IDisposable
 
     public void DeleteSnippet(long id) => Exec("DELETE FROM Snippet WHERE Id = $id", ("$id", id));
 
-    /// <summary>Insère un cas de non-régression et retourne son Id généré (INSERT +
-    /// last_insert_rowid() sous le même verrou, comme <see cref="AddSnippet"/>).</summary>
+    /// <summary>Inserts a regression case and returns its generated Id (INSERT +
+    /// last_insert_rowid() under the same lock, like <see cref="AddSnippet"/>).</summary>
     public long AddRegressionCase(string name, string mdx, string expectedJson)
     {
         lock (_lock)
@@ -553,7 +553,7 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    /// <summary>Géométrie de la fenêtre de bureau (une seule ligne, v8).</summary>
+    /// <summary>Desktop window geometry (a single row, v8).</summary>
     public void SaveWindowState(double x, double y, double width, double height, bool maximized)
     {
         lock (_lock)
@@ -574,7 +574,7 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    /// <summary>Géométrie enregistrée, ou null au tout premier lancement.</summary>
+    /// <summary>Saved geometry, or null on the very first launch.</summary>
     public WindowState? GetWindowState()
     {
         lock (_lock)

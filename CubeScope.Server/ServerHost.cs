@@ -1,7 +1,7 @@
-// CubeScope.Server — hôte unique : minimal API + SPA Vue 3 embarquée.
-// Port libre sur localhost. L'affichage ne se décide PAS ici : StartAsync rend la main
-// avec l'URL sans rien ouvrir (le Shell affiche alors sa fenêtre native), seul RunAsync —
-// le chemin du Cli — ouvre le navigateur.
+// CubeScope.Server — single host: minimal API + embedded Vue 3 SPA.
+// Free port on localhost. The display is NOT decided here: StartAsync returns
+// with the URL without opening anything (the Shell then shows its native window), only RunAsync —
+// the Cli path — opens the browser.
 
 using System.Diagnostics;
 using System.Reflection;
@@ -25,31 +25,31 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-// Sortie de Microsoft.NET.Sdk.Web (tâche 1, étape 5) : les using ASP.NET Core ci-dessus,
-// implicites sous le Web SDK, deviennent nécessaires en explicite avec le SDK standard.
+// Moved off Microsoft.NET.Sdk.Web (task 1, step 5): the ASP.NET Core usings above,
+// implicit under the Web SDK, must be explicit with the standard SDK.
 
 namespace CubeScope.Server;
 
 /// <summary>
-/// Hôte unique : minimal API + SPA Vue 3 embarquée. Port libre sur localhost.
-/// Deux points d'entrée : <see cref="StartAsync"/> rend la main avec l'URL (le Shell
-/// affiche alors sa fenêtre), <see cref="RunAsync"/> se comporte comme avant —
-/// ouverture du navigateur et attente de l'arrêt.
+/// Single host: minimal API + embedded Vue 3 SPA. Free port on localhost.
+/// Two entry points: <see cref="StartAsync"/> returns with the URL (the Shell
+/// then shows its window), <see cref="RunAsync"/> behaves as before —
+/// opens the browser and waits for shutdown.
 /// </summary>
 public static class ServerHost
 {
     /// <summary>
-    /// Démarre Kestrel et retourne l'URL réelle. N'ouvre AUCUN navigateur : c'est
-    /// l'appelant qui décide de la surface d'affichage.
-    /// L'appelant est responsable du couple StopAsync + DisposeAsync (cf. tâche 3).
+    /// Starts Kestrel and returns the actual URL. Opens NO browser: the
+    /// caller decides on the display surface.
+    /// The caller is responsible for the StopAsync + DisposeAsync pair (see task 3).
     /// </summary>
     public static async Task<(WebApplication App, string Url)> StartAsync(
         string[] args, bool browserLifetime)
     {
-    try { Console.Title = "CubeScope"; } catch { /* pas de console (service, redirection) */ }
+    try { Console.Title = "CubeScope"; } catch { /* no console (service, redirection) */ }
 
     var builder = WebApplication.CreateBuilder(args);
-// Port libre choisi par l'OS par défaut ; --port <n> pour un port fixe (proxy Vite en dev)
+// Free port chosen by the OS by default; --port <n> for a fixed port (Vite proxy in dev)
 int portIdx = Array.IndexOf(args, "--port");
 string port = portIdx >= 0 && portIdx + 1 < args.Length ? args[portIdx + 1] : "0";
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
@@ -68,8 +68,8 @@ builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<SessionsService>();
 builder.Services.AddSingleton<CatalogComparisonService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
-// Arrêt automatique à la fermeture du navigateur — inactif en dev/tests (--no-browser),
-// sinon fermer la page couperait le serveur sous les pieds de Vite.
+// Automatic shutdown when the browser closes — inactive in dev/tests (--no-browser),
+// otherwise closing the page would pull the server out from under Vite.
 builder.Services.AddSingleton(sp => new BrowserLifetime(
     sp.GetRequiredService<IHostApplicationLifetime>(),
     sp.GetRequiredService<ILogger<BrowserLifetime>>(),
@@ -79,9 +79,9 @@ builder.Services.AddSignalR();
 var app = builder.Build();
 
 // --- SPA ---
-// En publish : la SPA est embarquée dans l'assembly (ressources « spa/ ») → exe autonome,
-// servie via EmbeddedSpaFileProvider (indépendant du dossier de l'exe). En dev : aucune
-// ressource « spa/ » → repli sur le proxy Vite (qui sert la SPA et proxifie /api + /hubs).
+// On publish: the SPA is embedded in the assembly ("spa/" resources) → self-contained exe,
+// served through EmbeddedSpaFileProvider (independent of the exe's folder). In dev: no
+// "spa/" resource → fallback to the Vite proxy (which serves the SPA and proxies /api + /hubs).
 var embedded = new EmbeddedSpaFileProvider(Assembly.GetExecutingAssembly(), "spa/");
 IFileProvider? spa = embedded.Count > 0 ? embedded : null;
 
@@ -92,19 +92,19 @@ else
 
 var api = app.MapGroup("/api");
 
-// Connexion : ouvre la session et retourne les catalogues
+// Connection: opens the session and returns the catalogs
 api.MapPost("/connection", async (ConnectRequest req, SsasSession session, StateStore store,
     PerfmonService perfmon, ProfilerService profiler, CancellationToken ct) =>
 {
     var catalogs = await session.ConnectAsync(req.Server, req.Lang, ct);
     store.AddRecentConnection(req.Server, null);
-    // Découverte perfmon + création de trace en arrière-plan — jamais bloquantes, dégradables
+    // Perfmon discovery + trace creation in the background — never blocking, can degrade
     _ = Task.Run(() => perfmon.Initialize(req.Server));
     _ = Task.Run(() => profiler.Initialize(req.Server));
     return Results.Ok(new { server = req.Server, catalogs });
 });
 
-// Choix du catalogue
+// Catalog selection
 api.MapPut("/connection/catalog", async (CatalogRequest req, SsasSession session, StateStore store, CancellationToken ct) =>
 {
     await session.SetCatalogAsync(req.Catalog, ct);
@@ -112,17 +112,17 @@ api.MapPut("/connection/catalog", async (CatalogRequest req, SsasSession session
     return Results.Ok();
 });
 
-// Connexions récentes (pour pré-remplir le dialogue)
+// Recent connections (to prefill the dialog)
 api.MapGet("/connection/recent", (StateStore store) => Results.Ok(store.GetRecentConnections()));
 
-// Exécution MDX — l'annulation passe par l'abandon de la requête HTTP (fetch abort côté SPA)
+// MDX execution — cancellation goes through aborting the HTTP request (fetch abort on the SPA side)
 api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService queries, StateStore store,
     PerfmonService perfmon, ProfilerService profiler, IHubContext<StatsHub> statsHub, CancellationToken ct) =>
 {
     try
     {
-        // Snapshot perfmon AVANT + fenêtre profiler ; collecte et push APRÈS, en arrière-plan,
-        // pour ne pas retarder l'affichage de la grille.
+        // Perfmon snapshot BEFORE + profiler window; collection and push AFTER, in the background,
+        // so as not to delay displaying the grid.
         var before = perfmon.Snapshot();
         var profileStart = DateTime.UtcNow;
         string? profileSession = session.SessionId;
@@ -140,7 +140,7 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
         {
             _ = Task.Run(async () =>
             {
-                await Task.Delay(1000); // les événements de trace arrivent en asynchrone (push XMLA)
+                await Task.Delay(1000); // trace events arrive asynchronously (XMLA push)
                 var events = profiler.DrainSince(profileSession, profileStart);
                 var profile = ProfileAggregator.Aggregate(events, result.DurationMs);
                 store.AddProfileRun(session.Server ?? "?", session.Catalog, req.Mdx, profile.TotalMs,
@@ -153,7 +153,7 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
     }
     catch (OperationCanceledException)
     {
-        throw; // client parti : rien à répondre
+        throw; // client gone: nothing to answer
     }
     catch (Exception ex)
     {
@@ -163,9 +163,9 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
     }
 });
 
-// DRILLTHROUGH de la requête courante — enveloppe le MDX et retourne le rowset source.
-// Limitation connue : pas de drillthrough précis par cellule, uniquement la requête entière
-// (typiquement une requête à une cellule ; voir QueryService.ExecuteDrillthroughAsync).
+// DRILLTHROUGH of the current query — wraps the MDX and returns the source rowset.
+// Known limitation: no precise per-cell drillthrough, only the whole query
+// (typically a single-cell query; see QueryService.ExecuteDrillthroughAsync).
 api.MapPost("/drillthrough", async (DrillthroughRequest req, QueryService queries, CancellationToken ct) =>
 {
     try
@@ -174,7 +174,7 @@ api.MapPost("/drillthrough", async (DrillthroughRequest req, QueryService querie
     }
     catch (OperationCanceledException)
     {
-        throw; // client parti : rien à répondre
+        throw; // client gone: nothing to answer
     }
     catch (Exception ex)
     {
@@ -182,7 +182,7 @@ api.MapPost("/drillthrough", async (DrillthroughRequest req, QueryService querie
     }
 });
 
-// ClearCache du catalogue courant (DatabaseID résolu via AMO — la confirmation est côté UI)
+// ClearCache of the current catalog (DatabaseID resolved through AMO — confirmation is on the UI side)
 api.MapPost("/cache/clear", async (CacheService cache, CancellationToken ct) =>
 {
     try
@@ -196,7 +196,7 @@ api.MapPost("/cache/clear", async (CacheService cache, CancellationToken ct) =>
     }
 });
 
-// MDX Script du cube (AMO), graphe de dépendances d'un élément, doc Markdown
+// Cube MDX Script (AMO), dependency graph of an item, Markdown doc
 api.MapGet("/script/{cube}", async (string cube, ScriptService scripts,
     [FromQuery] bool refresh, CancellationToken ct) =>
 {
@@ -223,9 +223,9 @@ api.MapGet("/script/{cube}/dependencies", async (string cube, [FromQuery] string
         return Results.BadRequest(new { error = ex.GetBaseException().Message });
     }
 });
-// Tracer IA : explique en français comment un membre calculé / set construit sa valeur,
-// à partir de son expression + des expressions des membres calculés dont il dépend
-// (transitif, via le graphe de dépendances existant).
+// AI tracer: explains in French how a calculated member / set builds its value,
+// from its expression + the expressions of the calculated members it depends on
+// (transitive, through the existing dependency graph).
 api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name,
     [FromQuery] string? lang, ScriptService scripts, MetadataService meta, AiService ai, CancellationToken ct) =>
 {
@@ -242,7 +242,7 @@ api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name
         var cubeMeta = await meta.GetCubeMetaAsync(cube, ct: ct);
         var graph = DependencyService.Resolve(script, cubeMeta, name);
 
-        // Dépendances calculées (membre/set), transitives, dédupliquées, plafonnées.
+        // Calculated dependencies (member/set), transitive, deduplicated, capped.
         const int maxDeps = 30;
         const int maxChars = 8000;
         var byName = script.Commands
@@ -280,7 +280,7 @@ api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name
     }
     catch (OperationCanceledException)
     {
-        throw; // client parti
+        throw; // client gone
     }
     catch (Exception ex)
     {
@@ -303,7 +303,7 @@ api.MapGet("/doc/{cube}", async (string cube, ScriptService scripts, MetadataSer
     }
 });
 
-// Mode projet SSDT : le MDX Script est lu/écrit dans le .cube (source de vérité = projet)
+// SSDT project mode: the MDX Script is read/written in the .cube (source of truth = project)
 api.MapPost("/project/open", (ProjectOpenRequest req, CubeProjectService projects, StateStore store) =>
 {
     try
@@ -333,7 +333,7 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
 {
     try
     {
-        var script = projects.Load(req.Path); // toujours l'état DISQUE du projet (l'UI sauvegarde avant)
+        var script = projects.Load(req.Path); // always the project's ON-DISK state (the UI saves first)
         var result = await Task.Run(
             () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText,
                 req.Force, store.GetDevServers()), ct);
@@ -377,9 +377,9 @@ api.MapPost("/project/calcprops", (CalcPropRequest req, CubeProjectService proje
     }
 });
 
-// Renommage sûr d'un membre calculé / set nommé : réécrit la définition + toutes les
-// références textuelles dans le MDX Script (mode projet — le texte à réécrire est celui
-// de l'éditeur, jamais lu depuis le disque côté serveur).
+// Safe rename of a calculated member / named set: rewrites the definition + every
+// textual reference in the MDX Script (project mode — the text to rewrite is the
+// editor's, never read from disk on the server side).
 api.MapPost("/script/rename", (RenameRequest req) =>
 {
     try
@@ -392,9 +392,9 @@ api.MapPost("/script/rename", (RenameRequest req) =>
     }
 });
 
-// Analyse d'impact : diff de deux versions du MDX Script (membres calculés / sets ajoutés,
-// supprimés, modifiés) + fermeture transitive des membres du nouveau script impactés en aval.
-// Pur texte, aucune session ni accès disque côté serveur.
+// Impact analysis: diff of two versions of the MDX Script (calculated members / sets added,
+// removed, modified) + transitive closure of the new script's members impacted downstream.
+// Pure text, no session or disk access on the server side.
 api.MapPost("/script/impact", (ImpactRequest req) =>
 {
     try
@@ -407,7 +407,7 @@ api.MapPost("/script/impact", (ImpactRequest req) =>
     }
 });
 
-// Bibliothèque de snippets MDX (locale, SQLite)
+// MDX snippet library (local, SQLite)
 api.MapGet("/snippets", (StateStore store) => Results.Ok(store.GetSnippets()));
 api.MapPost("/snippets", (SnippetRequest req, StateStore store) =>
 {
@@ -426,8 +426,8 @@ api.MapDelete("/snippets/{id:long}", (long id, StateStore store) =>
     return Results.Ok();
 });
 
-// Non-régression MDX : baseline (requête + résultat courant) puis relance/diff après un
-// changement de script. On sérialise le QueryResult courant tel quel comme référence.
+// MDX regression testing: baseline (query + current result) then re-run/diff after a
+// script change. The current QueryResult is serialized as is as the reference.
 api.MapPost("/regression", (RegressionSaveRequest req, StateStore store) =>
 {
     try
@@ -441,14 +441,14 @@ api.MapPost("/regression", (RegressionSaveRequest req, StateStore store) =>
     }
 });
 
-// Liste légère : on ne renvoie PAS l'ExpectedJson (lourd), seulement l'identité des cas.
+// Lightweight list: the ExpectedJson (heavy) is NOT returned, only the identity of the cases.
 api.MapGet("/regression", (StateStore store) =>
     Results.Ok(store.GetRegressionCases().Select(c => new { c.Id, c.Name, c.Mdx, c.CreatedUtc })));
 
-// Relance tous les cas et compare à la baseline. Nécessite une connexion SSAS vive.
-// Crux JSON : on re-sérialise le résultat vivant (« actual ») pour que ses cellules soient des
-// JsonElement, comme la baseline désérialisée → comparaison .ToString() symétrique et stable.
-// Un cas qui plante n'échoue pas toute la relance : il est reporté match=false + message.
+// Re-runs every case and compares it to the baseline. Requires a live SSAS connection.
+// JSON crux: the live result ("actual") is re-serialized so that its cells are
+// JsonElement, like the deserialized baseline → symmetric and stable .ToString() comparison.
+// A case that crashes does not fail the whole run: it is reported as match=false + message.
 api.MapPost("/regression/run", async (StateStore store, QueryService queries, CancellationToken ct) =>
 {
     var cases = store.GetRegressionCases();
@@ -469,7 +469,7 @@ api.MapPost("/regression/run", async (StateStore store, QueryService queries, Ca
         }
         catch (OperationCanceledException)
         {
-            throw; // client parti : on abandonne toute la relance
+            throw; // client gone: abort the whole run
         }
         catch (Exception ex)
         {
@@ -494,7 +494,7 @@ api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Panneau IA : statut (clé configurée ?) et exécution d'une action sur le MDX courant
+// AI panel: status (key configured?) and running an action on the current MDX
 api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured, model = AiService.ActiveModel }));
 api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, CancellationToken ct) =>
 {
@@ -508,7 +508,7 @@ api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, C
     }
     catch (OperationCanceledException)
     {
-        throw; // client parti
+        throw; // client gone
     }
     catch (Exception ex)
     {
@@ -516,8 +516,8 @@ api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, C
     }
 });
 
-// Optimisation IA adossée au PROFIL d'exécution réel (FE/SE, sous-cubes, hits) : contexte
-// = résumé du profil + MDX, injecté dans le prompt OptimiserProfil.
+// AI optimization backed by the real execution PROFILE (FE/SE, subcubes, hits): context
+// = profile summary + MDX, injected into the OptimiserProfil prompt.
 api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiService ai, CancellationToken ct) =>
 {
     if (!AiService.IsConfigured)
@@ -544,8 +544,8 @@ api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiServi
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Génération de MDX depuis une demande en langage naturel : métadonnées du cube (mesures,
-// dimensions, hiérarchies) + la demande, injectées dans le prompt GenererMdx.
+// MDX generation from a natural-language request: cube metadata (measures,
+// dimensions, hierarchies) + the request, injected into the GenererMdx prompt.
 api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService meta, AiService ai, CancellationToken ct) =>
 {
     if (!AiService.IsConfigured)
@@ -569,9 +569,9 @@ api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService m
                 dimsSb.AppendLine($"    - {h.UniqueName}{(string.IsNullOrEmpty(h.Description) ? "" : $"  — {h.Description}")}  (niveaux : {string.Join(" > ", h.Levels.Select(l => l.Name))})");
         }
 
-        // Chaque section bornée indépendamment (pas un budget global) : sur un cube avec des
-        // centaines de mesures, la liste des mesures ne doit jamais évincer les dimensions —
-        // c'est justement la dimension d'analyse (ROWS) que l'IA doit choisir correctement.
+        // Each section capped independently (not a global budget): on a cube with
+        // hundreds of measures, the measure list must never crowd out the dimensions —
+        // the analysis dimension (ROWS) is precisely what the AI must pick correctly.
         const int maxSection = 20000;
         string metaCtx = $"MÉTADONNÉES DU CUBE [{m.CubeName}]\n"
             + TruncateSection(measuresSb.ToString(), maxSection)
@@ -589,36 +589,36 @@ api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService m
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Statut perfmon (l'UI affiche pourquoi les stats sont absentes le cas échéant)
+// Perfmon status (the UI shows why stats are missing, if they are)
 api.MapGet("/stats/status", (PerfmonService perfmon) =>
     Results.Ok(new { status = perfmon.Status.ToString(), detail = perfmon.StatusDetail }));
 
-// Statut profiler (trace SSAS) — Unavailable si droits admin absents
+// Profiler status (SSAS trace) — Unavailable if admin rights are missing
 api.MapGet("/profiler/status", (ProfilerService profiler) =>
     Results.Ok(new { status = profiler.Status.ToString(), detail = profiler.StatusDetail }));
 
-// Historique des runs profiler (comparaison avant/après)
+// Profiler run history (before/after comparison)
 api.MapGet("/profiler/history", (StateStore store) =>
 {
     try { return Results.Ok(store.GetProfileRuns()); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Historique des requêtes
+// Query history
 api.MapGet("/history", (StateStore store, [FromQuery] int limit = 100) => Results.Ok(store.GetHistory(limit)));
 
-// Métadonnées : cubes du catalogue courant, puis arbre d'un cube (cache mémoire, ?refresh=true pour forcer)
+// Metadata: cubes of the current catalog, then the tree of a cube (in-memory cache, ?refresh=true to force)
 api.MapGet("/metadata/cubes", async (MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetCubesAsync(ct)));
 api.MapGet("/metadata/cube/{cube}", async (string cube, MetadataService meta,
     [FromQuery] bool refresh, CancellationToken ct) =>
     Results.Ok(await meta.GetCubeMetaAsync(cube, refresh, ct)));
-// Membres d'une hiérarchie (autocomplétion, lazy + cache serveur, plafonné)
+// Members of a hierarchy (autocompletion, lazy + server cache, capped)
 api.MapGet("/metadata/members", async ([FromQuery] string cube, [FromQuery] string hierarchy,
     MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetMembersAsync(cube, hierarchy, ct: ct)));
-// Serveurs déclarés de développement : liste explicite, seul endroit d'où un déploiement de
-// script est permis. Le nom du catalogue ne discrimine plus rien (prod et dev portent le même).
+// Servers declared as development: explicit list, the only place a script deployment
+// is allowed to. The catalog name no longer tells anything apart (prod and dev carry the same one).
 api.MapGet("/dev-servers", (StateStore store) => Results.Ok(store.GetDevServers()));
 api.MapPut("/dev-servers", (DevServerRequest req, StateStore store) =>
 {
@@ -626,34 +626,34 @@ api.MapPut("/dev-servers", (DevServerRequest req, StateStore store) =>
     return Results.Ok(store.GetDevServers());
 });
 
-// Un cran de l'arbre des membres (explorateur, façon SSMS). `hierarchy=true` au premier cran,
-// sous le dossier « Membres » ; `false` ensuite, quand `parent` est un membre.
+// One level of the member tree (explorer, SSMS style). `hierarchy=true` at the first level,
+// under the "Membres" folder; `false` afterwards, when `parent` is a member.
 api.MapGet("/metadata/children", async ([FromQuery] string cube, [FromQuery] string parent,
     [FromQuery] bool hierarchy, MetadataService meta, CancellationToken ct) =>
     Results.Ok(await meta.GetChildrenAsync(cube, parent, hierarchy, ct: ct)));
 
-// Caption d'UN membre par unique name (lookup ciblé — pour le survol, indépendant du cap 1000)
+// Caption of ONE member by unique name (targeted lookup — for hover, independent of the 1000 cap)
 api.MapGet("/metadata/member", async ([FromQuery] string cube, [FromQuery] string name,
     MetadataService meta, CancellationToken ct) =>
 {
     try { return Results.Ok(new { caption = await meta.GetMemberCaptionAsync(cube, name, ct) }); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
-// Captions de plusieurs membres d'un coup (prefetch groupé — cache SQLite persistant)
+// Captions of several members at once (batched prefetch — persistent SQLite cache)
 api.MapPost("/metadata/captions", async (CaptionsRequest req, MetadataService meta, CancellationToken ct) =>
 {
     try { return Results.Ok(await meta.GetMemberCaptionsAsync(req.Cube, req.Names, ct)); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
-// Rafraîchissement manuel : vide le cache persistant des captions du cube
+// Manual refresh: clears the cube's persistent caption cache
 api.MapPost("/metadata/captions/refresh", (CaptionRefreshRequest req, MetadataService meta) =>
 {
     try { meta.InvalidateCube(req.Cube); return Results.Ok(); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Comparaison de la même requête entre le catalogue courant et un autre du même serveur :
-// « est-ce qu'un chiffre a bougé ? » après un changement de script.
+// Comparison of the same query between the current catalog and another one on the same server:
+// "did a figure move?" after a script change.
 api.MapPost("/compare", async (CompareRequest req, CatalogComparisonService comparison,
     CancellationToken ct) =>
 {
@@ -662,16 +662,16 @@ api.MapPost("/compare", async (CompareRequest req, CatalogComparisonService comp
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Sessions ouvertes sur l'instance. Lecture réservée aux admins SSAS : en cas de refus on
-// renvoie le message tel quel, l'UI se dégrade (même parti pris que le Profiler).
+// Open sessions on the instance. Reading is restricted to SSAS admins: when refused, the
+// message is returned as is, the UI degrades (same approach as the Profiler).
 api.MapGet("/sessions", async (SessionsService sessions, CancellationToken ct) =>
 {
     try { return Results.Ok(await sessions.ListAsync(ct)); }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Annulation d'une session par son SPID. ⚠️ La liste contient les sessions des jobs de
-// production : la confirmation est portée par l'UI, ce point d'entrée ne la rejoue pas.
+// Cancelling a session by its SPID. ⚠️ The list contains the sessions of production
+// jobs: confirmation is handled by the UI, this endpoint does not repeat it.
 api.MapPost("/sessions/{spid:int}/cancel", async (int spid, SessionsService sessions, CancellationToken ct) =>
 {
     try
@@ -682,19 +682,19 @@ api.MapPost("/sessions/{spid:int}/cancel", async (int spid, SessionsService sess
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
-// Balise de départ de page (navigator.sendBeacon sur `pagehide`) : distingue une fermeture
-// ou un rechargement — délai d'arrêt court — d'un simple transport qui lâche, où le client
-// va se reconnecter tout seul et où couper vite tuerait le serveur sous une page vivante.
+// Page departure beacon (navigator.sendBeacon on `pagehide`): tells a close
+// or a reload — short shutdown delay — apart from a mere transport drop, where the client
+// will reconnect on its own and where shutting down quickly would kill the server under a live page.
 api.MapPost("/leaving", (BrowserLifetime browser) =>
 {
     browser.NoticeClientLeaving();
     return Results.NoContent();
 });
 
-// SignalR : push des stats perfmon post-exécution (décision actée : SignalR pour ce qui streame)
+// SignalR: push of post-execution perfmon stats (settled decision: SignalR for what streams)
 app.MapHub<StatsHub>("/hubs/stats");
 
-// Fallback SPA (routes côté client) — même provider que les fichiers statiques
+// SPA fallback (client-side routes) — same provider as the static files
 if (spa is not null)
     app.MapFallbackToFile("index.html", new StaticFileOptions { FileProvider = spa });
 else
@@ -706,8 +706,8 @@ else
     }
 
     /// <summary>
-    /// Comportement historique, conservé pour la boucle de dev et les tests :
-    /// démarre, ouvre le navigateur (sauf --no-browser), attend l'arrêt.
+    /// Historical behaviour, kept for the dev loop and the tests:
+    /// starts, opens the browser (unless --no-browser), waits for shutdown.
     /// </summary>
     public static async Task RunAsync(string[] args)
     {
@@ -723,7 +723,7 @@ else
                     Process.Start(new ProcessStartInfo(
                         url.Replace("127.0.0.1", "localhost")) { UseShellExecute = true });
                 }
-                catch { /* pas de navigateur : l'URL est affichée en console */ }
+                catch { /* no browser: the URL is shown in the console */ }
             }
             await app.WaitForShutdownAsync();
         }
@@ -756,8 +756,8 @@ internal sealed record RenameRequest(string Script, string OldName, string NewNa
 internal sealed record ImpactRequest(string OldScript, string NewScript);
 
 /// <summary>
-/// Hub sans méthode client→serveur : uniquement du push serveur ("queryStats").
-/// Ses connexions servent aussi de signal de vie du navigateur (voir <see cref="BrowserLifetime"/>).
+/// Hub with no client→server method: server push only ("queryStats").
+/// Its connections also serve as the browser heartbeat (see <see cref="BrowserLifetime"/>).
 /// </summary>
 internal sealed class StatsHub(BrowserLifetime browser) : Hub
 {

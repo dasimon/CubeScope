@@ -1,8 +1,8 @@
-// CubeScope — Phase 0 : spike go/no-go contre un serveur SSAS Multidimensional réel.
-// Valide : (1) connexion AdomdClient NuGet, (2) DMV $SYSTEM.MDSCHEMA_*, (3) schema rowset
-// typé (GetSchemaDataSet), (4) ClearCache XMLA + ExecuteCellSet froid/chaud, (5) deltas perfmon.
-// Usage : CubeScope.Spike [serveur]   (défaut : var d'env CUBESCOPE_SPIKE_SERVER, sinon localhost.
-// Cibler un serveur de dev/recette, jamais la prod — le spike vide le cache.)
+// CubeScope — Phase 0: go/no-go spike against a real SSAS Multidimensional server.
+// Validates: (1) NuGet AdomdClient connection, (2) $SYSTEM.MDSCHEMA_* DMVs, (3) typed schema
+// rowset (GetSchemaDataSet), (4) XMLA ClearCache + cold/warm ExecuteCellSet, (5) perfmon deltas.
+// Usage: CubeScope.Spike [server]   (default: CUBESCOPE_SPIKE_SERVER env var, otherwise localhost.
+// Target a dev/acceptance-testing server, never prod — the spike clears the cache.)
 
 using System.Data;
 using System.Diagnostics;
@@ -15,7 +15,7 @@ string server = args.Length > 0 ? args[0]
     : Environment.GetEnvironmentVariable("CUBESCOPE_SPIKE_SERVER") ?? "localhost";
 var verdicts = new List<(string Etape, bool Ok, string Detail)>();
 
-// Mode lecture seule : identifier l'instance (nom, version, catalogues) sans toucher au cache
+// Read-only mode: identify the instance (name, version, catalogs) without touching the cache
 if (args.Contains("--discover"))
 {
     using var c = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;");
@@ -41,8 +41,8 @@ if (args.Contains("--discover"))
     return 0;
 }
 
-// Spike profiler (post-MVP) : trace SSAS, découpage Formula Engine / Storage Engine par requête.
-// Usage : CubeScope.Spike <serveur-SSAS> --profile [--catalog <catalogue>]
+// Profiler spike (post-MVP): SSAS trace, Formula Engine / Storage Engine breakdown per query.
+// Usage: CubeScope.Spike <SSAS-server> --profile [--catalog <catalog>]
 if (args.Contains("--profile"))
 {
     int iCat = Array.IndexOf(args, "--catalog");
@@ -58,7 +58,7 @@ Console.WriteLine("=============================================================
 AdomdConnection? conn = null;
 string catalog = "", cube = "", measure = "";
 
-// ---------------------------------------------------------------- Étape 1 : connexion
+// ---------------------------------------------------------------- Step 1: connection
 try
 {
     Console.WriteLine("\n--- Étape 1 : connexion AdomdClient (Integrated Security) ---");
@@ -79,16 +79,16 @@ catch (Exception ex)
     return 1;
 }
 
-// ---------------------------------------------------------------- Étape 2 : DMV MDSCHEMA_*
+// ---------------------------------------------------------------- Step 2: MDSCHEMA_* DMVs
 try
 {
     Console.WriteLine("\n--- Étape 2 : DMV $SYSTEM.MDSCHEMA_* ---");
-    // Catalogues via schema rowset (fonctionne sans catalogue courant)
+    // Catalogs via schema rowset (works without a current catalog)
     var catalogs = conn.GetSchemaDataSet("DBSCHEMA_CATALOGS", null).Tables[0];
     Console.WriteLine($"Catalogues ({catalogs.Rows.Count}) : " +
         string.Join(", ", catalogs.Rows.Cast<DataRow>().Select(r => r["CATALOG_NAME"])));
 
-    // Catalogue forcé par --catalog <nom>, sinon premier catalogue avec un vrai cube (CUBE_SOURCE = 1)
+    // Catalog forced by --catalog <name>, otherwise the first catalog with a real cube (CUBE_SOURCE = 1)
     int iCat = Array.IndexOf(args, "--catalog");
     string? forced = iCat >= 0 && iCat + 1 < args.Length ? args[iCat + 1] : null;
     foreach (DataRow r in catalogs.Rows)
@@ -127,7 +127,7 @@ catch (Exception ex)
     verdicts.Add(("2. DMV MDSCHEMA_*", false, ex.GetBaseException().Message));
 }
 
-// ---------------------------------------------------------------- Étape 3 : schema rowset typé
+// ---------------------------------------------------------------- Step 3: typed schema rowset
 try
 {
     Console.WriteLine("\n--- Étape 3 : schema rowset typé (GetSchemaDataSet) ---");
@@ -148,7 +148,7 @@ catch (Exception ex)
     verdicts.Add(("3. Schema rowset typé", false, ex.GetBaseException().Message));
 }
 
-// ---------------------------------------------------------------- Étape 5a : perfmon (découverte + snapshot avant)
+// ---------------------------------------------------------------- Step 5a: perfmon (discovery + "before" snapshot)
 List<PerformanceCounter> counters = new();
 Dictionary<string, long> before = new();
 bool perfmonOk = false;
@@ -163,22 +163,22 @@ try
     Console.WriteLine($"Catégories MSAS*/MSOLAP$* trouvées ({cats.Count}) :");
     foreach (var c in cats) Console.WriteLine($"  {c.CategoryName}");
 
-    // Sous-ensemble utile au futur panneau de stats.
-    // Piège : sur un OS en français les noms de catégories sont LOCALISÉS et le
-    // séparateur devient " : " avec espaces ("MSAS16 : MDX", "MSAS16 : mémoire") →
-    // on compare le libellé après le premier ':' (trim), en français ET en anglais.
+    // Subset useful for the future stats panel.
+    // Pitfall: on a French OS the category names are LOCALIZED and the
+    // separator becomes " : " with spaces ("MSAS16 : MDX", "MSAS16 : mémoire") →
+    // compare the label after the first ':' (trimmed), in French AND in English.
     string[] wanted = { "mdx", "cache", "mémoire", "memory", "connexion", "connection",
                         "requête du moteur de stockage", "storage engine query" };
-    // Instance par défaut = préfixe MSAS<ver> ; instance nommée = MSOLAP$<nom>.
-    // Le spike vise l'instance par défaut → MSAS uniquement (sinon on suivrait aussi MSOLAP$<instance>).
+    // Default instance = MSAS<ver> prefix; named instance = MSOLAP$<name>.
+    // The spike targets the default instance → MSAS only (otherwise MSOLAP$<instance> would be tracked too).
     foreach (var c in cats.Where(c => c.CategoryName.StartsWith("MSAS", StringComparison.OrdinalIgnoreCase)))
     {
         int sep = c.CategoryName.IndexOf(':');
         if (sep < 0 || !wanted.Contains(c.CategoryName[(sep + 1)..].Trim().ToLowerInvariant())) continue;
         foreach (var pc in c.GetCounters())
         {
-            // Compteurs cumulatifs uniquement, filtrés par TYPE (les noms sont localisés,
-            // "/sec" devient "/s" en français — un filtre par nom n'est pas fiable)
+            // Cumulative counters only, filtered by TYPE (names are localized,
+            // "/sec" becomes "/s" in French — filtering by name is not reliable)
             if (pc.CounterType is PerformanceCounterType.NumberOfItems32 or PerformanceCounterType.NumberOfItems64)
                 counters.Add(new PerformanceCounter(c.CategoryName, pc.CounterName, "", server));
             pc.Dispose();
@@ -194,7 +194,7 @@ catch (Exception ex)
     verdicts.Add(("5. Perfmon distant", false, $"[{ex.GetType().Name}] {ex.GetBaseException().Message}"));
 }
 
-// ---------------------------------------------------------------- Étape 4 : ClearCache + froid/chaud
+// ---------------------------------------------------------------- Step 4: ClearCache + cold/warm
 try
 {
     Console.WriteLine("\n--- Étape 4 : ClearCache XMLA puis ExecuteCellSet froid/chaud ---");
@@ -214,7 +214,7 @@ try
         }
         catch (Exception exId)
         {
-            // Piège CLAUDE.md : le DatabaseID peut différer du nom (base renommée) → à résoudre via AMO
+            // CLAUDE.md pitfall: the DatabaseID can differ from the name (renamed database) → resolve via AMO
             Console.WriteLine($"ClearCache avec DatabaseID = nom a échoué : {exId.GetBaseException().Message}");
             Console.WriteLine("→ résolution du vrai DatabaseID via AMO nécessaire (hors périmètre spike).");
             throw;
@@ -228,7 +228,7 @@ try
     CellSet csCold;
     using (var cmd = new AdomdCommand(mdx, conn)) csCold = cmd.ExecuteCellSet();
     swCold.Stop();
-    // Piège CLAUDE.md : une requête mono-axe n'a pas d'Axes[1] → toujours tester Axes.Count
+    // CLAUDE.md pitfall: a single-axis query has no Axes[1] → always test Axes.Count
     Console.WriteLine($"FROID : {swCold.ElapsedMilliseconds} ms — Axes.Count = {csCold.Axes.Count}, " +
         $"{csCold.Cells.Count} cellule(s), valeur[0] = {csCold.Cells[0].FormattedValue}");
 
@@ -248,7 +248,7 @@ catch (Exception ex)
     verdicts.Add(("4. ClearCache + froid/chaud", false, ex.GetBaseException().Message));
 }
 
-// ---------------------------------------------------------------- Étape 5b : deltas perfmon
+// ---------------------------------------------------------------- Step 5b: perfmon deltas
 if (perfmonOk)
 {
     try
@@ -295,9 +295,9 @@ static DataTable Dmv(AdomdConnection c, string query)
 {
     using var cmd = new AdomdCommand(query, c);
     using var rdr = cmd.ExecuteReader();
-    // Piège : les rowsets ADOMD déclarent des contraintes d'unicité que leurs propres
-    // données violent → DataTable.Load lève "Failed to enable constraints" si la table
-    // n'est pas dans un DataSet avec EnforceConstraints = false.
+    // Pitfall: ADOMD rowsets declare uniqueness constraints that their own data
+    // violates → DataTable.Load throws "Failed to enable constraints" if the table
+    // is not in a DataSet with EnforceConstraints = false.
     var ds = new DataSet { EnforceConstraints = false };
     var t = new DataTable();
     ds.Tables.Add(t);

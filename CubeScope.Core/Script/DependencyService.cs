@@ -4,14 +4,14 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Script;
 
 /// <summary>
-/// Graphe de dépendances des membres calculés / sets par matching de tokens
-/// (décision actée : ~95 % de précision assumé, pas d'AST). Une dépendance est
-/// détectée quand l'expression d'un élément contient le unique name (ou le dernier
-/// segment) d'un autre élément du script, d'une mesure ou d'une hiérarchie du cube.
+/// Dependency graph of calculated members / sets by token matching
+/// (settled decision: ~95% accuracy accepted, no AST). A dependency is
+/// detected when an item's expression contains the unique name (or the last
+/// segment) of another script item, of a measure or of a cube hierarchy.
 /// </summary>
 public static class DependencyService
 {
-    private const int MaxDepth = 8; // garde-fou cycles/profondeur (le graphe réel est petit)
+    private const int MaxDepth = 8; // safeguard against cycles/depth (the real graph is small)
 
     public static DependencyGraph Resolve(CubeScript script, CubeMeta meta, string name)
     {
@@ -21,7 +21,7 @@ public static class DependencyService
 
         var rootNode = BuildNode(root.Name, root.Kind, root.Expression, byName, meta, [], 0);
 
-        // Dépendants inverses : tout élément du script dont l'expression référence `name`
+        // Reverse dependents: any script item whose expression references `name`
         string lastSegment = LastSegment(name);
         var usedBy = script.Commands
             .Where(c => c.Kind is "CalculatedMember" or "NamedSet" && !NamesEqual(c.Name, name))
@@ -44,7 +44,7 @@ public static class DependencyService
         var children = new List<DependencyNode>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 1. Autres éléments du script (récursif)
+        // 1. Other script items (recursive)
         foreach (var cmd in byName.Values.Where(c => !NamesEqual(c.Name, name)))
         {
             if (!ReferencesName(refs, cmd.Name, LastSegment(cmd.Name)) || !seen.Add(cmd.Name)) continue;
@@ -52,14 +52,14 @@ public static class DependencyService
                 [.. path], depth + 1));
         }
 
-        // 2. Mesures physiques (feuilles)
+        // 2. Physical measures (leaves)
         foreach (var m in meta.MeasureFolders.SelectMany(f => f.Measures))
             if (refs.Contains(m.Name) && !seen.Contains(m.UniqueName) &&
                 !byName.Keys.Any(k => LastSegment(k).Equals(m.Name, StringComparison.OrdinalIgnoreCase)))
                 if (seen.Add(m.UniqueName))
                     children.Add(new DependencyNode(m.UniqueName, "Measure", []));
 
-        // 3. Hiérarchies référencées (feuilles)
+        // 3. Referenced hierarchies (leaves)
         foreach (var d in meta.Dimensions)
             foreach (var h in d.Hierarchies)
                 if (refs.Contains(d.Name) && refs.Contains(h.Name) && seen.Add(h.UniqueName))
@@ -76,7 +76,7 @@ public static class DependencyService
         return dict;
     }
 
-    /// <summary>Le dernier segment crocheté d'un unique name : "[Measures].[Marge]" → "Marge".</summary>
+    /// <summary>The last bracketed segment of a unique name: "[Measures].[Marge]" → "Marge".</summary>
     internal static string LastSegment(string uniqueName)
     {
         var matches = System.Text.RegularExpressions.Regex.Matches(uniqueName, @"\[(?:[^\]]|\]\])+\]");
@@ -89,7 +89,7 @@ public static class DependencyService
         string.Equals(a, b, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(LastSegment(a), LastSegment(b), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>L'ensemble de références contient-il cet élément (dernier segment) ?</summary>
+    /// <summary>Does the set of references contain this item (last segment)?</summary>
     private static bool ReferencesName(IReadOnlySet<string> refs, string uniqueName, string lastSegment) =>
         refs.Contains(lastSegment);
 }

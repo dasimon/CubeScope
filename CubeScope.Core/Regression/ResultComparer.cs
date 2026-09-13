@@ -3,20 +3,20 @@ using CubeScope.Core.Models;
 
 namespace CubeScope.Core.Regression;
 
-/// <summary>Une cellule qui diffère entre baseline et relance (Column = en-tête lisible).</summary>
+/// <summary>A cell that differs between the baseline and the re-run (Column = readable header).</summary>
 public sealed record CellDiff(int Row, string Column, string? Expected, string? Actual);
 
-/// <summary>Résultat d'une comparaison baseline/relance. Match = colonnes identiques ET
-/// même nombre de lignes ET aucune cellule différente. Summary = null quand Match.</summary>
+/// <summary>Result of a baseline/re-run comparison. Match = identical columns AND
+/// same row count AND no differing cell. Summary = null when Match.</summary>
 public sealed record ComparisonResult(bool Match, string? Summary, IReadOnlyList<CellDiff> Diffs);
 
 /// <summary>
-/// Compare deux <see cref="QueryResult"/> (baseline attendue vs relance) de façon déterministe,
-/// sans SSAS. Les cellules sont normalisées en chaîne pour tolérer la frontière JSON : côté
-/// serveur, les deux QueryResult passent par System.Text.Json (baseline stockée en JSON,
-/// « actual » re-sérialisé) → les valeurs sont des JsonElement des deux côtés et
-/// <c>.ToString()</c> donne le texte JSON brut, stable et identique pour des valeurs égales.
-/// Pour des valeurs CLR directes (tests), l'invariant sur IFormattable garantit la même stabilité.
+/// Compares two <see cref="QueryResult"/> (expected baseline vs re-run) deterministically,
+/// without SSAS. Cells are normalized to strings to tolerate the JSON boundary: on the
+/// server side, both QueryResults go through System.Text.Json (baseline stored as JSON,
+/// "actual" re-serialized) → values are JsonElements on both sides and
+/// <c>.ToString()</c> gives the raw JSON text, stable and identical for equal values.
+/// For direct CLR values (tests), the invariant culture on IFormattable guarantees the same stability.
 /// </summary>
 public static class ResultComparer
 {
@@ -69,8 +69,8 @@ public static class ResultComparer
         return new ComparisonResult(match, summary2, diffs);
     }
 
-    /// <summary>Forme chaîne normalisée d'une cellule. JsonElement → texte JSON brut (stable) ;
-    /// valeur CLR IFormattable → culture invariante (nombres stables quelle que soit la locale).</summary>
+    /// <summary>Normalized string form of a cell. JsonElement → raw JSON text (stable);
+    /// IFormattable CLR value → invariant culture (numbers stable whatever the locale).</summary>
     private static string? Norm(object? v) => v switch
     {
         null => null,

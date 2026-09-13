@@ -37,14 +37,14 @@ public class CellSetMapperTests
     [Fact]
     public void TwoAxes_RowHeadersThenValues_OrdinalIsColumnFirst()
     {
-        // 2 colonnes (Sales, Cost) × 2 lignes (ItemA, ItemB) — ordinal = col + ligne * nbCols
+        // 2 columns (Sales, Cost) × 2 rows (ItemA, ItemB) — ordinal = col + row * nbCols
         var cols = new AxisData(["Measures"], [["Sales"], ["Cost"]]);
         var rows = new AxisData(["Product"], [["ItemA"], ["ItemB"]]);
 
         var r = CellSetMapper.Build(cols, rows, Cell, cellCount: 4, durationMs: 5);
 
         Assert.Equal(2, r.AxesCount);
-        Assert.Equal(3, r.Columns.Count); // 1 en-tête de ligne + 2 données
+        Assert.Equal(3, r.Columns.Count); // 1 row header + 2 data
         Assert.True(r.Columns[0].IsRowHeader);
         Assert.Equal("Product", r.Columns[0].Header);
         Assert.Equal(2, r.Rows.Count);
@@ -92,7 +92,7 @@ public class CellSetMapperTests
     [Fact]
     public void ErrorCell_KeepsServerMessageUnderTwinKey()
     {
-        // Cellule 1 en erreur : la valeur reste affichable, le message atterrit sous "v1__err"
+        // Cell 1 in error: the value stays displayable, the message lands under "v1__err"
         var cols = new AxisData(["Measures"], [["Sales"], ["Boom"]]);
         static CellData WithError(int i) => i == 1
             ? new CellData(CellSetMapper.ErrorPlaceholder, "Le type ne correspond pas.")
@@ -102,7 +102,7 @@ public class CellSetMapperTests
 
         var row = Assert.Single(r.Rows);
         Assert.Equal("c0", row["v0"]);
-        Assert.False(row.ContainsKey("v0" + CellSetMapper.ErrorSuffix)); // pas de clé parasite
+        Assert.False(row.ContainsKey("v0" + CellSetMapper.ErrorSuffix)); // no stray key
         Assert.Equal(CellSetMapper.ErrorPlaceholder, row["v1"]);
         Assert.Equal("Le type ne correspond pas.", row["v1" + CellSetMapper.ErrorSuffix]);
     }
@@ -112,7 +112,7 @@ public class CellSetMapperTests
     {
         var cols = new AxisData(["Measures"], [["Sales"], ["Cost"]]);
         var rows = new AxisData(["Product"], [["ItemA"], ["ItemB"]]);
-        // ordinal 3 = ligne 1 (ItemB), colonne 1 (Cost)
+        // ordinal 3 = row 1 (ItemB), column 1 (Cost)
         static CellData WithError(int i) => i == 3
             ? new CellData(CellSetMapper.ErrorPlaceholder, "Division par zéro.")
             : new CellData($"c{i}");
@@ -132,7 +132,7 @@ public class CellSetMapperTests
         var r = CellSetMapper.Build(cols, null, Cell, cellCount: 0, durationMs: 5);
 
         Assert.Empty(r.Columns);
-        var row = Assert.Single(r.Rows); // une ligne vide, sans champ
+        var row = Assert.Single(r.Rows); // one empty row, no fields
         Assert.Empty(row);
     }
 }

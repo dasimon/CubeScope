@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Bibliothèque de snippets MDX locale (SQLite) : enregistrer la requête courante,
-// lister/insérer/supprimer. Popover ouvert depuis la barre d'outils (voir App.vue).
+// Local MDX snippet library (SQLite): save the current query,
+// list/insert/delete. Popover opened from the toolbar (see App.vue).
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Popover from 'primevue/popover'

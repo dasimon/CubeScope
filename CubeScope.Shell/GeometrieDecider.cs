@@ -3,17 +3,17 @@ namespace CubeScope.Shell;
 public static class GeometrieDecider
 {
     /// <summary>
-    /// Seuil de recouvrement (en pixels indépendants du périphérique) en dessous duquel la
-    /// fenêtre est considérée comme perdue hors champ plutôt que simplement décalée.
+    /// Overlap threshold (in device-independent pixels) below which the
+    /// window is considered lost off screen rather than merely offset.
     /// </summary>
     private const double Seuil = 100;
 
     /// <summary>
-    /// Une géométrie enregistrée reste utilisable si une portion suffisante de la fenêtre
-    /// (<see cref="Seuil"/> px) recouvre le rectangle de l'écran virtuel — la réunion de TOUS
-    /// les moniteurs, pas seulement le principal — sur les deux axes. Traité symétriquement en
-    /// X et en Y : un écran secondaire peut être à gauche, à droite, au-dessus ou en dessous du
-    /// principal, avec des coordonnées négatives dans n'importe quelle direction.
+    /// A saved geometry remains usable if a large enough portion of the window
+    /// (<see cref="Seuil"/> px) overlaps the virtual screen rectangle — the union of ALL
+    /// monitors, not only the primary one — on both axes. Handled symmetrically on
+    /// X and Y: a secondary screen can be to the left, to the right, above or below the
+    /// primary one, with negative coordinates in any direction.
     /// </summary>
     public static bool GeometrieUtilisable(
         double x, double y, double largeur, double hauteur,

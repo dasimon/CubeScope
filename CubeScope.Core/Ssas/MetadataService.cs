@@ -8,10 +8,10 @@ using Microsoft.AnalysisServices.AdomdClient;
 namespace CubeScope.Core.Ssas;
 
 /// <summary>
-/// Métadonnées d'un cube via DMV $SYSTEM.MDSCHEMA_* (décision actée : DMV en voie
-/// principale). Cache mémoire par (serveur, catalogue, cube) — les métadonnées ne
-/// bougent qu'au déploiement, bouton Rafraîchir côté UI pour forcer.
-/// Piège : TOUJOURS crocheter les colonnes DMV (HIERARCHY est un mot réservé MDX).
+/// Cube metadata via $SYSTEM.MDSCHEMA_* DMVs (settled decision: DMVs as the main
+/// path). In-memory cache per (server, catalog, cube) — metadata only
+/// changes on deployment, with a Refresh button in the UI to force it.
+/// Pitfall: ALWAYS bracket DMV columns (HIERARCHY is an MDX reserved word).
 /// </summary>
 public sealed class MetadataService(SsasSession session, StateStore store)
 {
@@ -58,8 +58,8 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     }
 
     /// <summary>
-    /// Membres d'une hiérarchie pour l'autocomplétion — lazy + cache mémoire (décision actée).
-    /// Plafonné : les grosses hiérarchies (titres…) ne doivent pas noyer ni l'UI ni le serveur.
+    /// Members of a hierarchy for autocompletion — lazy + in-memory cache (settled decision).
+    /// Capped: large hierarchies (securities…) must not flood either the UI or the server.
     /// </summary>
     public async Task<IReadOnlyList<MemberMeta>> GetMembersAsync(string cube, string hierarchyUniqueName,
         int limit = 1000, CancellationToken ct = default)
@@ -84,13 +84,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     private readonly ConcurrentDictionary<string, IReadOnlyList<MemberMeta>> _memberCache = new();
 
     /// <summary>
-    /// Enfants d'un nœud de l'explorateur, un cran à la fois (voir <see cref="MemberChildrenQuery"/>
-    /// pour le choix du MDX plutôt que de la DMV). <paramref name="parent"/> est une hiérarchie
-    /// au premier cran, un membre ensuite.
+    /// Children of an explorer node, one level at a time (see <see cref="MemberChildrenQuery"/>
+    /// for why MDX rather than the DMV). <paramref name="parent"/> is a hierarchy
+    /// at the first level, a member after that.
     ///
-    /// On demande <paramref name="limit"/> + 1 membres pour savoir si le plafond a coupé sans
-    /// avoir à compter séparément : la ligne en trop n'est jamais renvoyée, elle ne sert qu'à
-    /// répondre « il y en a d'autres ».
+    /// We request <paramref name="limit"/> + 1 members to know whether the cap truncated without
+    /// having to count separately: the extra row is never returned, it only serves to
+    /// answer "there are more".
     /// </summary>
     public async Task<MemberChildren> GetChildrenAsync(
         string cube, string parent, bool isHierarchy, int limit = 500, CancellationToken ct = default)
@@ -105,17 +105,17 @@ public sealed class MetadataService(SsasSession session, StateStore store)
             using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { } });
             var cs = cmd.ExecuteCellSet();
 
-            // Une requête à un seul axe n'a pas d'Axes[1] — et un membre sans enfant rend un
-            // axe à zéro position plutôt qu'une erreur.
+            // A single-axis query has no Axes[1] — and a member with no children returns an
+            // axis with zero positions rather than an error.
             var nodes = new List<MemberNode>();
             if (cs.Axes.Count > 0)
             {
                 foreach (Position pos in cs.Axes[0].Positions)
                 {
                     var m = pos.Members[0];
-                    // ChildCount vient de CHILDREN_CARDINALITY demandé dans la requête. S'il
-                    // n'est pas remonté, -1 : le nœud reste dépliable et on le découvrira au
-                    // dépliage, plutôt que de le déclarer feuille à tort et de le rendre muet.
+                    // ChildCount comes from the CHILDREN_CARDINALITY requested in the query. If it
+                    // is not returned, -1: the node stays expandable and we will find out when
+                    // expanding it, rather than wrongly declaring it a leaf and making it mute.
                     long enfants;
                     try { enfants = m.ChildCount; } catch { enfants = -1; }
                     nodes.Add(new MemberNode(m.Caption, m.UniqueName, enfants));
@@ -133,13 +133,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
     private readonly ConcurrentDictionary<string, MemberChildren> _childrenCache = new();
 
-    // Cubes dont le stamp a déjà été validé cette session (un seul aller-retour DMV par
-    // (serveur, catalogue, cube) : au premier accès on compare le stamp au cache SQLite et,
-    // s'il diffère, on invalide le cache persistant).
+    // Cubes whose stamp has already been validated this session (a single DMV round-trip per
+    // (server, catalog, cube): on first access we compare the stamp with the SQLite cache and,
+    // if it differs, we invalidate the persistent cache).
     private readonly ConcurrentDictionary<string, byte> _validatedCubes = new();
 
-    /// <summary>Empreinte de version du cube (LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE) : change
-    /// quand le cube est reprocessé → sert à invalider le cache de captions. "" si pas de ligne.</summary>
+    /// <summary>Version fingerprint of the cube (LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE): changes
+    /// when the cube is reprocessed → used to invalidate the caption cache. "" if no row.</summary>
     private async Task<string> GetCubeStampAsync(string cube, CancellationToken ct)
     {
         var t = await session.ExecuteDmvAsync($"""
@@ -155,14 +155,14 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     }
 
     /// <summary>
-    /// Captions de plusieurs membres par unique name : cache persistant SQLite d'abord
-    /// (invalidé une fois par session si le cube a été reprocessé), les manquants résolus par
-    /// lookup ciblé MDSCHEMA_MEMBERS puis persistés. Valeur null pour un membre introuvable.
+    /// Captions of several members by unique name: persistent SQLite cache first
+    /// (invalidated once per session if the cube was reprocessed), the missing ones resolved by
+    /// targeted MDSCHEMA_MEMBERS lookup then persisted. Null value for a member not found.
     /// </summary>
     /// <summary>
-    /// Résout les captions de membres par MDX (`membre.Properties("MEMBER_CAPTION")`) : chaque
-    /// membre est résolu directement par sa clé, sans scan de dimension. Une requête pour tout
-    /// le paquet. Lève si un membre est invalide (l'appelant fait alors un repli membre/membre).
+    /// Resolves member captions through MDX (`member.Properties("MEMBER_CAPTION")`): each
+    /// member is resolved directly by its key, with no dimension scan. One query for the whole
+    /// batch. Throws if a member is invalid (the caller then falls back to member-by-member).
     /// </summary>
     private Task<IReadOnlyDictionary<string, string>> ResolveCaptionsViaMdxAsync(
         string cube, IReadOnlyList<string> members, CancellationToken ct)
@@ -194,7 +194,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         string server = session.Server ?? "", catalog = session.Catalog ?? "";
         string key = $"{server}|{catalog}|{cube}";
 
-        // Validation du stamp une seule fois par (serveur, catalogue, cube) cette session.
+        // Stamp validation only once per (server, catalog, cube) this session.
         if (!_validatedCubes.ContainsKey(key))
         {
             var stamp = await GetCubeStampAsync(cube, ct);
@@ -210,11 +210,11 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         var misses = names.Where(n => !cached.ContainsKey(n)).ToList();
 
         var found = new Dictionary<string, string>();
-        // Résolution par MDX `.Properties("MEMBER_CAPTION")` : résout chaque membre DIRECTEMENT
-        // par sa clé, sans scanner la dimension — contrairement à MDSCHEMA_MEMBERS qui scanne
-        // toute la hiérarchie (des milliers de titres) → gel. Et la DMV ne supporte pas `IN`.
-        // Une seule requête MDX résout tout un paquet ; repli membre par membre si un membre
-        // du paquet est invalide (référence périmée) et fait échouer la requête entière.
+        // Resolution through MDX `.Properties("MEMBER_CAPTION")`: resolves each member DIRECTLY
+        // by its key, without scanning the dimension — unlike MDSCHEMA_MEMBERS, which scans
+        // the whole hierarchy (thousands of securities) → freeze. And the DMV does not support `IN`.
+        // A single MDX query resolves a whole batch; fallback to member-by-member if a member
+        // of the batch is invalid (stale reference) and makes the whole query fail.
         const int mdxChunk = 50;
         for (int off = 0; off < misses.Count; off += mdxChunk)
         {
@@ -227,7 +227,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
             {
                 foreach (var name in slice)
                     try { foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, new[] { name }, ct)) found[kv.Key] = kv.Value; }
-                    catch { /* membre invalide (référence périmée) : ignoré */ }
+                    catch { /* invalid member (stale reference): ignored */ }
             }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
@@ -239,8 +239,8 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     }
 
     /// <summary>
-    /// Caption d'UN membre par son unique name. Délègue au lookup groupé (cache SQLite persistant).
-    /// Fonctionne pour n'importe quel membre indépendamment de la taille de la dimension. Null si introuvable.
+    /// Caption of ONE member by its unique name. Delegates to the batched lookup (persistent SQLite cache).
+    /// Works for any member regardless of the size of the dimension. Null if not found.
     /// </summary>
     public async Task<string?> GetMemberCaptionAsync(string cube, string memberUniqueName, CancellationToken ct = default)
     {
@@ -248,7 +248,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         return d.TryGetValue(memberUniqueName, out var c) ? c : null;
     }
 
-    /// <summary>Vide le cache persistant de captions du cube (rafraîchissement manuel).</summary>
+    /// <summary>Clears the cube's persistent caption cache (manual refresh).</summary>
     public void InvalidateCube(string cube)
     {
         string server = session.Server ?? "", catalog = session.Catalog ?? "";
@@ -256,7 +256,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         _validatedCubes.TryRemove($"{server}|{catalog}|{cube}", out _);
     }
 
-    /// <summary>Construction pure du DTO à partir des rowsets (testable sans serveur).</summary>
+    /// <summary>Pure construction of the DTO from the rowsets (testable without a server).</summary>
     internal static CubeMeta Build(string cube, DataTable measures, DataTable dimensions,
         DataTable hierarchies, DataTable levels)
     {

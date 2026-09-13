@@ -5,16 +5,16 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Ai;
 
 /// <summary>
-/// Construit le contexte cube injecté dans les prompts IA : extraction des [références]
-/// du MDX par matching de tokens (approche pragmatique actée, ~95 %), puis sélection des
-/// seules métadonnées pertinentes du CubeMeta — jamais les centaines de mesures en bloc.
+/// Builds the cube context injected into AI prompts: extracts the [references]
+/// from the MDX by token matching (settled pragmatic approach, ~95%), then selects only the
+/// relevant CubeMeta metadata — never the hundreds of measures in bulk.
 /// </summary>
 public static partial class MdxContextBuilder
 {
     [GeneratedRegex(@"\[(?:[^\]]|\]\])+\]", RegexOptions.Compiled)]
     private static partial Regex BracketedSegment();
 
-    /// <summary>Segments crochetés du MDX, décrochetés et dédupliqués (insensible casse).</summary>
+    /// <summary>Bracketed segments of the MDX, unbracketed and deduplicated (case-insensitive).</summary>
     internal static IReadOnlySet<string> ExtractReferences(string mdx)
     {
         var refs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -23,7 +23,7 @@ public static partial class MdxContextBuilder
         return refs;
     }
 
-    /// <summary>Bloc texte compact des métadonnées référencées par le MDX.</summary>
+    /// <summary>Compact text block of the metadata referenced by the MDX.</summary>
     public static string Build(CubeMeta meta, string mdx)
     {
         var refs = ExtractReferences(mdx);

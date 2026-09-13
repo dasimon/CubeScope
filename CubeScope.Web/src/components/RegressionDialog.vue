@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Harnais de non-régression MDX : enregistrer la requête courante + son résultat comme cas de
-// référence (baseline), puis « Tout exécuter » pour relancer et signaler toute valeur changée.
-// Dialogue ouvert depuis la barre d'outils (voir App.vue).
+// MDX regression harness: save the current query + its result as a reference case
+// (baseline), then "Run all" to re-run and flag any changed value.
+// Dialog opened from the toolbar (see App.vue).
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'

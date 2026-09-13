@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Panneau résultats : grille, erreur ou état vide.
+// Results panel: grid, error or empty state.
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import Message from 'primevue/message'
@@ -14,7 +14,7 @@ import { toCsv, toTsv, downloadCsv, copyToClipboard } from '../exportResults'
 const { t } = useI18n()
 const toast = useToast()
 
-// Comparaison entre catalogues : sans autre catalogue sur le serveur, le bouton n'a pas d'objet.
+// Comparison between catalogs: with no other catalog on the server, the button is pointless.
 const showCompare = ref(false)
 const canCompare = computed(() => store.catalogs.some((c) => c !== store.catalog))
 

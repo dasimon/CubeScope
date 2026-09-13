@@ -6,8 +6,8 @@ using Microsoft.AnalysisServices.AdomdClient;
 namespace CubeScope.Core.Ssas;
 
 /// <summary>
-/// Résultat d'une comparaison de la même requête entre deux catalogues.
-/// <paramref name="Summary"/> est null quand tout concorde.
+/// Result of comparing the same query between two catalogs.
+/// <paramref name="Summary"/> is null when everything matches.
 /// </summary>
 public sealed record CatalogComparison(
     string LeftCatalog,
@@ -22,21 +22,21 @@ public sealed record CatalogComparison(
     IReadOnlyList<CellDiff> Diffs);
 
 /// <summary>
-/// Exécute le MÊME MDX sur le catalogue courant et sur un autre catalogue du même serveur,
-/// puis compare cellule à cellule. Répond à la seule question qui compte après un changement
-/// de script : « est-ce qu'un chiffre a bougé ? ».
+/// Runs the SAME MDX on the current catalog and on another catalog of the same server,
+/// then compares cell by cell. Answers the only question that matters after a script
+/// change: "did any number move?".
 ///
-/// Le second catalogue passe par une connexion transitoire
-/// (<see cref="SsasSession.WithTransientConnectionAsync"/>) : pas de contention avec la session
-/// courante, même locale donc mêmes libellés de colonnes. Conséquence assumée : ces requêtes
-/// ont leur propre SessionID et n'apparaissent pas dans le Profiler.
+/// The second catalog goes through a transient connection
+/// (<see cref="SsasSession.WithTransientConnectionAsync"/>): no contention with the current
+/// session, same locale and therefore same column labels. Accepted consequence: these queries
+/// have their own SessionID and do not show up in the Profiler.
 ///
-/// La comparaison réutilise <see cref="ResultComparer"/>, déjà employé par le harnais de
-/// non-régression : même normalisation, donc mêmes verdicts.
+/// The comparison reuses <see cref="ResultComparer"/>, already used by the regression
+/// harness: same normalization, hence same verdicts.
 /// </summary>
 public sealed class CatalogComparisonService(SsasSession session, QueryService queries)
 {
-    /// <summary>Plafond de cellules rapportées : une grille large produirait un diff illisible.</summary>
+    /// <summary>Cap on reported cells: a wide grid would produce an unreadable diff.</summary>
     private const int MaxDiffs = 200;
 
     public async Task<CatalogComparison> CompareAsync(
@@ -48,12 +48,12 @@ public sealed class CatalogComparisonService(SsasSession session, QueryService q
             throw new InvalidOperationException(
                 $"Le catalogue de comparaison est identique au catalogue courant ({left}).");
 
-        // Le catalogue courant passe par la session (et donc par le Profiler) ; l'autre non.
+        // The current catalog goes through the session (and hence the Profiler); the other does not.
         var leftResult = await queries.ExecuteAsync(mdx, ct);
         var rightResult = await session.WithTransientConnectionAsync(otherCatalog, conn =>
         {
             using var cmd = new AdomdCommand(mdx, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* déjà fini */ } });
+            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* already finished */ } });
             var sw = Stopwatch.StartNew();
             var cs = cmd.ExecuteCellSet();
             sw.Stop();

@@ -15,7 +15,7 @@ app.use(i18n)
 app.use(PrimeVue, {
   theme: {
     preset: Aura,
-    // Outil de dev : thème sombre permanent (classe posée sur <html> dans index.html)
+    // Dev tool: permanent dark theme (class set on <html> in index.html)
     options: { darkModeSelector: '.p-dark' },
   },
 })

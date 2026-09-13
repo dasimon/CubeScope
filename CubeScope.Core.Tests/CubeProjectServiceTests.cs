@@ -4,8 +4,8 @@ namespace CubeScope.Core.Tests;
 
 public class CubeProjectServiceTests : IDisposable
 {
-    // Squelette minimal mais fidèle d'un .cube SSDT : namespace ASSL 2003/engine,
-    // Annotations du designer, un MdxScript avec 1 Command + CalculationProperties.
+    // Minimal but faithful skeleton of an SSDT .cube: ASSL 2003/engine namespace,
+    // designer Annotations, an MdxScript with 1 Command + CalculationProperties.
     private const string SampleCube = """
         <?xml version="1.0" encoding="utf-8"?>
         <Cube xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ddl2="http://schemas.microsoft.com/analysisservices/2003/engine/2" xmlns:ddl2_2="http://schemas.microsoft.com/analysisservices/2003/engine/2/2" xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
@@ -82,7 +82,7 @@ public class CubeProjectServiceTests : IDisposable
         var p = new CubeProjectService().Load(WriteFixture(twoCommands));
         Assert.False(p.CanEdit);
         Assert.NotNull(p.ReadOnlyReason);
-        Assert.Contains("[Deuxième]", p.FullText); // tout est visible, même en lecture seule
+        Assert.Contains("[Deuxième]", p.FullText); // everything is visible, even read-only
     }
 
     [Fact]
@@ -102,9 +102,9 @@ public class CubeProjectServiceTests : IDisposable
         // #endregion
         """;
 
-    // XDocument normalise les fins de ligne en LF à l'analyse (spec XML 1.0). Le contrat
-    // testé est la préservation du CONTENU, pas des CRLF : comparer EOL-normalisé — sinon
-    // le test casse selon core.autocrlf du poste (source en CRLF vs round-trip en LF).
+    // XDocument normalizes line endings to LF when parsing (XML 1.0 spec). The contract under
+    // test is preserving the CONTENT, not the CRLFs: compare EOL-normalized — otherwise the
+    // test breaks depending on the machine's core.autocrlf (CRLF source vs LF round-trip).
     private static string NoCrlf(string s) => s.Replace("\r\n", "\n");
 
     [Fact]
@@ -116,7 +116,7 @@ public class CubeProjectServiceTests : IDisposable
 
         var reloaded = svc.Load(path);
         Assert.Equal(NoCrlf(NewScript), NoCrlf(reloaded.FullText));
-        // Le reste du document est intact (annotations designer, propriétés de calcul)
+        // The rest of the document is intact (designer annotations, calculation properties)
         string xml = File.ReadAllText(path);
         Assert.Contains("DiagramLayout", xml);
         Assert.Contains("<FormatString>'#,##0.00'</FormatString>", xml);
@@ -131,10 +131,10 @@ public class CubeProjectServiceTests : IDisposable
 
         string bak = path + ".bak";
         Assert.True(File.Exists(bak));
-        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // texte d'origine
+        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // original text
 
         svc.Save(path, NewScript + "\n-- v2");
-        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // .bak PAS écrasé
+        Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // .bak NOT overwritten
 
         string mdx = Path.Combine(_dir, "Portefeuilles.mdxscript.mdx");
         Assert.True(File.Exists(mdx));
@@ -146,7 +146,7 @@ public class CubeProjectServiceTests : IDisposable
     {
         var svc = new CubeProjectService();
         string path = WriteFixture(SampleCube);
-        // NewScript ne définit plus [Measures].[Disparu] (qui a une CalculationProperty)
+        // NewScript no longer defines [Measures].[Disparu] (which has a CalculationProperty)
         var warnings = svc.Save(path, NewScript);
         Assert.Contains(warnings, w => w.Contains("[Measures].[Disparu]"));
         Assert.DoesNotContain(warnings, w => w.Contains("[Measures].[Marge]"));
@@ -155,11 +155,10 @@ public class CubeProjectServiceTests : IDisposable
     [Fact]
     public void Save_WhitespaceOnlySecondCommand_MatchesLoadCanEditAndSucceeds()
     {
-        // Un Command dont le <Text> est présent mais blanc ne doit PAS compter comme
-        // une 2e Command "réelle" — Load.CanEdit et Save doivent être d'accord (bug
-        // constaté : Load.CanEdit=true mais Save levait quand même, cf. CommandTexts
-        // qui filtre le blanc vs l'ancien filtre de Save qui ne testait que la présence
-        // du <Text>).
+        // A Command whose <Text> is present but blank must NOT count as a 2nd "real"
+        // Command — Load.CanEdit and Save must agree (bug observed: Load.CanEdit=true
+        // but Save still threw, see CommandTexts, which filters out blanks, vs the old
+        // Save filter, which only tested whether <Text> was present).
         string withBlankCommand = SampleCube.Replace("</Commands>", """
                 <Command>
                   <Text>   </Text>
@@ -172,7 +171,7 @@ public class CubeProjectServiceTests : IDisposable
         var loaded = svc.Load(path);
         Assert.True(loaded.CanEdit);
 
-        svc.Save(path, NewScript); // ne doit pas lever
+        svc.Save(path, NewScript); // must not throw
 
         var reloaded = svc.Load(path);
         Assert.Equal(NoCrlf(NewScript), NoCrlf(reloaded.FullText));

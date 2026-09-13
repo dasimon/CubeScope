@@ -26,16 +26,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// L'initialisation de WebView2 a échoué : la fenêtre est inutilisable, l'application
-    /// ne l'est pas. L'hôte (App) bascule sur le repli navigateur.
+    /// WebView2 initialization failed: the window is unusable, the application
+    /// is not. The host (App) switches to the browser fallback.
     /// </summary>
     internal event EventHandler<EchecInitialisationEventArgs>? EchecInitialisation;
 
     /// <summary>
-    /// `Loaded` branche un `async void` : sans ce filet, une défaillance de
-    /// `CoreWebView2Environment.CreateAsync` / `EnsureCoreWebView2Async` (dossier de données
-    /// corrompu, disque plein, stratégie d'entreprise) devient une exception non gérée sur
-    /// le thread du Dispatcher, donc un crash brut au démarrage.
+    /// `Loaded` wires an `async void`: without this safety net, a failure of
+    /// `CoreWebView2Environment.CreateAsync` / `EnsureCoreWebView2Async` (corrupted data
+    /// folder, full disk, enterprise policy) becomes an unhandled exception on
+    /// the Dispatcher thread, hence a raw crash at startup.
     /// </summary>
     private async Task DemarrerVueAsync()
     {
@@ -45,8 +45,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // Se retirer de l'écran AVANT de prévenir : le dialogue du repli ne doit pas
-            // s'afficher devant une fenêtre vide qui ne servira jamais.
+            // Get off the screen BEFORE notifying: the fallback dialog must not
+            // show up in front of an empty window that will never be used.
             Hide();
             EchecInitialisation?.Invoke(this, new EchecInitialisationEventArgs(ex.Message));
             FermerSansDemander();
@@ -54,32 +54,32 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Le travail non enregistré du panneau Script était protégé par un `beforeunload` côté
-    /// page. Détruire un contrôle WebView2 ne passe PAS par le chemin de fermeture du
-    /// navigateur : ce handler n'est jamais évalué ici, et la croix de la fenêtre perdrait
-    /// le travail sans un mot. On repose donc la question nous-mêmes.
+    /// Unsaved work in the Script panel was protected by a page-side `beforeunload`.
+    /// Destroying a WebView2 control does NOT go through the browser's closing
+    /// path: that handler is never evaluated here, and the window's close button would lose
+    /// the work without a word. So we ask the question again ourselves.
     ///
-    /// La réponse est asynchrone (`ExecuteScriptAsync`) alors que `Closing` est synchrone :
-    /// on annule cette fermeture-ci, on interroge la page, puis on rappelle `Close()` une
-    /// fois la réponse connue. `_fermetureConfirmee` distingue les deux passages.
+    /// The answer is asynchronous (`ExecuteScriptAsync`) whereas `Closing` is synchronous:
+    /// this close is cancelled, the page is queried, then `Close()` is called again once
+    /// the answer is known. `_fermetureConfirmee` tells the two passes apart.
     /// </summary>
     private void AuMomentDeFermer(object? sender, CancelEventArgs e)
     {
-        // Enregistrée à CHAQUE passage, pas seulement sur la fermeture confirmée : WPF ignore
-        // `e.Cancel` quand la fermeture vient d'un `Application.Shutdown()` (fin de session
-        // Windows), et la géométrie serait alors perdue. L'écriture est un upsert d'une seule
-        // ligne : la rejouer ne coûte rien, et c'est toujours le dernier passage qui gagne.
+        // Saved on EVERY pass, not only on the confirmed close: WPF ignores
+        // `e.Cancel` when the close comes from an `Application.Shutdown()` (end of Windows
+        // session), and the geometry would then be lost. The write is a single-row
+        // upsert: replaying it costs nothing, and the last pass always wins.
         EnregistrerGeometrie();
 
         if (_fermetureConfirmee) return;
 
         e.Cancel = true;
 
-        // Sans ce garde, chaque clic sur la croix pendant la vérification en relance une :
-        // les continuations reprennent dans la pompe imbriquée de la première `MessageBox`
-        // (dialogues empilés), et le `Close()` du perdant lève sur une fenêtre déjà fermée.
-        // La fenêtre de tir s'élargit précisément quand la page est lente — donc quand
-        // l'utilisateur reclique.
+        // Without this guard, each click on the close button during the check starts another one:
+        // the continuations resume inside the nested pump of the first `MessageBox`
+        // (stacked dialogs), and the loser's `Close()` throws on an already closed window.
+        // The window of opportunity widens precisely when the page is slow — that is, when
+        // the user clicks again.
         if (_verificationEnCours) return;
         _verificationEnCours = true;
         _ = ConfirmerPuisFermerAsync();
@@ -89,14 +89,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Renvoie la chaîne JSON "true" ou "false" ; tout le reste (null, undefined,
-            // page pas encore chargée) se lit comme « rien à perdre ».
+            // Returns the JSON string "true" or "false"; anything else (null, undefined,
+            // page not loaded yet) reads as "nothing to lose".
             //
-            // Borné dans le temps : `ExecuteScriptAsync` est posté sur le thread JS du
-            // renderer, et tant qu'un traitement synchrone l'occupe la promesse ne se résout
-            // JAMAIS — sur ce produit ce n'est pas théorique (le panneau Script manipule
-            // des centaines de commandes). Sans délai, la croix deviendrait inerte : un
-            // garde-fou qui empêche de quitter l'application est pire que pas de garde-fou.
+            // Time-bounded: `ExecuteScriptAsync` is posted to the renderer's JS
+            // thread, and while synchronous work keeps it busy the promise NEVER
+            // resolves — on this product that is not theoretical (the Script panel handles
+            // hundreds of commands). Without a timeout, the close button would become inert: a
+            // safeguard that prevents quitting the application is worse than no safeguard.
             var interrogation = Vue.CoreWebView2.ExecuteScriptAsync("window.__cubescopeDirty === true");
             if (await Task.WhenAny(interrogation, Task.Delay(TimeSpan.FromSeconds(2))) != interrogation)
             {
@@ -115,7 +115,7 @@ public partial class MainWindow : Window
                     MessageBoxImage.Warning);
                 if (choix != MessageBoxResult.Yes)
                 {
-                    // La fenêtre reste ouverte, et la question sera reposée au prochain clic.
+                    // The window stays open, and the question will be asked again on the next click.
                     _verificationEnCours = false;
                     return;
                 }
@@ -123,14 +123,14 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // WebView2 pas initialisée, page pas chargée, script en erreur : un garde-fou
-            // qui empêcherait de quitter l'application serait pire que pas de garde-fou.
+            // WebView2 not initialized, page not loaded, script error: a safeguard
+            // that would prevent quitting the application would be worse than no safeguard.
         }
 
         FermerSansDemander();
     }
 
-    /// <summary>Ferme en court-circuitant la question — chemin du repli navigateur et de la confirmation acquise.</summary>
+    /// <summary>Closes while skipping the question — path for the browser fallback and for an already obtained confirmation.</summary>
     internal void FermerSansDemander()
     {
         _fermetureConfirmee = true;
@@ -142,9 +142,9 @@ public partial class MainWindow : Window
         var etat = _store.GetWindowState();
         if (etat is null) return;
 
-        // Un écran débranché depuis la dernière session laisserait la fenêtre hors champ.
-        // VirtualScreen* couvre TOUS les moniteurs (WorkArea se limite au principal, ce qui
-        // rejetterait à tort toute position sur un écran secondaire).
+        // A screen unplugged since the last session would leave the window off screen.
+        // VirtualScreen* covers ALL monitors (WorkArea is limited to the primary one, which
+        // would wrongly reject any position on a secondary screen).
         bool utilisable = GeometrieDecider.GeometrieUtilisable(
             etat.X, etat.Y, etat.Width, etat.Height,
             SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
@@ -161,9 +161,9 @@ public partial class MainWindow : Window
 
     private void EnregistrerGeometrie()
     {
-        // RestoreBounds donne la géométrie d'avant l'agrandissement : sans ça, une
-        // fenêtre fermée maximisée rouvrirait plein écran puis, une fois restaurée,
-        // occuperait tout l'écran.
+        // RestoreBounds gives the geometry from before maximizing: without it, a
+        // window closed while maximized would reopen full screen and then, once restored,
+        // would still fill the whole screen.
         bool maximise = WindowState == System.Windows.WindowState.Maximized;
         var r = maximise ? RestoreBounds : new Rect(Left, Top, Width, Height);
         _store.SaveWindowState(r.X, r.Y, r.Width, r.Height, maximise);
@@ -171,10 +171,10 @@ public partial class MainWindow : Window
 
     private async Task InitialiserVueAsync()
     {
-        // PIÈGE : par défaut WebView2 crée son dossier de données À CÔTÉ de l'exe
-        // ({nom}.exe.WebView2) et échoue si le dossier n'est pas accessible en écriture —
-        // exactement le mode de panne de l'exe v0.1.0 une fois déplacé. Microsoft
-        // recommande explicitement un emplacement personnalisé en WPF.
+        // PITFALL: by default WebView2 creates its data folder NEXT TO the exe
+        // ({name}.exe.WebView2) and fails if the folder is not writable —
+        // exactly the failure mode of the v0.1.0 exe once moved. Microsoft
+        // explicitly recommends a custom location in WPF.
         string dossier = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "CubeScope", "WebView2");
@@ -185,20 +185,20 @@ public partial class MainWindow : Window
 
         var config = Vue.CoreWebView2.Settings;
 
-        // Supprime Ctrl+R / Ctrl+W / Ctrl+P : plus de rechargement accidentel qui fait
-        // perdre l'éditeur. Effet de bord recherché : F12 cesse d'être confisqué par les
-        // devtools et redevient disponible pour l'application.
+        // Removes Ctrl+R / Ctrl+W / Ctrl+P: no more accidental reload that loses
+        // the editor. Intended side effect: F12 stops being grabbed by the
+        // devtools and becomes available to the application again.
         config.AreBrowserAcceleratorKeysEnabled = false;
 
-        // Retire le menu natif Edge (« Précédent », « Enregistrer sous »). Les menus
-        // contextuels de Monaco et de PrimeVue sont du HTML : ils ne sont pas touchés.
+        // Removes the native Edge menu ("Back", "Save as"). The Monaco and PrimeVue
+        // context menus are HTML: they are not affected.
         config.AreDefaultContextMenusEnabled = false;
 
-        // Les devtools restent accessibles, mais derrière un raccourci explicite.
+        // The devtools remain accessible, but behind an explicit shortcut.
         config.AreDevToolsEnabled = true;
 
-        // Un lien externe ouvre le navigateur plutôt qu'une fenêtre WebView2 nue,
-        // sans barre d'adresse ni retour possible.
+        // An external link opens the browser rather than a bare WebView2 window,
+        // with no address bar and no way back.
         Vue.CoreWebView2.NewWindowRequested += (_, args) =>
         {
             args.Handled = true;
@@ -206,13 +206,13 @@ public partial class MainWindow : Window
             {
                 Process.Start(new ProcessStartInfo(args.Uri) { UseShellExecute = true });
             }
-            catch { /* lien mort ou pas de navigateur : rien de plus à tenter */ }
+            catch { /* dead link or no browser: nothing more to try */ }
         };
 
         Vue.Source = new Uri(_url);
 
-        // AreBrowserAcceleratorKeysEnabled = false a aussi désactivé Ctrl+Shift+I et le zoom :
-        // on les rebranche nous-mêmes, ce sont les seuls raccourcis navigateur qu'on garde.
+        // AreBrowserAcceleratorKeysEnabled = false also disabled Ctrl+Shift+I and zoom:
+        // we wire them back ourselves, they are the only browser shortcuts we keep.
         Vue.KeyDown += (_, e) =>
         {
             if (e.Key == Key.I
@@ -223,9 +223,9 @@ public partial class MainWindow : Window
             }
             else if (Keyboard.Modifiers == ModifierKeys.Control)
             {
-                // Le zoom est une fonction du navigateur embarqué, pas du contenu web.
-                // AreBrowserAcceleratorKeysEnabled = false l'a coupé avec les autres raccourcis,
-                // et aucun zoom applicatif ne le remplace côté Vue — on le rend donc à l'utilisateur.
+                // Zoom is a feature of the embedded browser, not of the web content.
+                // AreBrowserAcceleratorKeysEnabled = false turned it off along with the other shortcuts,
+                // and no application-level zoom replaces it on the Vue side — so we give it back to the user.
                 const double zoomStep = 0.1;
                 const double minZoom = 0.5;
                 const double maxZoom = 3.0;
@@ -250,7 +250,7 @@ public partial class MainWindow : Window
     }
 }
 
-/// <summary>Raison lisible de l'échec d'initialisation de WebView2, à montrer à l'utilisateur.</summary>
+/// <summary>Readable reason for the WebView2 initialization failure, to show to the user.</summary>
 internal sealed class EchecInitialisationEventArgs(string raison) : EventArgs
 {
     public string Raison { get; } = raison;

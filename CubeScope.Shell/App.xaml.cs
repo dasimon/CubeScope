@@ -25,10 +25,10 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // `OnStartup` est un `async void` : sans ce filet, la moindre défaillance du
-            // démarrage (le cas banal étant un port déjà pris — `--port 5199` pendant que
-            // la boucle de dev tourne) sort en exception non gérée et l'utilisateur reçoit
-            // une boîte de dialogue .NET illisible.
+            // `OnStartup` is an `async void`: without this safety net, the slightest startup
+            // failure (the common case being a port already taken — `--port 5199` while
+            // the dev loop is running) escapes as an unhandled exception and the user gets
+            // an unreadable .NET dialog box.
             MessageBox.Show(
                 "CubeScope n'a pas pu démarrer.\n\n"
                 + ex.Message + "\n\n"
@@ -45,9 +45,9 @@ public partial class App : Application
 
     private async Task DemarrerAsync(StartupEventArgs e)
     {
-        // Le test de présence du runtime est statique : il ne dépend pas de l'URL, donc
-        // il se fait AVANT de démarrer Kestrel — ce qui permet de passer la bonne valeur
-        // de browserLifetime du premier coup, sans mutation après coup.
+        // The runtime presence check is static: it does not depend on the URL, so
+        // it runs BEFORE starting Kestrel — which allows passing the right browserLifetime
+        // value the first time, without mutating it afterwards.
         var mode = LaunchModeDecider.Decide(
             runtimeDisponible: RuntimeWebView2Disponible(),
             forceBrowser: e.Args.Contains("--force-browser"));
@@ -59,9 +59,9 @@ public partial class App : Application
         if (mode == LaunchMode.Browser)
         {
             RelayerArretDeLHote(app);
-            // Cas nominal du repli : pas de dialogue à fermer à chaque lancement — le
-            // navigateur qui s'ouvre EST le signal que l'application tourne. Reste une
-            // trace côté journal pour le diagnostic, l'exe étant un WinExe sans console.
+            // Nominal fallback case: no dialog to close on every launch — the
+            // browser opening IS the signal that the application is running. A
+            // log entry remains for diagnostics, since the exe is a WinExe without a console.
             app.Logger.LogInformation("Repli navigateur : interface ouverte sur {Url}", url);
             if (!OuvrirNavigateur(url)) await ArreterServeurAsync();
             return;
@@ -72,8 +72,8 @@ public partial class App : Application
         fenetre.EchecInitialisation += (_, args) => BasculerVersNavigateur(app, url, args.Raison);
         fenetre.Closed += async (_, _) =>
         {
-            // Après bascule, le serveur sert le navigateur : la fenêtre disparaît, l'hôte
-            // reste — c'est BrowserLifetime (armé par la bascule) qui l'arrêtera.
+            // After the switch, the server serves the browser: the window goes away, the host
+            // stays — BrowserLifetime (armed by the switch) is what will stop it.
             if (_basculeNavigateur) return;
             await ArreterServeurAsync();
         };
@@ -82,35 +82,35 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// BrowserLifetime arrête l'HÔTE WEB, pas l'application WPF. Sans ce relais, l'exe
-    /// survivrait sans fenêtre ni serveur, invisible et increvable.
+    /// BrowserLifetime stops the WEB HOST, not the WPF application. Without this relay, the exe
+    /// would survive with neither window nor server, invisible and unkillable.
     ///
-    /// ApplicationStopping, PAS ApplicationStopped : BrowserLifetime appelle
-    /// IHostApplicationLifetime.StopApplication(), qui ne déclenche QUE
-    /// ApplicationStopping. Le pont vers StopAsync() — et donc vers ApplicationStopped —
-    /// vit dans WaitForShutdownAsync(), que StartAsync n'appelle pas (c'est RunAsync, le
-    /// chemin du Cli, qui l'utilise). S'abonner à ApplicationStopped attendrait donc un
-    /// événement qui n'arrive jamais. C'est ArreterServeurAsync qui DÉCLENCHE l'arrêt de
-    /// l'hôte, elle n'en attend pas la confirmation.
+    /// ApplicationStopping, NOT ApplicationStopped: BrowserLifetime calls
+    /// IHostApplicationLifetime.StopApplication(), which ONLY triggers
+    /// ApplicationStopping. The bridge to StopAsync() — and therefore to ApplicationStopped —
+    /// lives in WaitForShutdownAsync(), which StartAsync does not call (RunAsync, the
+    /// Cli path, is what uses it). Subscribing to ApplicationStopped would therefore wait for an
+    /// event that never comes. ArreterServeurAsync is what TRIGGERS the host
+    /// shutdown, it does not wait for its confirmation.
     /// </summary>
     private void RelayerArretDeLHote(WebApplication app) =>
         app.Lifetime.ApplicationStopping.Register(
             () => Dispatcher.Invoke(() => _ = ArreterServeurAsync()));
 
     /// <summary>
-    /// Repli tardif : la fenêtre était le mode choisi, mais WebView2 a échoué à s'initialiser
-    /// (dossier de données corrompu, disque plein, stratégie d'entreprise). Mourir sur cette
-    /// exception priverait l'utilisateur d'un produit par ailleurs fonctionnel — on bascule
-    /// donc sur le navigateur, comme si le runtime avait été absent au départ.
+    /// Late fallback: the window was the chosen mode, but WebView2 failed to initialize
+    /// (corrupted data folder, full disk, enterprise policy). Dying on this
+    /// exception would deprive the user of an otherwise working product — so we switch
+    /// to the browser, as if the runtime had been missing from the start.
     /// </summary>
     private void BasculerVersNavigateur(WebApplication app, string url, string raison)
     {
         if (_basculeNavigateur) return;
         _basculeNavigateur = true;
 
-        // Le lifetime navigateur était désarmé (on partait en mode fenêtre) : sans ça,
-        // fermer l'onglet laisserait l'exe tourner sans rien à l'écran — exactement le
-        // mode de panne que ce repli doit éviter.
+        // The browser lifetime was disarmed (we were starting in window mode): without this,
+        // closing the tab would leave the exe running with nothing on screen — exactly the
+        // failure mode this fallback must avoid.
         app.Services.GetRequiredService<BrowserLifetime>().Enabled = true;
         RelayerArretDeLHote(app);
 
@@ -120,8 +120,8 @@ public partial class App : Application
             return;
         }
 
-        // Ici un dialogue se justifie : on n'est pas dans le cas nominal, et l'utilisateur
-        // doit comprendre pourquoi il n'a pas la fenêtre native attendue.
+        // Here a dialog is justified: this is not the nominal case, and the user
+        // must understand why they do not get the expected native window.
         MessageBox.Show(
             "La fenêtre CubeScope n'a pas pu démarrer :\n\n"
             + raison + "\n\n"
@@ -132,10 +132,10 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Ouvre l'URL dans le navigateur par défaut. En cas d'échec (association HTTP cassée ou
-    /// verrouillée par stratégie — le cas des serveurs Windows / LTSC que ce repli vise),
-    /// l'ancien `catch {}` vide laissait un process invisible tenir un port, sans fenêtre et
-    /// sans console : il fallait le Gestionnaire des tâches. On affiche donc l'URL en clair.
+    /// Opens the URL in the default browser. On failure (HTTP association broken or
+    /// locked by policy — the case of the Windows Server / LTSC machines this fallback targets),
+    /// the former empty `catch {}` left an invisible process holding a port, with no window and
+    /// no console: Task Manager was needed. So the URL is shown in plain text.
     /// </summary>
     private static bool OuvrirNavigateur(string url)
     {
@@ -160,14 +160,14 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Arrêt complet : hôte web puis application. `StopAsync` NE SUFFIT PAS — le
-    /// `Stop()` + `Drop()` de la trace SSAS vit dans le `Dispose()` de `ProfilerService`,
-    /// singleton du conteneur, et seul `DisposeAsync` sur l'hôte détruit ce conteneur.
-    /// `app.Run()` s'en chargeait dans son propre `finally` ; en pilotant nous-mêmes le
-    /// cycle de vie, on reprend l'obligation. Sans elle, chaque fermeture laisse une
-    /// trace `CubeScope_Profiler_&lt;pid&gt;` orpheline sur un serveur SSAS partagé.
-    /// Réentrant : appelable depuis la fermeture de la fenêtre comme depuis l'arrêt
-    /// de l'hôte, sans doubler le travail.
+    /// Full shutdown: web host then application. `StopAsync` IS NOT ENOUGH — the
+    /// SSAS trace's `Stop()` + `Drop()` lives in the `Dispose()` of `ProfilerService`,
+    /// a container singleton, and only `DisposeAsync` on the host destroys that container.
+    /// `app.Run()` took care of it in its own `finally`; by driving the lifecycle
+    /// ourselves, we take over the obligation. Without it, every close leaves an
+    /// orphaned `CubeScope_Profiler_&lt;pid&gt;` trace on a shared SSAS server.
+    /// Reentrant: can be called from the window closing as well as from the host
+    /// shutdown, without doing the work twice.
     /// </summary>
     private async Task ArreterServeurAsync()
     {
@@ -179,7 +179,7 @@ public partial class App : Application
             await serveur.StopAsync(TimeSpan.FromSeconds(5));
             await serveur.DisposeAsync();
         }
-        catch { /* on s'arrête de toute façon */ }
+        catch { /* we are stopping anyway */ }
         finally
         {
             Shutdown();
@@ -195,11 +195,11 @@ public partial class App : Application
         }
         catch
         {
-            // C'est une SONDE : tout échec vaut « non ». Au-delà de l'absence de runtime
-            // (WebView2RuntimeNotFoundException), le loader lui-même peut ne pas être
-            // extractible — antivirus, %TEMP% plein, dossier d'extraction en lecture seule —
-            // et lever DllNotFoundException ou BadImageFormatException. Laisser passer ces
-            // cas ferait planter le démarrage au lieu de basculer sur le repli navigateur.
+            // This is a PROBE: any failure means "no". Beyond a missing runtime
+            // (WebView2RuntimeNotFoundException), the loader itself may not be
+            // extractable — antivirus, full %TEMP%, read-only extraction folder —
+            // and throw DllNotFoundException or BadImageFormatException. Letting these
+            // cases through would crash startup instead of switching to the browser fallback.
             return false;
         }
     }

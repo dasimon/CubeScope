@@ -5,17 +5,17 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Logique d'arrêt de l'exe à la fermeture du navigateur. Le lien « onglet fermé → déconnexion
-/// du hub » relève de SignalR ; ce qui se teste ici, c'est ce qu'on en fait : compter les
-/// onglets, absorber un rechargement, ne jamais couper prématurément.
+/// Logic that stops the exe when the browser closes. The "tab closed → hub disconnection" link
+/// belongs to SignalR; what is tested here is what we do with it: count the tabs, absorb a
+/// reload, never shut down prematurely.
 /// </summary>
 public class BrowserLifetimeTests
 {
-    /// <summary>Délai « la page a prévenu qu'elle partait » (fermeture ou F5).</summary>
+    /// <summary>Delay for "the page announced it was leaving" (close or F5).</summary>
     private static readonly TimeSpan Close = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>Délai « le transport a lâché sans préavis » — franchement plus long, pour
-    /// que les tests puissent distinguer les deux sans dépendre de l'ordonnanceur.</summary>
+    /// <summary>Delay for "the transport dropped without notice" — clearly longer, so that
+    /// the tests can tell the two apart without depending on the scheduler.</summary>
     private static readonly TimeSpan Drop = TimeSpan.FromSeconds(30);
 
     private static (BrowserLifetime Sut, FakeLifetime Host) Create(bool enabled = true)
@@ -26,9 +26,9 @@ public class BrowserLifetimeTests
     }
 
     /// <summary>
-    /// Attend l'arrêt au lieu de dormir une durée fixe : sous un pool de threads saturé (CI),
-    /// la continuation du délai de grâce peut être replanifiée bien après son échéance — un
-    /// simple sleep rendait le test instable sans qu'aucun bug ne soit en cause.
+    /// Waits for the shutdown instead of sleeping for a fixed duration: under a saturated thread
+    /// pool (CI), the grace-delay continuation can be rescheduled well after its due time — a
+    /// plain sleep made the test flaky without any bug being involved.
     /// </summary>
     private static async Task AssertStopsAsync(FakeLifetime host)
     {
@@ -37,9 +37,9 @@ public class BrowserLifetimeTests
     }
 
     /// <summary>
-    /// Laisse largement passer le délai de grâce et vérifie que rien ne s'est déclenché.
-    /// Ce sens-là ne souffre pas de la lenteur : une annulation est posée avant toute attente,
-    /// un ordonnancement tardif ne peut donc pas faire apparaître un arrêt.
+    /// Lets the grace delay pass by a wide margin and checks that nothing fired.
+    /// This direction does not suffer from slowness: a cancellation is set before any wait,
+    /// so late scheduling cannot make a shutdown appear.
     /// </summary>
     private static async Task AssertDoesNotStopAsync(FakeLifetime host)
     {
@@ -53,7 +53,7 @@ public class BrowserLifetimeTests
         var (sut, host) = Create();
         sut.ClientConnected();
 
-        sut.NoticeClientLeaving(); // balise pagehide, puis fermeture du WebSocket
+        sut.NoticeClientLeaving(); // pagehide beacon, then the WebSocket closes
         sut.ClientDisconnected();
 
         await AssertStopsAsync(host);
@@ -62,8 +62,8 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task NoticeArrivingAfterTheDisconnect_ShortensThePendingShutdown()
     {
-        // La balise et la fermeture du socket courent l'une contre l'autre : dans cet ordre,
-        // l'arrêt est déjà armé au délai LONG et doit être ramené au délai court.
+        // The beacon and the socket close race each other: in this order, the shutdown is
+        // already armed with the LONG delay and must be brought back to the short delay.
         var (sut, host) = Create();
         sut.ClientConnected();
 
@@ -76,13 +76,13 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task UnannouncedDrop_WaitsForTheClientToComeBack()
     {
-        // Le cœur du correctif : un transport qui lâche n'est PAS une fermeture. Le client
-        // est en withAutomaticReconnect (0/2/10/30 s) — couper au délai court le tuerait
-        // sous une page encore ouverte.
+        // The heart of the fix: a transport that drops is NOT a close. The client uses
+        // withAutomaticReconnect (0/2/10/30 s) — shutting down after the short delay would
+        // kill it under a page that is still open.
         var (sut, host) = Create();
         sut.ClientConnected();
 
-        sut.ClientDisconnected(); // aucune balise
+        sut.ClientDisconnected(); // no beacon
 
         await AssertDoesNotStopAsync(host);
     }
@@ -94,7 +94,7 @@ public class BrowserLifetimeTests
         sut.ClientConnected();
 
         sut.ClientDisconnected();
-        sut.ClientConnected(); // la reconnexion automatique a abouti
+        sut.ClientConnected(); // the automatic reconnect succeeded
 
         await AssertDoesNotStopAsync(host);
     }
@@ -102,7 +102,7 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task Reload_WithinGrace_DoesNotStop()
     {
-        // Un F5 prévient (pagehide) puis rouvre aussitôt : le serveur doit survivre.
+        // An F5 gives notice (pagehide) then reopens immediately: the server must survive.
         var (sut, host) = Create();
         sut.ClientConnected();
 
@@ -116,15 +116,15 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task ReconnectClearsTheLeavingFlag()
     {
-        // Une balise consommée par un rechargement ne doit pas faire passer une coupure
-        // ultérieure, sans préavis, pour une fermeture volontaire.
+        // A beacon consumed by a reload must not make a later drop, without notice, pass
+        // for a deliberate close.
         var (sut, host) = Create();
         sut.ClientConnected();
         sut.NoticeClientLeaving();
         sut.ClientDisconnected();
-        sut.ClientConnected(); // le F5 a abouti
+        sut.ClientConnected(); // the F5 succeeded
 
-        sut.ClientDisconnected(); // plus tard : coupure réseau, sans balise
+        sut.ClientDisconnected(); // later: network drop, no beacon
 
         await AssertDoesNotStopAsync(host);
     }
@@ -160,7 +160,7 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task Disabled_NeverStops()
     {
-        // Cas --no-browser : boucle de dev et tests ne doivent pas s'arrêter tout seuls.
+        // --no-browser case: the dev loop and the tests must not stop on their own.
         var (sut, host) = Create(enabled: false);
         sut.ClientConnected();
 
@@ -173,16 +173,16 @@ public class BrowserLifetimeTests
     [Fact]
     public async Task NoClientEverConnected_NeverStops()
     {
-        // Garde-fou : rien ne doit s'armer avant qu'un onglet se soit connecté, sinon l'exe
-        // se couperait pendant l'ouverture du navigateur.
+        // Safeguard: nothing must arm before a tab has connected, otherwise the exe would
+        // shut down while the browser is opening.
         var (_, host) = Create();
 
         await AssertDoesNotStopAsync(host);
     }
 
     /// <summary>
-    /// L'arrêt est déclenché depuis le pool de threads : on l'expose en tâche plutôt qu'en
-    /// booléen, pour que le test l'attende sans sondage ni question de visibilité mémoire.
+    /// The shutdown is triggered from the thread pool: it is exposed as a task rather than a
+    /// boolean, so the test can await it without polling or memory-visibility concerns.
     /// </summary>
     private sealed class FakeLifetime : IHostApplicationLifetime
     {

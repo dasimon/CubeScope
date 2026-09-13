@@ -1,25 +1,25 @@
 using System.Collections.Concurrent;
 using CubeScope.Core.Models;
 using Microsoft.AnalysisServices;
-using AmoTrace = Microsoft.AnalysisServices.Trace; // ambiguïté avec System.Diagnostics.Trace
+using AmoTrace = Microsoft.AnalysisServices.Trace; // ambiguous with System.Diagnostics.Trace
 
 namespace CubeScope.Core.Profiler;
 
 /// <summary>
-/// Profiler par requête via trace SSAS (validé au spike 2026-07-24). Une seule trace
-/// serveur persistante par connexion, événements bufferisés par SessionID. Dégradable :
-/// si la création de trace échoue (droits admin absents), le service passe en Unavailable
-/// et l'application continue sans profiler. Trace serveur = globale → Stop()+Drop() au dispose.
+/// Per-query profiler via SSAS trace (validated in the 2026-07-24 spike). A single persistent
+/// server trace per connection, events buffered by SessionID. Degradable:
+/// if trace creation fails (no admin rights), the service switches to Unavailable
+/// and the application carries on without a profiler. Server trace = global → Stop()+Drop() on dispose.
 /// </summary>
 public sealed class ProfilerService : IDisposable
 {
-    // Nom scopé au PID : deux instances CubeScope (ou un test + l'app) sur le même serveur
-    // ne se volent pas la trace. Le nettoyage d'orphelines ne drop que les PID morts.
+    // Name scoped to the PID: two CubeScope instances (or a test + the app) on the same server
+    // do not steal each other's trace. Orphan cleanup only drops dead PIDs.
     private const string TracePrefix = "CubeScope_Profiler_";
     private static readonly string TraceName = $"{TracePrefix}{Environment.ProcessId}";
     private static readonly TimeSpan BufferWindow = TimeSpan.FromMinutes(2);
 
-    // Événements « complétés » uniquement (les « Begin » n'ont pas de Duration → rejet serveur).
+    // "Completed" events only ("Begin" events have no Duration → rejected by the server).
     private static readonly TraceEventClass[] Events =
     [
         TraceEventClass.QueryEnd,
@@ -36,7 +36,7 @@ public sealed class ProfilerService : IDisposable
     ];
 
     private readonly Lock _lock = new();
-    // Buffer par session : file d'événements récents (élaguée par fenêtre glissante).
+    // Per-session buffer: queue of recent events (pruned with a sliding window).
     private readonly ConcurrentDictionary<string, ConcurrentQueue<(ProfileEvent Ev, DateTime At)>> _bySession = new();
     private Server? _amo;
     private AmoTrace? _trace;
@@ -44,16 +44,16 @@ public sealed class ProfilerService : IDisposable
     public ProfilerStatus Status { get; private set; } = ProfilerStatus.NotInitialized;
     public string? StatusDetail { get; private set; }
 
-    /// <summary>Crée et démarre la trace pour un serveur. Jamais bloquant / jamais fatal.</summary>
+    /// <summary>Creates and starts the trace for a server. Never blocking / never fatal.</summary>
     public void Initialize(string dataSource)
     {
         lock (_lock)
         {
-            // Course réelle : `ServerHost` lance Initialize en tâche de fond à la connexion,
-            // et la fermeture peut la gagner. Sans ce garde, Dispose() finit son ménage,
-            // relâche le verrou, puis Initialize crée et démarre une trace que plus personne
-            // ne libérera — trace `CubeScope_Profiler_<pid>` orpheline sur un serveur SSAS
-            // partagé avec la production, seule voie où DisposeAsync ne sert à rien.
+            // Real race: `ServerHost` runs Initialize in the background on connection,
+            // and shutdown can win it. Without this guard, Dispose() finishes its cleanup,
+            // releases the lock, then Initialize creates and starts a trace that nobody will
+            // ever release — an orphan `CubeScope_Profiler_<pid>` trace on an SSAS server
+            // shared with production, the only path where DisposeAsync is of no use.
             if (_disposed) return;
 
             if (Status == ProfilerStatus.Ready && string.Equals(_amo?.Name, dataSource, StringComparison.OrdinalIgnoreCase))
@@ -64,8 +64,8 @@ public sealed class ProfilerService : IDisposable
                 _amo = new Server();
                 _amo.Connect($"Data Source={dataSource};Integrated Security=SSPI;");
 
-                // Balayer les traces orphelines : seulement celles dont le process CubeScope
-                // local est mort (crash précédent) — jamais celle d'une instance sœur vivante.
+                // Sweep orphan traces: only those whose local CubeScope process
+                // is dead (previous crash) — never the one of a live sibling instance.
                 foreach (var t in _amo.Traces.Cast<AmoTrace>().Where(t => t.Name.StartsWith(TracePrefix)).ToList())
                     if (IsOrphan(t.Name))
                         try { t.Drop(); } catch { /* ignore */ }
@@ -96,9 +96,9 @@ public sealed class ProfilerService : IDisposable
     }
 
     /// <summary>
-    /// Boucle auto-corrective : chaque EventClass a sa liste blanche de colonnes, validée
-    /// serveur au Update(). Le message d'erreur donne (eventId, columnId) = valeurs d'enum
-    /// AMO → on retire la colonne fautive de l'événement et on réessaie.
+    /// Self-correcting loop: each EventClass has its own column allow-list, validated
+    /// server-side on Update(). The error message gives (eventId, columnId) = AMO enum
+    /// values → we remove the offending column from the event and retry.
     /// </summary>
     private static void PruneAndUpdate(AmoTrace trace)
     {
@@ -133,12 +133,12 @@ public sealed class ProfilerService : IDisposable
 
         var q = _bySession.GetOrAdd(session, _ => new());
         q.Enqueue((pe, pe.CapturedUtc));
-        // Élaguer les vieux événements (fenêtre glissante) pour borner la mémoire.
+        // Prune old events (sliding window) to bound memory.
         var cutoff = DateTime.UtcNow - BufferWindow;
         while (q.TryPeek(out var head) && head.At < cutoff) q.TryDequeue(out _);
     }
 
-    /// <summary>Événements d'une session capturés depuis un instant donné (fin de requête).</summary>
+    /// <summary>Events of a session captured since a given instant (end of query).</summary>
     public IReadOnlyList<ProfileEvent> DrainSince(string session, DateTime sinceUtc)
     {
         if (Status != ProfilerStatus.Ready || string.IsNullOrEmpty(session)) return [];
@@ -166,9 +166,9 @@ public sealed class ProfilerService : IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// Lève si le service a déjà été libéré. Existe pour qu'un test puisse constater que
-    /// la destruction du conteneur DI a bien atteint ce singleton : c'est ce même chemin
-    /// qui exécute le Stop() + Drop() de la trace SSAS.
+    /// Throws if the service has already been disposed. Exists so that a test can check that
+    /// disposing the DI container did reach this singleton: this same path is the one
+    /// that runs the Stop() + Drop() of the SSAS trace.
     /// </summary>
     public void EnsureNotDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -181,13 +181,13 @@ public sealed class ProfilerService : IDisposable
         }
     }
 
-    /// <summary>Une trace CubeScope_Profiler_&lt;pid&gt; est orpheline si son process local n'existe plus.</summary>
+    /// <summary>A CubeScope_Profiler_&lt;pid&gt; trace is an orphan if its local process no longer exists.</summary>
     internal static bool IsOrphan(string traceName)
     {
-        if (traceName == TraceName) return true; // notre propre nom résiduel (crash puis relance même PID)
-        if (!int.TryParse(traceName.AsSpan(TracePrefix.Length), out int pid)) return false; // nom inattendu : ne pas toucher
-        try { using var _ = System.Diagnostics.Process.GetProcessById(pid); return false; } // process vivant
-        catch (ArgumentException) { return true; } // process mort → orpheline
+        if (traceName == TraceName) return true; // our own leftover name (crash then restart with the same PID)
+        if (!int.TryParse(traceName.AsSpan(TracePrefix.Length), out int pid)) return false; // unexpected name: leave it alone
+        try { using var _ = System.Diagnostics.Process.GetProcessById(pid); return false; } // process alive
+        catch (ArgumentException) { return true; } // process dead → orphan
     }
 
     private static string? Safe(Func<string?> f) { try { return f(); } catch { return null; } }

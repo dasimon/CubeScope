@@ -25,8 +25,8 @@ jobs:
         with:
           node-version: lts/*
 
-      # La cible EmbedSpa du .csproj lance "npm run build" au publish : les deps
-      # front doivent être installées d'abord.
+      # The .csproj EmbedSpa target runs "npm run build" on publish: the front-end
+      # deps must be installed first.
       - name: Install web dependencies
         run: npm ci
         working-directory: CubeScope.Web

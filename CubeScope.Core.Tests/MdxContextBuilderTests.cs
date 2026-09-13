@@ -34,7 +34,7 @@ public class MdxContextBuilderTests
         Assert.Contains("Measures", refs);
         Assert.Contains("Sales Amount", refs);
         Assert.Contains("Dim à ]crochet", refs);
-        Assert.Equal(3, refs.Count); // dédup insensible à la casse
+        Assert.Equal(3, refs.Count); // case-insensitive dedup
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public class MdxContextBuilderTests
             "SELECT { [Measures].[Sales Amount] } ON COLUMNS, [Product Category].[Product Category].Members ON ROWS FROM [SalesCube]");
 
         Assert.Contains("[Measures].[Sales Amount]", ctx);
-        Assert.DoesNotContain("Order Count", ctx); // non référencée
+        Assert.DoesNotContain("Order Count", ctx); // not referenced
         Assert.Contains("[Product Category].[Product Category]", ctx);
-        Assert.DoesNotContain("[Dates]", ctx); // dimension non référencée
+        Assert.DoesNotContain("[Dates]", ctx); // dimension not referenced
         Assert.Contains("2 mesures", ctx);
     }
 

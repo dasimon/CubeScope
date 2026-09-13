@@ -7,12 +7,12 @@ public class StateStoreTests : IDisposable
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db");
     private readonly StateStore _store;
 
-    /// <summary>Bases jetables créées en cours de test, supprimées au Dispose comme la principale.</summary>
+    /// <summary>Throwaway databases created during a test, deleted on Dispose like the main one.</summary>
     private readonly List<string> _extraDbs = [];
 
     public StateStoreTests() => _store = new StateStore(_dbPath);
 
-    /// <summary>Un magasin isolé, dont le fichier sera nettoyé (sinon %TEMP% se remplit).</summary>
+    /// <summary>An isolated store whose file will be cleaned up (otherwise %TEMP% fills up).</summary>
     private StateStore NewStore(int? journalCap = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"cubescope-test-{Guid.NewGuid():N}.db");
@@ -25,7 +25,7 @@ public class StateStoreTests : IDisposable
     {
         _store.AddRecentConnection("SSAS-SERVER", "CatalogA");
         _store.AddRecentConnection("SSAS-SERVER", "CatalogB");
-        _store.AddRecentConnection("SSAS-SERVER", "CatalogA"); // re-connexion → upsert
+        _store.AddRecentConnection("SSAS-SERVER", "CatalogA"); // reconnection → upsert
 
         var recents = _store.GetRecentConnections();
 
@@ -64,7 +64,7 @@ public class StateStoreTests : IDisposable
     public void Migrate_IsIdempotent()
     {
         _store.AddRecentConnection("S", "C");
-        // Réouverture du même fichier → Migrate ne doit rien casser ni dupliquer
+        // Reopening the same file → Migrate must neither break nor duplicate anything
         using var second = new StateStore(_dbPath);
         Assert.Single(second.GetRecentConnections());
     }
@@ -75,7 +75,7 @@ public class StateStoreTests : IDisposable
         using var store = NewStore();
         store.AddRecentProject(@"C:\proj\Cube1.cube");
         store.AddRecentProject(@"C:\proj\Cube2.cube");
-        store.AddRecentProject(@"C:\proj\Cube1.cube"); // ré-ouverture → remonte en tête
+        store.AddRecentProject(@"C:\proj\Cube1.cube"); // reopened → moves back to the top
         var list = store.GetRecentProjects();
         Assert.Equal(2, list.Count);
         Assert.Equal(@"C:\proj\Cube1.cube", list[0].Path);
@@ -93,7 +93,7 @@ public class StateStoreTests : IDisposable
 
         var list = _store.GetSnippets();
         Assert.Equal(2, list.Count);
-        // ORDER BY Name COLLATE NOCASE : "Alpha" avant "Ventes par devise"
+        // ORDER BY Name COLLATE NOCASE: "Alpha" before "Ventes par devise"
         Assert.Equal("Alpha", list[0].Name);
         Assert.Equal("SELECT { [Measures].[Alpha] } ON 0 FROM [Cube]", list[0].Mdx);
         Assert.Equal("Ventes par devise", list[1].Name);
@@ -172,7 +172,7 @@ public class StateStoreTests : IDisposable
 
         var list = _store.GetRegressionCases();
         Assert.Equal(2, list.Count);
-        // ORDER BY Name COLLATE NOCASE : "Alpha" avant "Ventes"
+        // ORDER BY Name COLLATE NOCASE: "Alpha" before "Ventes"
         Assert.Equal("Alpha", list[0].Name);
         Assert.Equal("{\"cellCount\":2}", list[0].ExpectedJson);
         Assert.Equal(id2, list[0].Id);
@@ -232,9 +232,9 @@ public class StateStoreTests : IDisposable
     [Fact]
     public void History_AboveTheCap_DropsTheOldestRows()
     {
-        // Le seuil est abaissé pour le test : il FAUT le franchir pour prouver que la purge
-        // agit — en dessous, ce test passerait même si Prune ne faisait rien. Le franchir avec
-        // la valeur réelle (5 000) coûtait 35 s à la suite, pour la même garantie.
+        // The threshold is lowered for the test: it MUST be crossed to prove that the purge
+        // works — below it, this test would pass even if Prune did nothing. Crossing it with
+        // the real value (5,000) cost the suite 35 s, for the same guarantee.
         const int cap = 50;
         const int extra = 10;
         using var store = NewStore(journalCap: cap);
@@ -244,9 +244,9 @@ public class StateStoreTests : IDisposable
         var all = store.GetHistory(10_000);
 
         Assert.Equal(cap, all.Count);
-        Assert.Equal($"SELECT {cap + extra - 1}", all[0].Mdx);   // la plus récente est là
-        Assert.DoesNotContain(all, h => h.Mdx == "SELECT 0");    // la plus ancienne est partie
-        Assert.Contains(all, h => h.Mdx == $"SELECT {extra}");   // la première conservée
+        Assert.Equal($"SELECT {cap + extra - 1}", all[0].Mdx);   // the newest is there
+        Assert.DoesNotContain(all, h => h.Mdx == "SELECT 0");    // the oldest is gone
+        Assert.Contains(all, h => h.Mdx == $"SELECT {extra}");   // the first one kept
     }
 
     [Fact]

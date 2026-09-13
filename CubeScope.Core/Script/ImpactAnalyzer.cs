@@ -4,20 +4,20 @@ using CubeScope.Core.Models;
 
 namespace CubeScope.Core.Script;
 
-/// <summary>Nature d'un changement de membre calculé / set entre deux versions du script.</summary>
+/// <summary>Kind of change to a calculated member / set between two versions of the script.</summary>
 /// <remarks>
-/// <see cref="JsonStringEnumConverter"/> explicite : par défaut System.Text.Json sérialise un
-/// enum en entier (vérifié empiriquement) — le reste du code base contourne ça en appelant
-/// <c>.ToString()</c> à la main dans des objets anonymes (voir <c>/api/stats/status</c>), ce qui
-/// ne s'applique pas ici puisque <see cref="MemberChange"/> expose l'enum typé directement.
+/// Explicit <see cref="JsonStringEnumConverter"/>: by default System.Text.Json serializes an
+/// enum as an integer (checked empirically) — the rest of the code base works around that by calling
+/// <c>.ToString()</c> by hand in anonymous objects (see <c>/api/stats/status</c>), which
+/// does not apply here since <see cref="MemberChange"/> exposes the typed enum directly.
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ChangeKind { Added, Removed, Changed }
 
 /// <summary>
-/// Un membre calculé (ou set nommé) ajouté/supprimé/modifié entre l'ancien et le nouveau
-/// script, avec la liste des membres du NOUVEAU script qui en dépendent transitivement
-/// (pour un membre supprimé, ce sont des références désormais cassées).
+/// A calculated member (or named set) added/removed/changed between the old and the new
+/// script, with the list of members of the NEW script that depend on it transitively
+/// (for a removed member, these are now-broken references).
 /// </summary>
 public sealed record MemberChange(
     string Name,
@@ -28,10 +28,10 @@ public sealed record MemberChange(
 public sealed record ImpactReport(IReadOnlyList<MemberChange> Changes);
 
 /// <summary>
-/// Analyse d'impact entre deux versions du MDX Script (typiquement : script déployé sur le
-/// serveur vs script du projet, avant écrasement). Réutilise <see cref="ScriptParser"/> pour
-/// le découpage et <see cref="MdxContextBuilder.ExtractReferences"/> (matching de tokens,
-/// même approche pragmatique que <see cref="DependencyService"/>) pour les dépendances.
+/// Impact analysis between two versions of the MDX Script (typically: script deployed on the
+/// server vs project script, before overwriting). Reuses <see cref="ScriptParser"/> for
+/// splitting and <see cref="MdxContextBuilder.ExtractReferences"/> (token matching,
+/// same pragmatic approach as <see cref="DependencyService"/>) for dependencies.
 /// </summary>
 public static class ImpactAnalyzer
 {
@@ -55,7 +55,7 @@ public static class ImpactAnalyzer
                 changes.Add((name, cmd.Kind, ChangeKind.Removed));
         }
 
-        // Références de chaque membre du NOUVEAU script (base du calcul d'impact aval).
+        // References of each member of the NEW script (basis of the downstream impact computation).
         var refsByName = newByName.ToDictionary(
             kv => kv.Key,
             kv => MdxContextBuilder.ExtractReferences(kv.Value.Expression),
@@ -79,10 +79,10 @@ public static class ImpactAnalyzer
     }
 
     /// <summary>
-    /// Fermeture transitive des membres du nouveau script qui dépendent de <paramref name="name"/>
-    /// (directement ou via un autre membre déjà impacté). Marche même si <paramref name="name"/>
-    /// n'existe plus dans le nouveau script (cas Removed : dépendants = références cassées).
-    /// Garde-fou cycle : ensemble visité, chaque membre n'est mis en file qu'une fois.
+    /// Transitive closure of the members of the new script that depend on <paramref name="name"/>
+    /// (directly or through another member already impacted). Works even if <paramref name="name"/>
+    /// no longer exists in the new script (Removed case: dependents = broken references).
+    /// Cycle safeguard: visited set, each member is enqueued only once.
     /// </summary>
     private static List<string> CollectDownstream(string name, IReadOnlyDictionary<string, IReadOnlySet<string>> refsByName)
     {

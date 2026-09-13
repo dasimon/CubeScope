@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Coquille de l'application : barre d'outils, layout dockview (éditeur / résultats /
-// historique), barre d'état, dialogue de connexion.
+// Application shell: toolbar, dockview layout (editor / results / history),
+// status bar, connection dialog.
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DockviewVue, type DockviewApi, type DockviewReadyEvent, type VueComponent } from 'dockview-vue'
@@ -31,8 +31,8 @@ import { actions, store } from './store'
 const { t, locale } = useI18n()
 const toast = useToast()
 
-// Erreurs de requête / IA → toast (en plus de l'affichage inline dans le panneau).
-// On ignore les annulations volontaires de l'utilisateur.
+// Query / AI errors → toast (in addition to the inline display in the panel).
+// Deliberate cancellations by the user are ignored.
 watch(
   () => store.queryError,
   (e) => {
@@ -55,7 +55,7 @@ const LANGS = [
 
 const drillthroughMaxRows = ref(1000)
 
-// Cast nécessaire : les SFC typés ne satisfont pas l'index générique VueComponent (variance TS)
+// Cast required: typed SFCs do not satisfy the generic VueComponent index (TS variance)
 const panelComponents: Record<string, VueComponent> = {
   editor: EditorPanel as VueComponent,
   results: ResultsPanel as VueComponent,
@@ -68,7 +68,7 @@ const panelComponents: Record<string, VueComponent> = {
   sessions: SessionsPanel as VueComponent,
 }
 
-// (id de panneau, clé de traduction du titre) — pour re-titrer au changement de langue.
+// (panel id, title translation key) — to re-title panels when the language changes.
 const PANELS = [
   ['editor', 'panel.mdx'],
   ['explorer', 'panel.explorer'],
@@ -140,13 +140,13 @@ function onReady(event: DockviewReadyEvent) {
   event.api.getPanel('results')?.api.setActive()
 }
 
-// Re-titrer les onglets dockview au changement de langue (les titres ne sont pas réactifs)
+// Re-title the dockview tabs when the language changes (titles are not reactive)
 watch(locale, () => {
   for (const [id, key] of PANELS) dvApi.value?.getPanel(id)?.api.setTitle(t(key))
 })
 
-// « Aller à la définition » : le layout appartient à cette coquille, la navigation dans le
-// script appartient à ScriptPanel — chacun réagit au même signal de son côté.
+// "Go to definition": the layout belongs to this shell, navigation within the script
+// belongs to ScriptPanel — each one reacts to the same signal on its own side.
 watch(
   () => store.gotoDefinitionRevision,
   () => dvApi.value?.getPanel('script')?.api.setActive(),
@@ -156,8 +156,8 @@ async function onCatalogChange(catalog: string) {
   await actions.setCatalog(catalog)
 }
 
-// ClearCache : confirmation explicite obligatoire (sur un catalogue de prod, on vide
-// le cache pour tous les utilisateurs du cube). Succès → toast + fermeture du dialogue.
+// ClearCache: explicit confirmation required (on a prod catalog, this clears the
+// cache for every user of the cube). Success → toast + dialog closes.
 const confirmClear = ref(false)
 const clearing = ref(false)
 async function clearCache() {
@@ -178,7 +178,7 @@ async function clearCache() {
   }
 }
 
-// F5 global = exécuter (pas de rechargement navigateur dans un outil local)
+// Global F5 = execute (no browser reload in a local tool)
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'F5') {
     e.preventDefault()
@@ -263,8 +263,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       />
     </header>
 
-    <!-- Wrapper obligatoire : DockviewVue est multi-root (portals), le CSS scoped
-         ne l'atteint pas — les dimensions passent en style inline. -->
+    <!-- Wrapper required: DockviewVue is multi-root (portals), scoped CSS does not
+         reach it — dimensions are passed as inline style. -->
     <div class="dock-host">
       <DockviewVue
         class="dockview-theme-dark"

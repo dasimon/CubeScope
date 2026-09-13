@@ -12,13 +12,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Au publish (ou -p:EmbedSpa=true) : build de la SPA Vue puis embarquement du dist
-       comme EmbeddedResource (préfixe logique « spa/ ») DANS l'assembly. Servie au runtime
-       par EmbeddedSpaFileProvider → exe VRAIMENT autonome et déplaçable (le single-file
-       cherchait sinon wwwroot À CÔTÉ de l'exe = ContentRoot = 404 une fois déplacé).
-       `_IsPublishing` couvre `dotnet publish` sans flag. En build/dev normal : rien
-       (pas de npm en CI ; la SPA est servie par Vite via le proxy). Le glob des ressources
-       est fait DANS la cible, après npm, pour que dist existe au moment du CoreCompile. -->
+  <!-- On publish (or -p:EmbedSpa=true): build the Vue SPA then embed the dist
+       as EmbeddedResource (logical prefix "spa/") INSIDE the assembly. Served at runtime
+       by EmbeddedSpaFileProvider → a TRULY self-contained, movable exe (otherwise the single-file
+       looked for wwwroot NEXT TO the exe = ContentRoot = 404 once moved).
+       `_IsPublishing` covers `dotnet publish` without a flag. In a normal build/dev: nothing
+       (no npm in CI; the SPA is served by Vite through the proxy). The resource glob
+       is done INSIDE the target, after npm, so that dist exists by the time of CoreCompile. -->
   <Target Name="EmbedSpa"
           BeforeTargets="PrepareForBuild"
           Condition="('$(EmbedSpa)' == 'true' or '$(_IsPublishing)' == 'true') and '$(_SpaEmbedded)' != 'true'">
@@ -27,11 +27,11 @@
       <_SpaEmbedded>true</_SpaEmbedded>
     </PropertyGroup>
     <ItemGroup>
-      <!-- *.* : uniquement les fichiers (le glob **\* matcherait aussi les dossiers).
-           Item intermédiaire `_SpaFile` + métadonnée QUALIFIÉE `%(_SpaFile.…)` : sur un
-           Include auto-référencé, `%(Filename)` s'évalue vide → tous les LogicalName
-           deviennent « spa/ » (collision CS1508). Le passage par un item source qualifié
-           expanse correctement le chemin par fichier. -->
+      <!-- *.*: files only (the **\* glob would also match folders).
+           Intermediate item `_SpaFile` + QUALIFIED metadata `%(_SpaFile.…)`: on a
+           self-referencing Include, `%(Filename)` evaluates to empty → every LogicalName
+           becomes "spa/" (CS1508 collision). Going through a qualified source item
+           expands the per-file path correctly. -->
       <_SpaFile Include="..\CubeScope.Web\dist\**\*.*" />
       <EmbeddedResource Include="@(_SpaFile)">
         <LogicalName>spa/%(_SpaFile.RecursiveDir)%(_SpaFile.Filename)%(_SpaFile.Extension)</LogicalName>

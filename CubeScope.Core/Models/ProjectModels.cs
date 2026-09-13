@@ -1,6 +1,6 @@
 namespace CubeScope.Core.Models;
 
-/// <summary>Le MDX Script lu depuis un fichier .cube de projet SSDT (source de vérité).</summary>
+/// <summary>The MDX Script read from an SSDT project .cube file (source of truth).</summary>
 public sealed record ProjectScript(
     string Path,
     string CubeName,
@@ -9,28 +9,28 @@ public sealed record ProjectScript(
     bool CanEdit,
     string? ReadOnlyReason);
 
-/// <summary>Projet .cube récemment ouvert (persisté en SQLite).</summary>
+/// <summary>Recently opened .cube project (persisted in SQLite).</summary>
 public sealed record RecentProject(string Path, DateTime LastUsedUtc);
 
-/// <summary>Résultat d'un déploiement du script seul. Differs = le serveur portait un
-/// script différent et force était false : rien n'a été écrit, ServerText à examiner.</summary>
+/// <summary>Result of a script-only deployment. Differs = the server held a different
+/// script and force was false: nothing was written, ServerText needs reviewing.</summary>
 public sealed record DeployScriptResult(
     bool Deployed,
     bool Differs,
     string? ServerText,
     long DurationMs);
 
-/// <summary>Propriétés de calcul (FormatString, DisplayFolder, Description) d'un membre/set
-/// calculé du MdxScript, lues/écrites via un élément CalculationProperty. Reference =
-/// CalculationReference (ex. "[Measures].[Marge]"). Les champs valent null quand l'élément
-/// enfant correspondant est absent du XML (jamais chaîne vide).</summary>
+/// <summary>Calculation properties (FormatString, DisplayFolder, Description) of a calculated
+/// member/set of the MdxScript, read/written through a CalculationProperty element. Reference =
+/// CalculationReference (e.g. "[Measures].[Marge]"). Fields are null when the matching child
+/// element is missing from the XML (never an empty string).</summary>
 public sealed record CalculationProp(
     string Reference, string? FormatString, string? DisplayFolder, string? Description);
 
-/// <summary>Une entrée du navigateur de fichiers (dossier ou fichier .cube).</summary>
+/// <summary>An entry of the file browser (folder or .cube file).</summary>
 public sealed record FileEntry(string Name, string Path, bool IsDirectory);
 
-/// <summary>Contenu d'un dossier pour le navigateur de fichiers côté serveur.</summary>
+/// <summary>Contents of a folder for the server-side file browser.</summary>
 public sealed record DirectoryListing(
     string Path,
     string? Parent,
@@ -38,23 +38,23 @@ public sealed record DirectoryListing(
     IReadOnlyList<FileEntry> Directories,
     IReadOnlyList<FileEntry> CubeFiles);
 
-/// <summary>Un snippet MDX réutilisable, persisté en SQLite (bibliothèque locale).</summary>
+/// <summary>A reusable MDX snippet, persisted in SQLite (local library).</summary>
 public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc);
 
-/// <summary>Un cas de non-régression MDX : une requête + son résultat de référence (baseline)
-/// sérialisé en JSON (ExpectedJson = un QueryResult). Relancé après un changement de script pour
-/// détecter toute valeur qui change.</summary>
+/// <summary>An MDX regression case: a query + its reference result (baseline)
+/// serialized as JSON (ExpectedJson = a QueryResult). Re-run after a script change to
+/// detect any value that changes.</summary>
 public sealed record RegressionCase(long Id, string Name, string Mdx, string ExpectedJson, DateTime CreatedUtc);
 
-/// <summary>Un run du profiler persisté (métriques scalaires seulement — pas la liste des
-/// sous-cubes) pour permettre une comparaison avant/après entre deux requêtes.</summary>
+/// <summary>A persisted profiler run (scalar metrics only — not the list of
+/// subcubes) to allow a before/after comparison between two queries.</summary>
 public sealed record ProfileRun(
     long Id, string Server, string? Catalog, string Mdx,
     long TotalMs, long StorageEngineMs, long FormulaEngineMs,
     int SubcubeCount, int CacheHits, int AggregationHits, DateTime ExecutedUtc);
 
-/// <summary>Une entrée du journal d'audit des déploiements de MDX Script réussis
-/// (persisté en SQLite) — enregistrée uniquement quand le déploiement a réellement eu lieu.</summary>
+/// <summary>An entry of the audit log of successful MDX Script deployments
+/// (persisted in SQLite) — recorded only when the deployment actually took place.</summary>
 public sealed record DeployLogEntry(
     long Id, string Server, string? Catalog, string CubeName, string ProjectPath,
     int ScriptChars, bool Forced, DateTime DeployedUtc);

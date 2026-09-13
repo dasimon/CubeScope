@@ -5,12 +5,12 @@ using CubeScope.Core.Script;
 namespace CubeScope.Core.Project;
 
 /// <summary>
-/// Lecture/écriture du MDX Script dans un fichier .cube de projet SSDT (décision
-/// actée : la source de vérité est le projet, jamais d'édition live divergente).
-/// Round-trip minimal : seul le texte de la Command du MdxScript est réécrit, tout
-/// le reste du document XML est préservé (LoadOptions.PreserveWhitespace).
-/// v1 : édition supportée uniquement si le MdxScript a exactement une Command
-/// (cas SSDT standard) ; sinon lecture seule.
+/// Reads/writes the MDX Script in an SSDT project .cube file (settled
+/// decision: the project is the source of truth, never a diverging live edit).
+/// Minimal round-trip: only the text of the MdxScript Command is rewritten, all
+/// the rest of the XML document is preserved (LoadOptions.PreserveWhitespace).
+/// v1: editing is supported only if the MdxScript has exactly one Command
+/// (standard SSDT case); otherwise read-only.
 /// </summary>
 public sealed class CubeProjectService
 {
@@ -48,20 +48,20 @@ public sealed class CubeProjectService
             .Select(t => t!)
             .ToList() ?? [];
 
-    // Backup .bak : une seule fois par session (spec §3) — le service est un singleton.
+    // .bak backup: only once per session (spec §3) — the service is a singleton.
     private readonly HashSet<string> _backedUp = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Réécrit le texte de la Command unique du MdxScript dans le .cube, exporte le
-    /// script en clair (.mdxscript.mdx, diffs Git lisibles) et retourne les
-    /// CalculationProperties devenues orphelines (jamais supprimées automatiquement).
+    /// Rewrites the text of the single MdxScript Command in the .cube, exports the
+    /// script as plain text (.mdxscript.mdx, readable Git diffs) and returns the
+    /// CalculationProperties that became orphans (never deleted automatically).
     /// </summary>
     public IReadOnlyList<string> Save(string path, string fullText)
     {
         var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
         var (_, script) = FindScript(doc, path);
-        // Même notion de "Command éditable" que Load.CanEdit (CommandTexts) : un
-        // <Text> présent mais blanc ne compte pas comme une Command réelle.
+        // Same notion of "editable Command" as Load.CanEdit (CommandTexts): a
+        // <Text> that is present but blank does not count as a real Command.
         var commands = script.Element(Ns + "Commands")?.Elements(Ns + "Command")
             .Where(c => !string.IsNullOrWhiteSpace(c.Element(Ns + "Text")?.Value)).ToList() ?? [];
         if (commands.Count != 1)
@@ -81,8 +81,8 @@ public sealed class CubeProjectService
     }
 
     /// <summary>
-    /// Lit les CalculationProperty du MdxScript (FormatString/DisplayFolder/Description
-    /// d'un membre ou set calculé). N'affecte jamais le disque.
+    /// Reads the MdxScript CalculationProperty elements (FormatString/DisplayFolder/Description
+    /// of a calculated member or set). Never touches the disk.
     /// </summary>
     public IReadOnlyList<CalculationProp> GetCalculationProperties(string path)
     {
@@ -99,11 +99,11 @@ public sealed class CubeProjectService
     }
 
     /// <summary>
-    /// Crée ou met à jour la CalculationProperty d'un membre/set calculé (FormatString,
-    /// DisplayFolder, Description). Une valeur null ou vide supprime l'élément enfant
-    /// correspondant s'il existe ; une valeur non vide le crée ou le met à jour. Ne
-    /// touche à aucune autre CalculationProperty ni à la Command du MdxScript — le
-    /// reste du document est préservé (LoadOptions.PreserveWhitespace).
+    /// Creates or updates the CalculationProperty of a calculated member/set (FormatString,
+    /// DisplayFolder, Description). A null or empty value removes the matching child
+    /// element if it exists; a non-empty value creates or updates it. Touches no
+    /// other CalculationProperty nor the MdxScript Command — the
+    /// rest of the document is preserved (LoadOptions.PreserveWhitespace).
     /// </summary>
     public void SaveCalculationProperty(
         string path, string reference, string? formatString, string? displayFolder, string? description)
@@ -135,9 +135,9 @@ public sealed class CubeProjectService
         doc.Save(path);
     }
 
-    /// <summary>Élément enfant nommé : valeur non vide → créé/mis à jour (ajouté en fin de
-    /// parent si absent, l'ordre n'étant pas validé par SSAS pour ces éléments) ; null ou
-    /// vide → supprimé s'il existe.</summary>
+    /// <summary>Named child element: non-empty value → created/updated (appended at the end of
+    /// the parent if missing, since SSAS does not validate the order of these elements); null or
+    /// empty → removed if it exists.</summary>
     private static void SetOrRemoveChild(XElement parent, XName name, string? value)
     {
         var existing = parent.Element(name);
@@ -156,8 +156,8 @@ public sealed class CubeProjectService
     }
 
     /// <summary>
-    /// CalculationReference sans CREATE MEMBER/SET correspondant dans le script.
-    /// Best effort : comparaison sur le nom normalisé, avertissement seulement.
+    /// CalculationReference with no matching CREATE MEMBER/SET in the script.
+    /// Best effort: comparison on the normalized name, warning only.
     /// </summary>
     internal static IReadOnlyList<string> OrphanCalculationProperties(XElement script, string fullText)
     {

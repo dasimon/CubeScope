@@ -4,8 +4,8 @@ using Microsoft.AnalysisServices.AdomdClient;
 namespace CubeScope.Core.Ssas;
 
 /// <summary>
-/// Une session ouverte sur l'instance SSAS. <paramref name="IsMine"/> distingue la session de
-/// CubeScope lui-même : tout le reste appartient à d'autres utilisateurs ou à des jobs.
+/// A session open on the SSAS instance. <paramref name="IsMine"/> singles out the session of
+/// CubeScope itself: everything else belongs to other users or to jobs.
 /// </summary>
 public sealed record SsasSessionInfo(
     int Spid,
@@ -22,20 +22,20 @@ public sealed record SsasSessionInfo(
     bool IsMine);
 
 /// <summary>
-/// Sessions ouvertes sur l'instance et annulation d'une session par son SPID.
+/// Sessions open on the instance, and cancellation of a session by its SPID.
 ///
-/// PIÈGES (constatés sur SSAS 2022, pas supposés) :
-/// - le moteur DMV n'accepte NI JOIN, NI GROUP BY, NI LIKE, NI CAST : les deux rowsets sont
-///   donc lus séparément puis rapprochés en mémoire sur SESSION_SPID ;
-/// - lire ces DMV exige les droits admin serveur — sans eux, la lecture lève, et l'UI se
-///   dégrade au lieu de casser (même parti pris que le Profiler) ;
-/// - les durées de DISCOVER_SESSIONS sont des UInt64, celles de DISCOVER_COMMANDS des Int64 :
-///   passer par Convert plutôt que par un cast direct.
+/// PITFALLS (observed on SSAS 2022, not assumed):
+/// - the DMV engine accepts NO JOIN, NO GROUP BY, NO LIKE, NO CAST: the two rowsets are
+///   therefore read separately then matched in memory on SESSION_SPID;
+/// - reading these DMVs requires server admin rights — without them, the read throws, and the UI
+///   degrades instead of breaking (same stance as the Profiler);
+/// - DISCOVER_SESSIONS durations are UInt64, DISCOVER_COMMANDS ones are Int64:
+///   go through Convert rather than a direct cast.
 ///
-/// L'annulation suit la forme documentée par Microsoft (« Disconnect users and sessions ») :
-/// un &lt;Cancel&gt; portant le SPID, avec CancelAssociated pour emporter les commandes actives
-/// de la session. ⚠️ La liste contient les sessions des jobs de production : l'appelant est
-/// responsable de la confirmation, ce service n'en pose aucune.
+/// Cancellation follows the form documented by Microsoft ("Disconnect users and sessions"):
+/// a &lt;Cancel&gt; carrying the SPID, with CancelAssociated to take down the active commands
+/// of the session. ⚠️ The list contains the sessions of production jobs: the caller is
+/// responsible for confirmation, this service asks for none.
 /// </summary>
 public sealed class SessionsService(SsasSession session)
 {
@@ -44,8 +44,8 @@ public sealed class SessionsService(SsasSession session)
         var sessions = await session.ExecuteDmvAsync("SELECT * FROM $SYSTEM.DISCOVER_SESSIONS", ct);
         var commands = await session.ExecuteDmvAsync("SELECT * FROM $SYSTEM.DISCOVER_COMMANDS", ct);
 
-        // Rapprochement en mémoire (le DMV ne sait pas joindre) : la commande la plus longue
-        // par SPID, qui est celle qui intéresse quand on cherche ce qui occupe le serveur.
+        // In-memory matching (the DMV cannot join): the longest-running command
+        // per SPID, which is the one of interest when looking for what keeps the server busy.
         var bySpid = commands.Rows.Cast<DataRow>()
             .GroupBy(r => Int32(r, "SESSION_SPID"))
             .ToDictionary(g => g.Key, g => g.OrderByDescending(r => Int64(r, "COMMAND_ELAPSED_TIME_MS")).First());
@@ -76,18 +76,18 @@ public sealed class SessionsService(SsasSession session)
     }
 
     /// <summary>
-    /// Annule une session par son SPID : toutes ses commandes actives tombent avec elle.
-    /// Aucune garde ici — c'est à l'appelant d'avoir confirmé.
+    /// Cancels a session by its SPID: all its active commands go down with it.
+    /// No guard here — it is up to the caller to have confirmed.
     ///
-    /// Cas particulier de notre propre session : la connexion reste <c>Open</c> mais son ID de
-    /// session n'existe plus, et l'appel suivant échouerait sur « L'ID de session … est
-    /// introuvable » (constaté). On repart donc sur une connexion neuve pour que l'annulation
-    /// soit sans conséquence visible.
+    /// Special case of our own session: the connection stays <c>Open</c> but its session ID
+    /// no longer exists, and the next call would fail with "L'ID de session … est
+    /// introuvable" (observed). So we start over on a fresh connection so that the cancellation
+    /// has no visible consequence.
     /// </summary>
     /// <returns>
-    /// <c>false</c> si la session avait déjà disparu — cas courant : la liste affichée vieillit,
-    /// et un SPID n'est valable que tant que la session vit. On le distingue d'un échec pour que
-    /// l'appelant rafraîchisse au lieu de présenter une erreur serveur brute.
+    /// <c>false</c> if the session had already gone — a common case: the displayed list gets stale,
+    /// and a SPID is only valid while the session lives. We tell it apart from a failure so that
+    /// the caller refreshes instead of showing a raw server error.
     /// </returns>
     public async Task<bool> CancelAsync(int spid, CancellationToken ct = default)
     {
@@ -112,7 +112,7 @@ public sealed class SessionsService(SsasSession session)
         return true;
     }
 
-    // Les rowsets mélangent Int32/Int64/UInt64 selon la colonne : on convertit au lieu de caster.
+    // Rowsets mix Int32/Int64/UInt64 depending on the column: we convert instead of casting.
     private static string? Text(DataRow r, string col)
     {
         if (!r.Table.Columns.Contains(col) || r[col] is DBNull) return null;

@@ -1,13 +1,13 @@
-// Grammaire Monarch MDX v1 (décision actée : tokenizer pragmatique, pas d'AST).
-// Sert la coloration : mots-clés, fonctions, [identifiants crochetés], chaînes,
-// commentaires, nombres. L'autocomplétion viendra en Phase 2.
-// Import via monaco-core (contribs éditeur sans les 81 langages intégrés)
+// Monarch MDX grammar v1 (settled decision: pragmatic tokenizer, no AST).
+// Drives highlighting: keywords, functions, [bracketed identifiers], strings,
+// comments, numbers. Autocompletion will come in Phase 2.
+// Imported via monaco-core (editor contribs without the 81 built-in languages)
 import * as monaco from './monaco-core'
-// monaco 0.56 : exports map "./*" → "./esm/vs/*.js" — ne plus écrire le préfixe esm/vs
+// monaco 0.56: exports map "./*" → "./esm/vs/*.js" — no longer write the esm/vs prefix
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 
 self.MonacoEnvironment = {
-  // MDX n'a pas de worker de langage dédié : le worker éditeur générique suffit.
+  // MDX has no dedicated language worker: the generic editor worker is enough.
   getWorker: () => new editorWorker(),
 }
 
@@ -57,11 +57,11 @@ monaco.languages.setLanguageConfiguration('mdx', {
   },
 })
 
-// Repliement structurel MDX : la config `folding.markers` ne replie QUE les régions
-// #region. Ce fournisseur ajoute le repliement des blocs multi-lignes `{ }` / `( )` et
-// des `SCOPE … END SCOPE` — indispensable pour les gros ensembles (CREATE STATIC SET
-// … AS { … }). Scan caractère à caractère qui saute chaînes, commentaires et
-// [identifiants crochetés] (même logique que le tokenizer serveur), + régions par ligne.
+// Structural MDX folding: the `folding.markers` config ONLY folds #region regions.
+// This provider adds folding of multi-line `{ }` / `( )` blocks and of
+// `SCOPE … END SCOPE` — essential for large sets (CREATE STATIC SET
+// … AS { … }). Character-by-character scan that skips strings, comments and
+// [bracketed identifiers] (same logic as the server tokenizer), + regions per line.
 const isWordChar = (c: string) => /[A-Za-z0-9_]/.test(c)
 function wordAt(text: string, i: number, w: string): boolean {
   if (text.slice(i, i + w.length).toUpperCase() !== w) return false
@@ -156,7 +156,7 @@ monaco.languages.registerFoldingRangeProvider('mdx', {
       }
     }
 
-    // Régions #region / #endregion (repliables et repliées par défaut par Monaco)
+    // #region / #endregion regions (foldable, and folded by default by Monaco)
     const regions: number[] = []
     const lines = text.split('\n')
     for (let ln = 0; ln < lines.length; ln++) {
@@ -180,7 +180,7 @@ monaco.languages.setMonarchTokensProvider('mdx', {
       [/--.*$/, 'comment'],
       [/\/\/.*$/, 'comment'],
       [/\/\*/, 'comment', '@comment'],
-      // Identifiant crocheté : [Dim].[Hier] — ]] = échappement d'un crochet fermant
+      // Bracketed identifier: [Dim].[Hier] — ]] = escaped closing bracket
       [/\[(?:[^\]]|\]\])*\]/, 'identifier.bracket'],
       [/"[^"]*"/, 'string'],
       [/'[^']*'/, 'string'],
@@ -201,8 +201,8 @@ monaco.editor.defineTheme('cubescope-dark', {
   base: 'vs-dark',
   inherit: true,
   rules: [
-    { token: 'identifier.bracket', foreground: '4EC9B0' }, // [Dim].[Hier] en vert d'eau
-    { token: 'support.function', foreground: 'DCDCAA' }, // fonctions MDX en jaune pâle
+    { token: 'identifier.bracket', foreground: '4EC9B0' }, // [Dim].[Hier] in aqua green
+    { token: 'support.function', foreground: 'DCDCAA' }, // MDX functions in pale yellow
   ],
   colors: {},
 })

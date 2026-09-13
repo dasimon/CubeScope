@@ -58,7 +58,7 @@ public class ImpactAnalyzerTests
             {Member("[Measures].[CA]", "100")}
             {Member("[Measures].[Marge]", "[Measures].[CA] - 1")}
             """;
-        // CA disparaît, Marge reste (référence désormais cassée).
+        // CA disappears, Marge remains (reference now broken).
         string newScript = $"""
             CALCULATE;
             {Member("[Measures].[Marge]", "[Measures].[CA] - 1")}

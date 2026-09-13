@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Panneau Profiler : découpage Formula Engine / Storage Engine de la dernière requête,
-// via trace SSAS (par requête, scopé à la session — pas les compteurs globaux du panneau Stats).
+// Profiler panel: Formula Engine / Storage Engine split of the last query,
+// via SSAS trace (per query, scoped to the session — not the global counters of the Stats panel).
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
@@ -18,14 +18,14 @@ onMounted(() => {
 
 const p = computed(() => store.profile)
 
-// Largeurs relatives FE/SE pour la barre
+// Relative FE/SE widths for the bar
 const sePct = computed(() => {
   const t = p.value?.totalMs ?? 0
   return t > 0 ? Math.round(((p.value?.storageEngineMs ?? 0) / t) * 100) : 0
 })
 const fePct = computed(() => 100 - sePct.value)
 
-// --- Historique & comparaison ---
+// --- History & comparison ---
 function loadHistory(): void {
   void actions.loadProfilerHistory()
 }
@@ -57,7 +57,7 @@ interface CompareRow {
   deltaClass: string
 }
 
-// lowerIsBetter : durées + nb sous-cubes (moins = mieux) ; sinon hits cache/agrégation (plus = mieux).
+// lowerIsBetter: durations + subcube count (less = better); otherwise cache/aggregation hits (more = better).
 function compareRow(label: string, a: number, b: number, lowerIsBetter: boolean): CompareRow {
   const delta = b - a
   const better = delta === 0 ? null : lowerIsBetter ? delta < 0 : delta > 0

@@ -3,8 +3,8 @@ using CubeScope.Shell;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Le choix fenêtre / navigateur est la seule logique branchante du Shell, et c'est
-/// celle qui doit survivre à une machine sans runtime WebView2 (Windows Server, LTSC).
+/// The window / browser choice is the only branching logic in the Shell, and it is the one
+/// that must survive a machine without the WebView2 runtime (Windows Server, LTSC).
 /// </summary>
 public class LaunchModeTests
 {

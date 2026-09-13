@@ -29,7 +29,7 @@ public class MetadataServiceBuildTests
         var meta = MetadataService.Build("C", measures, empty, emptyH, emptyL);
 
         Assert.Equal(2, meta.MeasureFolders.Count);
-        Assert.Equal("", meta.MeasureFolders[0].Folder); // racine d'abord (tri alpha)
+        Assert.Equal("", meta.MeasureFolders[0].Folder); // root first (alphabetical sort)
         Assert.Equal("Perf", meta.MeasureFolders[1].Folder);
         Assert.Equal(["Alpha", "Sales"], meta.MeasureFolders[1].Measures.Select(m => m.Name));
     }
@@ -71,7 +71,7 @@ public class MetadataServiceBuildTests
         var h = Assert.Single(dim.Hierarchies);
         Assert.Equal("[Dates].[Année]", h.UniqueName);
         Assert.Equal(2, h.Levels.Count);
-        Assert.Equal(0, h.Levels[0].Number); // trié par LEVEL_NUMBER
+        Assert.Equal(0, h.Levels[0].Number); // sorted by LEVEL_NUMBER
     }
 
     [Fact]
@@ -96,16 +96,16 @@ public class MetadataServiceIntegrationTests : IDisposable
         new(Path.Combine(Path.GetTempPath(), $"cubescope-meta-{Guid.NewGuid():N}.db"));
 
     /// <summary>
-    /// Le drill-down de l'explorateur s'appuie sur CHILDREN_CARDINALITY pour deux décisions :
-    /// distinguer une feuille d'un nœud dépliable, et annoncer combien de membres le plafond
-    /// masque. Rien ne garantit a priori qu'un serveur le renvoie — ce test le CONSTATE, plutôt
-    /// que de laisser le code s'appuyer sur une supposition.
+    /// The explorer's drill-down relies on CHILDREN_CARDINALITY for two decisions: telling a
+    /// leaf from an expandable node, and announcing how many members the cap hides. Nothing
+    /// guarantees up front that a server returns it — this test OBSERVES it, rather than
+    /// letting the code rely on an assumption.
     /// </summary>
     [Fact]
     public async Task GetChildren_DescendDeLaHierarchieAuxFeuilles()
     {
-        // Lecture seule (aucun cache vidé) : le catalogue de référence convient, comme pour
-        // le test de métadonnées voisin.
+        // Read-only (no cache cleared): the reference catalog is fine, as for the
+        // neighboring metadata test.
         await _session.ConnectAsync(TestTarget.Server);
         await _session.SetCatalogAsync(TestTarget.Catalog);
         var svc = new MetadataService(_session, _store);
@@ -113,17 +113,17 @@ public class MetadataServiceIntegrationTests : IDisposable
         var meta = await svc.GetCubeMetaAsync(TestTarget.Cube);
         var hier = meta.Dimensions.SelectMany(d => d.Hierarchies).First(h => h.Levels.Count > 1);
 
-        // Cran 1 : sous « Membres », le sommet de la hiérarchie — le (All) habituel.
+        // Step 1: under "Membres", the top of the hierarchy — the usual (All).
         var racine = await svc.GetChildrenAsync(TestTarget.Cube, hier.UniqueName, isHierarchy: true);
         Assert.NotEmpty(racine.Nodes);
         Assert.All(racine.Nodes, n => Assert.NotEmpty(n.UniqueName));
 
-        // La cardinalité doit être renseignée, sinon tout l'arbre perd sa capacité à
-        // distinguer une feuille et à chiffrer ce qu'il masque.
+        // The cardinality must be filled in, otherwise the whole tree loses its ability to
+        // tell a leaf apart and to count what it hides.
         Assert.All(racine.Nodes, n => Assert.NotEqual(-1, n.ChildrenCount));
 
-        // Cran 2 : les enfants du premier membre. Sur une hiérarchie à plusieurs niveaux,
-        // le sommet a forcément des enfants.
+        // Step 2: the children of the first member. On a multi-level hierarchy, the top
+        // necessarily has children.
         var sommet = racine.Nodes[0];
         Assert.True(sommet.ChildrenCount > 0, $"attendu : {sommet.UniqueName} a des enfants");
 
@@ -131,8 +131,8 @@ public class MetadataServiceIntegrationTests : IDisposable
         Assert.NotEmpty(enfants.Nodes);
         Assert.All(enfants.Nodes, n => Assert.NotEqual(-1, n.ChildrenCount));
 
-        // Le plafond ne doit jamais couper en silence : ce qu'on rend tient dans la limite,
-        // et HasMore dit s'il en reste.
+        // The cap must never truncate silently: what is returned fits within the limit,
+        // and HasMore says whether more remain.
         var plafonne = await svc.GetChildrenAsync(
             TestTarget.Cube, sommet.UniqueName, isHierarchy: false, limit: 2);
         Assert.True(plafonne.Nodes.Count <= 2);
@@ -153,7 +153,7 @@ public class MetadataServiceIntegrationTests : IDisposable
         Assert.True(meta.MeasureFolders.Sum(f => f.Measures.Count) > 100, "attendu : centaines de mesures");
         Assert.True(meta.Dimensions.Count > 10, "attendu : dizaines de dimensions");
         Assert.All(meta.Dimensions, d => Assert.NotEmpty(d.UniqueName));
-        // Au moins une hiérarchie avec des niveaux
+        // At least one hierarchy with levels
         Assert.Contains(meta.Dimensions.SelectMany(d => d.Hierarchies), h => h.Levels.Count > 0);
     }
 
@@ -164,14 +164,14 @@ public class MetadataServiceIntegrationTests : IDisposable
         await _session.SetCatalogAsync(TestTarget.Catalog);
         var svc = new MetadataService(_session, _store);
 
-        // Préfixe = dimension de la hiérarchie configurée (1er segment de son unique name)
+        // Prefix = dimension of the configured hierarchy (1st segment of its unique name)
         string dimPrefix = TestTarget.Hierarchy[..TestTarget.Hierarchy.IndexOf('.')];
         var members = await svc.GetMembersAsync(TestTarget.Cube, TestTarget.Hierarchy);
 
         Assert.NotEmpty(members);
         Assert.True(members.Count <= 1000);
         Assert.All(members, m => Assert.StartsWith(dimPrefix, m.UniqueName));
-        // Deuxième appel : servi par le cache (même référence)
+        // Second call: served from the cache (same reference)
         var again = await svc.GetMembersAsync(TestTarget.Cube, TestTarget.Hierarchy);
         Assert.Same(members, again);
     }

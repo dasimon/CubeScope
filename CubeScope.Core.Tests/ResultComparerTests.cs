@@ -54,7 +54,7 @@ public class ResultComparerTests
         Assert.False(r.Match);
         Assert.Contains("attendu 1", r.Summary!);
         Assert.Contains("obtenu 2", r.Summary!);
-        // La ligne qui se recoupe est quand même comparée
+        // The overlapping row is still compared
         var d = Assert.Single(r.Diffs);
         Assert.Equal(0, d.Row);
         Assert.Equal("VL", d.Column);
@@ -86,9 +86,9 @@ public class ResultComparerTests
         Assert.Equal(3, r.Diffs.Count);
     }
 
-    // Le crux : après round-trip JSON, les cellules sont des JsonElement des DEUX côtés.
-    // .ToString() sur un JsonElement numérique/chaîne est stable → l'égalité tient à travers
-    // la frontière JSON, et un vrai changement est toujours détecté.
+    // The crux: after a JSON round-trip, the cells are JsonElements on BOTH sides.
+    // .ToString() on a numeric/string JsonElement is stable → equality holds across the
+    // JSON boundary, and a real change is still detected.
     [Fact]
     public void JsonRoundTrip_NumbersAndStrings_CompareConsistently()
     {

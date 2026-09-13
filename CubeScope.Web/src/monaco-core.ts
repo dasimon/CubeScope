@@ -1,7 +1,7 @@
-// Point d'entrée Monaco dégraissé — reproduit editor.main.js de monaco-editor 0.56
-// SANS les 81 langages intégrés ni les 4 features à workers (css/html/json/ts) :
-// CubeScope n'édite que du MDX (langage maison). Liste générée depuis
-// esm/vs/editor/editor.main.js — à resynchroniser à chaque montée de version monaco.
+// Slimmed-down Monaco entry point — reproduces editor.main.js from monaco-editor 0.56
+// WITHOUT the 81 built-in languages or the 4 worker-based features (css/html/json/ts):
+// CubeScope only edits MDX (a custom language). List generated from
+// esm/vs/editor/editor.main.js — to be resynchronized on every monaco version upgrade.
 import 'monaco-editor/editor/contrib/anchorSelect/browser/anchorSelect'
 import 'monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching'
 import 'monaco-editor/editor/contrib/caretOperations/browser/transpose'

@@ -1,6 +1,6 @@
 namespace CubeScope.Core.Models;
 
-/// <summary>Un événement de trace SSAS retenu (événements « complétés » uniquement).</summary>
+/// <summary>A retained SSAS trace event ("completed" events only).</summary>
 public sealed record ProfileEvent(
     string EventClass,
     int Subclass,
@@ -8,7 +8,7 @@ public sealed record ProfileEvent(
     string? TextData,
     DateTime CapturedUtc);
 
-/// <summary>Découpage type profiler d'une requête : Formula Engine vs Storage Engine.</summary>
+/// <summary>Profiler-style breakdown of a query: Formula Engine vs Storage Engine.</summary>
 public sealed record QueryProfile(
     long TotalMs,
     long StorageEngineMs,
@@ -18,7 +18,7 @@ public sealed record QueryProfile(
     int AggregationHits,
     IReadOnlyList<SubcubeInfo> Subcubes);
 
-/// <summary>Un Query Subcube : durée + description (la grille demandée au Storage Engine).</summary>
+/// <summary>A Query Subcube: duration + description (the grid requested from the Storage Engine).</summary>
 public sealed record SubcubeInfo(long DurationMs, string Text);
 
 public enum ProfilerStatus

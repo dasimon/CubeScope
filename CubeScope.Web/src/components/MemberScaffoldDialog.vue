@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Squelette de membre calculé : dialogue ouvert depuis la barre d'outils (voir App.vue),
-// génère un WITH MEMBER (requête) ou CREATE MEMBER (script) et l'insère au curseur de
-// l'éditeur via actions.requestInsert — même mécanisme que l'explorateur et les snippets.
-// Ne nécessite aucune connexion (store.cubeMeta reste optionnel, non utilisé pour le MVP).
+// Calculated member skeleton: dialog opened from the toolbar (see App.vue),
+// generates a WITH MEMBER (query) or CREATE MEMBER (script) and inserts it at the
+// editor cursor via actions.requestInsert — same mechanism as the explorer and snippets.
+// Requires no connection (store.cubeMeta stays optional, not used for the MVP).
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'

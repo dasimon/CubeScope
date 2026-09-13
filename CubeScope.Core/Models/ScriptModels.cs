@@ -1,15 +1,15 @@
 namespace CubeScope.Core.Models;
 
-/// <summary>Le MDX Script d'un cube : texte complet + commandes repérées.</summary>
+/// <summary>The MDX Script of a cube: full text + detected commands.</summary>
 public sealed record CubeScript(
     string CubeName,
     string FullText,
     IReadOnlyList<ScriptCommand> Commands);
 
 /// <summary>
-/// Une commande repérée dans le script. Kind : CalculatedMember, NamedSet, Scope, Autre.
-/// StartLine (1-based) permet la navigation dans l'éditeur. Section = chemin de la
-/// région `// #region` englobante ("A / B" si imbriquée), null hors région.
+/// A command detected in the script. Kind: CalculatedMember, NamedSet, Scope, Autre.
+/// StartLine (1-based) enables navigation in the editor. Section = path of the enclosing
+/// `// #region` region ("A / B" if nested), null outside any region.
 /// </summary>
 public sealed record ScriptCommand(
     string Kind,
@@ -18,13 +18,13 @@ public sealed record ScriptCommand(
     int StartLine,
     string? Section = null);
 
-/// <summary>Nœud du graphe de dépendances d'un membre calculé / set.</summary>
+/// <summary>Node of the dependency graph of a calculated member / set.</summary>
 public sealed record DependencyNode(
     string Name,
     string Kind, // CalculatedMember | NamedSet | Measure | Hierarchy | Inconnu
     IReadOnlyList<DependencyNode> Dependencies);
 
-/// <summary>Dépendances d'un élément : ce qu'il utilise (arbre) et qui l'utilise (liste).</summary>
+/// <summary>Dependencies of an item: what it uses (tree) and what uses it (list).</summary>
 public sealed record DependencyGraph(
     DependencyNode Root,
     IReadOnlyList<string> UsedBy);

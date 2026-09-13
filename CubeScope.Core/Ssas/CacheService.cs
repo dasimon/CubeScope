@@ -5,9 +5,9 @@ using Microsoft.AnalysisServices.AdomdClient;
 namespace CubeScope.Core.Ssas;
 
 /// <summary>
-/// ClearCache XMLA scopé au catalogue courant. Piège connu : l'élément XMLA exige le
-/// DatabaseID, qui diffère du nom si la base a été renommée → résolution via AMO
-/// (décision actée : AMO uniquement pour le MDX Script et les ID d'objets), avec cache.
+/// XMLA ClearCache scoped to the current catalog. Known pitfall: the XMLA element requires the
+/// DatabaseID, which differs from the name if the database was renamed → resolved through AMO
+/// (settled decision: AMO only for the MDX Script and object IDs), with a cache.
 /// </summary>
 public sealed class CacheService(SsasSession session)
 {
@@ -38,7 +38,7 @@ public sealed class CacheService(SsasSession session)
         return (databaseId, sw.ElapsedMilliseconds);
     }
 
-    /// <summary>Nom de catalogue → DatabaseID via AMO (connexion courte dédiée, résultat mis en cache).</summary>
+    /// <summary>Catalog name → DatabaseID through AMO (short dedicated connection, result cached).</summary>
     internal async Task<string> ResolveDatabaseIdAsync(string server, string catalog, CancellationToken ct = default)
     {
         string key = $"{server}|{catalog}";

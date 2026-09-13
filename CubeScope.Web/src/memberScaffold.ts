@@ -1,6 +1,6 @@
-// Génération du squelette MDX d'un membre calculé (WITH MEMBER pour la requête,
-// CREATE MEMBER pour le MDX Script). Fonction pure, sans dépendance Vue — testable
-// isolément et réutilisée par le composant de dialogue (voir MemberScaffoldDialog.vue).
+// Generates the MDX skeleton of a calculated member (WITH MEMBER for the query,
+// CREATE MEMBER for the MDX Script). Pure function, no Vue dependency — testable
+// in isolation and reused by the dialog component (see MemberScaffoldDialog.vue).
 
 export type MemberScaffoldType = 'with' | 'create'
 
@@ -11,14 +11,14 @@ export interface MemberScaffoldOptions {
   displayFolder?: string
 }
 
-/** Échappe un nom en identifiant MDX entre crochets (double les `]` internes). */
+/** Escapes a name as a bracketed MDX identifier (doubles the inner `]`). */
 export function bracketIdentifier(name: string): string {
   return `[${name.replace(/]/g, ']]')}]`
 }
 
 /**
- * Construit le squelette MDX. Retourne une chaîne vide si le nom est vide/blanc
- * (garde côté appelant : bouton « Insérer » désactivé tant que le nom est vide).
+ * Builds the MDX skeleton. Returns an empty string if the name is empty/blank
+ * (caller-side guard: "Insert" button disabled while the name is empty).
  */
 export function generateMemberScaffold(opts: MemberScaffoldOptions): string {
   const name = opts.name.trim()

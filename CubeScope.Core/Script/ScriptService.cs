@@ -6,8 +6,8 @@ using CubeScope.Core.Ssas;
 namespace CubeScope.Core.Script;
 
 /// <summary>
-/// Lecture du MDX Script du cube via AMO (décision actée : AMO uniquement pour le
-/// MDX Script et les ID d'objets). Cache mémoire par (serveur, catalogue, cube).
+/// Reads the cube's MDX Script through AMO (settled decision: AMO only for the
+/// MDX Script and object IDs). In-memory cache per (server, catalog, cube).
 /// </summary>
 public sealed class ScriptService(SsasSession session)
 {

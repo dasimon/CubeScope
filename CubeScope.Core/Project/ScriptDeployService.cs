@@ -5,28 +5,28 @@ using Microsoft.AnalysisServices;
 namespace CubeScope.Core.Project;
 
 /// <summary>
-/// Déploiement du MDX Script SEUL vers un cube serveur (idée reprise de BIDS Helper
-/// « Deploy MDX Script ») : remplace les Commands du MdxScript et Update(), sans
-/// redéployer le projet ni toucher aux CalculationProperties du serveur. Aucun
-/// process nécessaire : le script recalculé est actif immédiatement.
-/// Deux gardes, indépendantes :
-/// - SERVEUR : on ne déploie que vers un serveur explicitement déclaré de développement.
-///   `force` ne la contourne PAS — il ne veut dire que « écrase un script serveur qui a
-///   divergé », jamais « déploie en production ».
-/// - DIVERGENCE : si le script serveur diffère du texte projet et force=false, ne déploie
-///   PAS et retourne le texte serveur (retouche live à ne pas écraser).
+/// Deploys the MDX Script ALONE to a server cube (idea taken from BIDS Helper
+/// "Deploy MDX Script"): replaces the MdxScript Commands and calls Update(), without
+/// redeploying the project or touching the server's CalculationProperties. No
+/// processing needed: the recalculated script is active immediately.
+/// Two independent guards:
+/// - SERVER: we only deploy to a server explicitly declared as a development server.
+///   `force` does NOT bypass it — it only means "overwrite a server script that has
+///   diverged", never "deploy to production".
+/// - DIVERGENCE: if the server script differs from the project text and force=false, does NOT
+///   deploy and returns the server text (a live tweak not to be overwritten).
 /// </summary>
 public sealed class ScriptDeployService
 {
     /// <param name="devServers">
-    /// Serveurs où le déploiement est permis (liste explicite, voir <see cref="DevServerGuard"/>).
-    /// Vide = aucun : une configuration absente doit gêner, jamais autoriser.
+    /// Servers where deployment is allowed (explicit list, see <see cref="DevServerGuard"/>).
+    /// Empty = none: a missing configuration must get in the way, never grant permission.
     /// </param>
     public DeployScriptResult Deploy(string server, string catalog, string cubeName,
         string projectText, bool force, IReadOnlyList<string> devServers)
     {
-        // AVANT toute connexion : une garde qui touche la cible pour découvrir qu'elle
-        // n'aurait pas dû ne garde rien. Message distinct de celui d'une connexion ratée.
+        // BEFORE any connection: a guard that touches the target only to find out it
+        // should not have done so guards nothing. Message distinct from a failed connection's.
         if (!DevServerGuard.IsDev(devServers, server))
             throw new InvalidOperationException(
                 $"Déploiement refusé : le serveur « {server} » n'est pas déclaré comme serveur "
@@ -62,7 +62,7 @@ public sealed class ScriptDeployService
         }
     }
 
-    /// <summary>Égalité tolérante : CRLF→LF, espaces de fin de ligne et de texte ignorés.</summary>
+    /// <summary>Lenient equality: CRLF→LF, trailing whitespace on lines and text ignored.</summary>
     public static bool TextEquals(string a, string b) => Canonical(a) == Canonical(b);
 
     private static string Canonical(string s) =>

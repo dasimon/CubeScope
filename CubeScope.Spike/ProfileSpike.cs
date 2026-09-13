@@ -2,21 +2,21 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.AnalysisServices;
 using Microsoft.AnalysisServices.AdomdClient;
-using AmoTrace = Microsoft.AnalysisServices.Trace; // lève l'ambiguïté avec System.Diagnostics.Trace
+using AmoTrace = Microsoft.AnalysisServices.Trace; // disambiguates from System.Diagnostics.Trace
 
 /// <summary>
-/// Spike go/no-go du profiler (post-MVP) : valide qu'une trace SSAS créée via AMO .NET Core
-/// pousse bien les événements en live (Trace.OnEvent), qu'on a les droits admin pour la
-/// créer, et qu'on en tire le découpage Formula Engine / Storage Engine par requête.
-/// LECTURE SEULE : la trace n'écrit rien dans le cube ; la requête MDX est un simple SELECT.
+/// Go/no-go spike for the profiler (post-MVP): validates that an SSAS trace created via AMO
+/// .NET Core really pushes events live (Trace.OnEvent), that we have the admin rights to
+/// create it, and that we can derive the Formula Engine / Storage Engine breakdown per query.
+/// READ-ONLY: the trace writes nothing to the cube; the MDX query is a plain SELECT.
 /// </summary>
 internal static class ProfileSpike
 {
     private sealed record Captured(string EventClass, int Subclass, long Duration, long Cpu,
         string? Text, string? Session, string? Spid);
 
-    // Uniquement les événements « complétés » (ils portent une Duration) : les événements
-    // « Begin » refusent les colonnes de fin (Duration/CpuTime/EndTime) → rejet serveur au Update.
+    // Only "completed" events (they carry a Duration): "Begin" events reject the end
+    // columns (Duration/CpuTime/EndTime) → server-side rejection on Update.
     private static readonly TraceEventClass[] WantedEvents =
     [
         TraceEventClass.QueryEnd,
@@ -27,8 +27,8 @@ internal static class ProfileSpike
         TraceEventClass.ExecuteMdxScriptEnd,
     ];
 
-    // Ensemble MINIMAL supporté par tous les événements complétés visés (chaque EventClass
-    // a sa propre liste blanche de colonnes, validée par le serveur au Update).
+    // MINIMAL set supported by all the targeted completed events (each EventClass has its
+    // own column allowlist, validated by the server on Update).
     private static readonly TraceColumn[] WantedColumns =
     [
         TraceColumn.EventClass, TraceColumn.EventSubclass,
@@ -46,7 +46,7 @@ internal static class ProfileSpike
         Server? amo = null;
         AmoTrace? trace = null;
 
-        // --- 1. Connexion AMO + création de la trace (droits admin requis) ---
+        // --- 1. AMO connection + trace creation (admin rights required) ---
         try
         {
             amo = new Server();
@@ -64,9 +64,9 @@ internal static class ProfileSpike
                 trace.Events.Add(te);
             }
 
-            // Chaque EventClass a sa propre liste blanche de colonnes, validée serveur au Update.
-            // Le message d'erreur donne (event ID, column ID) = valeurs des enums AMO → on retire
-            // la colonne fautive de l'événement concerné et on réessaie. Boucle bornée.
+            // Each EventClass has its own column allowlist, validated server-side on Update.
+            // The error message gives (event ID, column ID) = AMO enum values → remove the
+            // offending column from the event concerned and retry. Bounded loop.
             int pruned = 0;
             for (int attempt = 0; attempt < 60; attempt++)
             {
@@ -80,7 +80,7 @@ internal static class ProfileSpike
                     var col = te?.Columns.Cast<TraceColumn>().FirstOrDefault(c => (int)c == colId);
                     if (te is null || col is null) throw;
                     te.Columns.Remove(col.Value);
-                    if (te.Columns.Count == 0) trace.Events.Remove(te); // événement vidé : on l'abandonne
+                    if (te.Columns.Count == 0) trace.Events.Remove(te); // event emptied: drop it
                     pruned++;
                 }
             }
@@ -97,7 +97,7 @@ internal static class ProfileSpike
             return 1;
         }
 
-        // --- 2. Souscription live + exécution d'une requête tracée ---
+        // --- 2. Live subscription + execution of a traced query ---
         int eventCount = 0;
         trace.OnEvent += (_, e) =>
         {
@@ -126,8 +126,8 @@ internal static class ProfileSpike
             ourSession = conn.SessionID;
             Console.WriteLine($"SessionID ADOMD : {ourSession}");
 
-            // Requête volontairement non triviale (crossjoin modéré) pour générer du Storage Engine.
-            // Noms du cube/mesure/hiérarchies via variables d'env (sinon placeholders génériques) :
+            // Deliberately non-trivial query (moderate crossjoin) to generate Storage Engine work.
+            // Cube/measure/hierarchy names via env variables (otherwise generic placeholders):
             // CUBESCOPE_TEST_CUBE, CUBESCOPE_TEST_MEASURE, CUBESCOPE_TEST_HIERARCHY[2].
             string cube = Environment.GetEnvironmentVariable("CUBESCOPE_TEST_CUBE") ?? "Cube";
             string measure = Environment.GetEnvironmentVariable("CUBESCOPE_TEST_MEASURE") ?? "[Measures].[Amount]";
@@ -142,14 +142,14 @@ internal static class ProfileSpike
             var sw = Stopwatch.StartNew();
             using (var cmd = new AdomdCommand(mdx, conn))
             {
-                var cs = cmd.ExecuteCellSet(); // CellSet n'est pas IDisposable
+                var cs = cmd.ExecuteCellSet(); // CellSet is not IDisposable
                 _ = cs.Cells.Count;
             }
             sw.Stop();
             queryMs = sw.ElapsedMilliseconds;
             Console.WriteLine($"Requête exécutée en {queryMs} ms. Attente du flush des événements…");
 
-            // Les événements de trace arrivent en asynchrone : laisser le temps au push XMLA.
+            // Trace events arrive asynchronously: give the XMLA push time.
             for (int i = 0; i < 20 && eventCount == 0; i++) Thread.Sleep(150);
             Thread.Sleep(800);
         }
@@ -164,7 +164,7 @@ internal static class ProfileSpike
             amo.Disconnect();
         }
 
-        // --- 3. Analyse ---
+        // --- 3. Analysis ---
         var all = captured.ToList();
         Console.WriteLine($"\nÉvénements capturés : {all.Count} (toutes sessions).");
         if (all.Count == 0)
@@ -176,7 +176,7 @@ internal static class ProfileSpike
         }
 
         var mine = all.Where(c => string.Equals(c.Session, ourSession, StringComparison.OrdinalIgnoreCase)).ToList();
-        var scope = mine.Count > 0 ? mine : all; // à défaut de match session, on montre tout
+        var scope = mine.Count > 0 ? mine : all; // no session match: show everything
         Console.WriteLine($"Événements de NOTRE session : {mine.Count}" +
             (mine.Count == 0 ? " (pas de match SessionID — affichage global)" : ""));
 

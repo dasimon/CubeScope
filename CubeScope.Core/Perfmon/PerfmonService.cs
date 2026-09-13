@@ -4,21 +4,21 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Perfmon;
 
 /// <summary>
-/// Deltas de compteurs perfmon autour d'une requête (décision actée : compteurs globaux
-/// au serveur, assumé pour le MVP). Acquis du spike 2026-07-17 :
-/// - catégories LOCALISÉES sur OS français : "MSAS16 : MDX" (séparateur " : " avec espaces)
-///   → matcher le libellé après le premier ':' (trim) en FR ET EN ;
-/// - ne jamais filtrer les compteurs par nom ("/sec" devient "/s") mais par CounterType
-///   (NumberOfItems32/64 = cumulatifs à delta) ;
-/// - dégradable : échec de droits (Win32Exception "Accès refusé") → service Unavailable,
-///   l'application continue sans stats.
-/// Limite MVP assumée : instance par défaut (préfixe MSAS*) uniquement — pour une instance
-/// nommée jointe par port (hôte:port), le mapping port→nom d'instance n'est pas
-/// découvrable, on resterait sur les compteurs de l'instance par défaut.
+/// Perfmon counter deltas around a query (settled decision: counters are server-wide,
+/// accepted for the MVP). Findings from the 2026-07-17 spike:
+/// - categories are LOCALIZED on a French OS: "MSAS16 : MDX" (" : " separator with spaces)
+///   → match the label after the first ':' (trimmed) in FR AND EN;
+/// - never filter counters by name ("/sec" becomes "/s") but by CounterType
+///   (NumberOfItems32/64 = cumulative, delta-able);
+/// - degradable: permission failure (Win32Exception "Accès refusé") → service Unavailable,
+///   the application carries on without stats.
+/// Accepted MVP limitation: default instance (MSAS* prefix) only — for a named instance
+/// reached by port (host:port), the port→instance name mapping cannot be
+/// discovered, so we would stay on the default instance's counters.
 /// </summary>
 public sealed class PerfmonService : IDisposable
 {
-    // Catégories utiles par requête (libellés FR et EN, après le préfixe "MSASxx :")
+    // Categories useful per query (FR and EN labels, after the "MSASxx :" prefix)
     private static readonly string[] WantedCategories =
         ["mdx", "cache", "requête du moteur de stockage", "storage engine query"];
 
@@ -29,10 +29,10 @@ public sealed class PerfmonService : IDisposable
     public PerfmonStatus Status { get; private set; } = PerfmonStatus.NotInitialized;
     public string? StatusDetail { get; private set; }
 
-    /// <summary>Initialise (ou réinitialise) les compteurs pour un serveur SSAS. Jamais bloquant pour l'appelant.</summary>
+    /// <summary>Initializes (or reinitializes) the counters for an SSAS server. Never blocks the caller.</summary>
     public void Initialize(string dataSource)
     {
-        // "hôte:port" → machine "hôte" (le port ne sert qu'à ADOMD)
+        // "host:port" → machine "host" (the port is only used by ADOMD)
         string machine = dataSource.Split(':')[0].Split('\\')[0];
         lock (_lock)
         {
@@ -71,7 +71,7 @@ public sealed class PerfmonService : IDisposable
         }
     }
 
-    /// <summary>Le libellé après le premier ':' (trim, insensible casse) est-il une catégorie voulue ?</summary>
+    /// <summary>Is the label after the first ':' (trimmed, case-insensitive) a wanted category?</summary>
     internal static bool IsWantedCategory(string categoryName)
     {
         int sep = categoryName.IndexOf(':');
@@ -80,7 +80,7 @@ public sealed class PerfmonService : IDisposable
         return WantedCategories.Contains(label, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>Snapshot des valeurs brutes (à prendre AVANT la requête).</summary>
+    /// <summary>Snapshot of the raw values (to take BEFORE the query).</summary>
     public Dictionary<string, long> Snapshot()
     {
         lock (_lock)
@@ -90,13 +90,13 @@ public sealed class PerfmonService : IDisposable
             foreach (var pc in _counters)
             {
                 try { snap[$"{pc.CategoryName}|{pc.CounterName}"] = pc.RawValue; }
-                catch { /* compteur disparu : ignoré, le delta sera absent */ }
+                catch { /* counter gone: ignored, the delta will be missing */ }
             }
             return snap;
         }
     }
 
-    /// <summary>Deltas non nuls depuis un snapshot (à appeler APRÈS la requête).</summary>
+    /// <summary>Non-zero deltas since a snapshot (to call AFTER the query).</summary>
     public IReadOnlyList<CounterDelta> DeltasSince(Dictionary<string, long> before)
     {
         lock (_lock)
@@ -113,7 +113,7 @@ public sealed class PerfmonService : IDisposable
                     if (delta != 0)
                         deltas.Add(new CounterDelta(CategoryLabel(pc.CategoryName), pc.CounterName, delta));
                 }
-                catch { /* compteur disparu en cours de route */ }
+                catch { /* counter disappeared along the way */ }
             }
             return deltas.OrderBy(d => d.Category).ThenBy(d => d.Counter).ToList();
         }

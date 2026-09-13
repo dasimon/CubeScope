@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Compare la requête courante entre le catalogue connecté et un autre catalogue du même
-// serveur. Répond à « est-ce qu'un chiffre a bougé ? » après un changement de script.
-// N'affiche que les ÉCARTS : sur un crossjoin large, deux grilles côte à côte seraient illisibles.
+// Compares the current query between the connected catalog and another catalog on the same
+// server. Answers "did a number move?" after a script change.
+// Only shows the DIFFERENCES: on a wide crossjoin, two grids side by side would be unreadable.
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
@@ -21,7 +21,7 @@ const busy = ref(false)
 const error = ref('')
 const result = ref<CatalogComparison | null>(null)
 
-/** Tous les catalogues sauf le courant : se comparer à soi-même n'a pas de sens. */
+/** All catalogs except the current one: comparing against itself makes no sense. */
 const targets = computed(() => store.catalogs.filter((c) => c !== store.catalog))
 
 async function run() {

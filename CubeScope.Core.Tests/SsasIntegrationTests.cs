@@ -3,9 +3,9 @@ using CubeScope.Core.Ssas;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Tests d'intégration contre un vrai serveur SSAS, en LECTURE SEULE sur le catalogue de
-/// prod — jamais de ClearCache ni d'écriture ici. Cible définie par variables d'env
-/// (voir <see cref="TestTarget"/>). Nécessitent l'accès réseau au serveur.
+/// Integration tests against a real SSAS server, READ-ONLY on the prod catalog — never a
+/// ClearCache or a write here. Target defined by environment variables
+/// (see <see cref="TestTarget"/>). They require network access to the server.
 /// </summary>
 [Trait("Category", "Integration")]
 public class SsasIntegrationTests : IDisposable
@@ -27,8 +27,8 @@ public class SsasIntegrationTests : IDisposable
         await _session.SetCatalogAsync(TestTarget.Catalog);
         var svc = new QueryService(_session);
 
-        // Découvre une hiérarchie réelle plutôt que d'en supposer une.
-        // Piège : crocheter les colonnes DMV — HIERARCHY est un mot réservé MDX
+        // Discovers a real hierarchy rather than assuming one.
+        // Pitfall: bracket the DMV columns — HIERARCHY is an MDX reserved word
         var hier = await _session.ExecuteDmvAsync($"""
             SELECT [HIERARCHY_UNIQUE_NAME] FROM $SYSTEM.MDSCHEMA_HIERARCHIES
             WHERE [CUBE_NAME] = '{TestTarget.Cube}' AND [HIERARCHY_ORIGIN] = 2
@@ -42,7 +42,7 @@ public class SsasIntegrationTests : IDisposable
             """);
 
         Assert.Equal(2, r.AxesCount);
-        Assert.True(r.Columns.Count >= 2); // 1 en-tête de ligne + au moins 1 mesure
+        Assert.True(r.Columns.Count >= 2); // 1 row header + at least 1 measure
         Assert.True(r.Rows.Count is > 0 and <= 3);
         Assert.True(r.DurationMs >= 0);
     }
@@ -50,8 +50,8 @@ public class SsasIntegrationTests : IDisposable
     [Fact]
     public async Task Execute_CellPropertiesValueOnly_StillReturnsValues()
     {
-        // Piège constaté : "CELL PROPERTIES VALUE" (requête copiée d'Excel/SSMS) ne renvoie
-        // pas FORMATTED_VALUE — la grille doit se replier sur Value, pas afficher du vide.
+        // Observed pitfall: "CELL PROPERTIES VALUE" (query copied from Excel/SSMS) does not return
+        // FORMATTED_VALUE — the grid must fall back to Value, not display blanks.
         await _session.ConnectAsync(Server);
         await _session.SetCatalogAsync(TestTarget.Catalog);
         var svc = new QueryService(_session);
@@ -83,8 +83,8 @@ public class SsasIntegrationTests : IDisposable
     [Fact]
     public async Task ClearCache_OnDevCatalogOnly_ResolvesIdViaAmoAndSucceeds()
     {
-        // Règle de sûreté : tout ce qui vide le cache cible le SERVEUR de dev, jamais la prod.
-        // Le nom du catalogue ne protège plus rien — prod et dev portent le même.
+        // Safety rule: anything that clears the cache targets the dev SERVER, never prod.
+        // The catalog name no longer protects anything — prod and dev share the same one.
         TestTarget.AssertDevServerDistinct();
         await _session.ConnectAsync(TestTarget.ServerDev);
         await _session.SetCatalogAsync(TestTarget.CatalogDev);
@@ -94,7 +94,7 @@ public class SsasIntegrationTests : IDisposable
 
         Assert.False(string.IsNullOrWhiteSpace(databaseId));
         Assert.True(durationMs >= 0);
-        // L'ID résolu est mis en cache : 2ᵉ résolution sans AMO
+        // The resolved ID is cached: 2nd resolution without AMO
         var id2 = await svc.ResolveDatabaseIdAsync(TestTarget.ServerDev, TestTarget.CatalogDev);
         Assert.Equal(databaseId, id2);
     }
@@ -110,7 +110,7 @@ public class SsasIntegrationTests : IDisposable
 
         Assert.False(string.IsNullOrWhiteSpace(script.FullText), "script vide");
         Assert.NotEmpty(script.Commands);
-        // Un cube réel a des dizaines de mesures calculées dans son script
+        // A real cube has dozens of calculated measures in its script
         Assert.True(script.Commands.Count(c => c.Kind == "CalculatedMember") > 10,
             $"attendu : dizaines de membres calculés, obtenu {script.Commands.Count(c => c.Kind == "CalculatedMember")}");
     }
@@ -119,8 +119,8 @@ public class SsasIntegrationTests : IDisposable
     [Trait("Category", "Integration")]
     public void DeployScript_Idempotent_OnDevCatalog()
     {
-        // Lit le script actuel du cube de DEV puis le redéploie à l'identique :
-        // aucune divergence attendue (force=false suffit), et l'état final = l'état initial.
+        // Reads the current script of the DEV cube then redeploys it unchanged:
+        // no divergence expected (force=false is enough), and final state = initial state.
         TestTarget.AssertDevServerDistinct();
         string text;
         using (var amo = new Microsoft.AnalysisServices.Server())

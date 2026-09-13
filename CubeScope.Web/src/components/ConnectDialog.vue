@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Dialogue de connexion : serveur (Integrated Security uniquement — décision actée),
-// puis choix du catalogue. Pré-rempli par les connexions récentes.
+// Connection dialog: server (Integrated Security only — settled decision),
+// then catalog selection. Pre-filled from recent connections.
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
@@ -22,9 +22,9 @@ const LANGS: { label: string; value: Locale }[] = [
 const server = ref('')
 
 /**
- * Déclarer un serveur de développement se fait ICI, pas au moment de déployer : si la case
- * vivait dans le dialogue de déploiement, le garde-fou se désarmerait d'un clic sous la
- * pression du geste en cours. La liste est persistée côté serveur (SQLite).
+ * Declaring a development server is done HERE, not at deploy time: if the checkbox
+ * lived in the deploy dialog, the safeguard would be disarmed with one click under the
+ * pressure of the action in progress. The list is persisted on the server side (SQLite).
  */
 const isDevServer = computed({
   get: () =>
@@ -47,7 +47,7 @@ async function connect() {
   if (!server.value.trim()) return
   const wanted = catalog.value
   if (await actions.connect(server.value.trim())) {
-    // Re-sélectionne le dernier catalogue utilisé s'il existe encore
+    // Re-selects the last used catalog if it still exists
     if (wanted && store.catalogs.includes(wanted)) {
       await actions.setCatalog(wanted)
       store.showConnect = false
@@ -55,7 +55,7 @@ async function connect() {
       await actions.setCatalog(store.catalogs[0])
       store.showConnect = false
     }
-    // Sinon : on reste dans le dialogue pour choisir le catalogue
+    // Otherwise: stay in the dialog to choose the catalog
     catalog.value = store.catalog
   }
 }
@@ -164,9 +164,9 @@ function pickRecent(r: { server: string; catalog: string | null }) {
   gap: 0.5rem;
   margin-top: -0.35rem;
 }
-/* `.connect-form label` met TOUS les libellés du formulaire en colonne (champ au-dessus
-   de son intitulé). Pour une case à cocher c'est l'inverse qu'il faut : le texte vient
-   à côté, pas dessous — sans cette remise en ligne, la case et son libellé s'empilent. */
+/* `.connect-form label` lays out ALL the form's labels as a column (field above
+   its caption). A checkbox needs the opposite: the text goes beside it, not
+   below — without this reset to a row, the checkbox and its label stack up. */
 .connect-dev label {
   flex-direction: row;
   font-size: 0.9rem;

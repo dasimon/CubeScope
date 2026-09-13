@@ -1,9 +1,9 @@
-<!-- ShutdownMode explicite, et PAS OnMainWindowClose : la tâche 3 branche sur
-     Closed un gestionnaire ASYNC qui arrête et libère l'hôte web avant de sortir.
-     OnMainWindowClose ferait commencer l'arrêt WPF dès la fermeture de la fenêtre,
-     sans attendre ce gestionnaire — le process pourrait mourir avant le Dispose du
-     conteneur, donc avant le Stop()/Drop() de la trace SSAS. C'est ArreterServeurAsync
-     qui appelle Shutdown(), lui seul. -->
+<!-- Explicit ShutdownMode, and NOT OnMainWindowClose: task 3 wires an ASYNC
+     handler on Closed that stops and releases the web host before exiting.
+     OnMainWindowClose would start the WPF shutdown as soon as the window closes,
+     without waiting for that handler — the process could die before the container's
+     Dispose, hence before the SSAS trace's Stop()/Drop(). ArreterServeurAsync, and
+     only it, calls Shutdown(). -->
 <Application x:Class="CubeScope.Shell.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

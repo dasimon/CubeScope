@@ -1,36 +1,36 @@
-// Sortie de Microsoft.NET.Sdk.Web (tâche 1, étape 5) : ces using, implicites sous le Web
-// SDK, deviennent nécessaires en explicite avec le SDK standard.
+// Moved off Microsoft.NET.Sdk.Web (task 1, step 5): these usings, implicit under the Web
+// SDK, must be explicit with the standard SDK.
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace CubeScope.Server;
 
 /// <summary>
-/// Arrête l'exe quand la dernière fenêtre du navigateur se ferme : sans ça, fermer l'onglet
-/// laisse `cubescope.exe` tourner en fond, sa console orpheline gardant le port.
+/// Stops the exe when the last browser window closes: without this, closing the tab
+/// leaves `cubescope.exe` running in the background, its orphaned console holding the port.
 ///
-/// Signal de vie = les connexions du <see cref="StatsHub"/> : chaque onglet en ouvre une au
-/// démarrage de la SPA. Le compteur gère donc naturellement plusieurs onglets.
+/// Heartbeat = the <see cref="StatsHub"/> connections: each tab opens one when the
+/// SPA starts. The counter therefore handles several tabs naturally.
 ///
-/// PIÈGE CENTRAL — une déconnexion du hub ne veut PAS dire que la page est partie. Le client
-/// est en `withAutomaticReconnect()`, qui réessaie à 0, 2, 10 puis 30 s : une coupure passagère
-/// du WebSocket est rattrapée, mais bien après un délai de grâce court. Couper au bout de 10 s
-/// dans ce cas tue le serveur sous une page encore ouverte (« Failed to fetch », et comme l'exe
-/// prend un port libre au lancement, l'onglet resté ouvert vise ensuite un port mort).
-/// D'où deux délais, choisis selon ce que le client a annoncé :
-/// - la page a prévenu qu'elle partait (<see cref="NoticeClientLeaving"/>, balise `pagehide`) —
-///   fermeture ou rechargement : délai COURT, l'exe disparaît vite ;
-/// - personne n'a prévenu : c'est le transport qui a lâché — délai LONG, au-delà de la fenêtre
-///   de reconnexion, pour laisser le client revenir.
+/// CENTRAL PITFALL — a hub disconnection does NOT mean the page is gone. The client
+/// uses `withAutomaticReconnect()`, which retries after 0, 2, 10 then 30 s: a transient
+/// WebSocket drop is recovered, but well after a short grace period. Shutting down after 10 s
+/// in that case kills the server under a page that is still open ("Failed to fetch", and since the exe
+/// takes a free port on launch, the tab left open then points at a dead port).
+/// Hence two delays, chosen according to what the client announced:
+/// - the page gave notice that it was leaving (<see cref="NoticeClientLeaving"/>, `pagehide` beacon) —
+///   close or reload: SHORT delay, the exe goes away quickly;
+/// - nobody gave notice: it is the transport that dropped — LONG delay, beyond the reconnection
+///   window, to let the client come back.
 ///
-/// Autres garde-fous :
-/// - l'arrêt ne peut partir que d'une déconnexion, donc jamais avant qu'un client se soit
-///   connecté (l'exe ne peut pas se suicider pendant l'ouverture du navigateur) ;
-/// - désactivable (<c>--no-browser</c>), sinon la boucle de dev et les tests s'arrêteraient
-///   dès la fermeture de la page.
+/// Other safeguards:
+/// - shutdown can only start from a disconnection, so never before a client has
+///   connected (the exe cannot kill itself while the browser is opening);
+/// - can be disabled (<c>--no-browser</c>), otherwise the dev loop and the tests would stop
+///   as soon as the page is closed.
 ///
-/// Si aucun client ne se connecte jamais (navigateur qui n'ouvre pas), rien ne s'arme : on
-/// retombe sur le comportement d'avant, jamais sur un arrêt surprise.
+/// If no client ever connects (browser that does not open), nothing is armed: we
+/// fall back to the previous behaviour, never to a surprise shutdown.
 /// </summary>
 public sealed class BrowserLifetime(
     IHostApplicationLifetime lifetime,
@@ -40,21 +40,21 @@ public sealed class BrowserLifetime(
     TimeSpan? dropGrace = null)
 {
     /// <summary>
-    /// Armable après coup. Le Shell démarre désarmé quand il part en mode fenêtre native,
-    /// mais il bascule sur le repli navigateur si WebView2 échoue à s'initialiser : l'exe
-    /// doit alors s'arrêter comme en mode navigateur, sinon il survit sans rien à l'écran.
+    /// Can be armed afterwards. The Shell starts disarmed when it launches in native window mode,
+    /// but it switches to the browser fallback if WebView2 fails to initialize: the exe
+    /// must then stop as in browser mode, otherwise it survives with nothing on screen.
     /// </summary>
     public bool Enabled { get; set; } = enabled;
 
-    /// <summary>Page partie volontairement (fermeture / rechargement) : couvre le temps d'un F5.</summary>
+    /// <summary>Page left on purpose (close / reload): covers the time of an F5.</summary>
     private readonly TimeSpan _closeGrace = closeGrace ?? TimeSpan.FromSeconds(10);
 
-    /// <summary>Transport tombé sans préavis : doit dépasser la reconnexion SignalR (0/2/10/30 s).</summary>
+    /// <summary>Transport dropped without notice: must exceed the SignalR reconnection (0/2/10/30 s).</summary>
     private readonly TimeSpan _dropGrace = dropGrace ?? TimeSpan.FromSeconds(45);
 
     private readonly object _gate = new();
     private int _clients;
-    private bool _leaving; // une page a annoncé son départ (balise reçue)
+    private bool _leaving; // a page announced it was leaving (beacon received)
     private CancellationTokenSource? _pendingShutdown;
 
     public void ClientConnected()
@@ -68,16 +68,16 @@ public sealed class BrowserLifetime(
     }
 
     /// <summary>
-    /// La page annonce son départ (`pagehide`). La balise et la fermeture du WebSocket courent
-    /// l'une contre l'autre : on gère les deux ordres d'arrivée — soit on mémorise l'intention
-    /// pour la déconnexion à venir, soit on raccourcit un arrêt déjà armé au délai long.
+    /// The page announces it is leaving (`pagehide`). The beacon and the WebSocket close race
+    /// each other: both arrival orders are handled — either the intent is remembered
+    /// for the upcoming disconnection, or a shutdown already armed with the long delay is shortened.
     /// </summary>
     public void NoticeClientLeaving()
     {
         lock (_gate)
         {
             _leaving = true;
-            if (_pendingShutdown is null) return; // la déconnexion n'est pas encore arrivée
+            if (_pendingShutdown is null) return; // the disconnection has not arrived yet
             CancelPending();
             Arm(_closeGrace);
             _leaving = false;
@@ -96,15 +96,15 @@ public sealed class BrowserLifetime(
         }
     }
 
-    /// <summary>Arme l'arrêt différé. À appeler sous <see cref="_gate"/>.</summary>
+    /// <summary>Arms the delayed shutdown. Call while holding <see cref="_gate"/>.</summary>
     private void Arm(TimeSpan grace)
     {
         _pendingShutdown = new CancellationTokenSource();
-        // Démarre en synchrone jusqu'au premier await (Task.Delay) : ne reprend pas le verrou.
+        // Runs synchronously up to the first await (Task.Delay): does not take the lock again.
         _ = ShutdownAfterGraceAsync(grace, _pendingShutdown.Token);
     }
 
-    /// <summary>Désarme l'arrêt en cours. À appeler sous <see cref="_gate"/>.</summary>
+    /// <summary>Disarms the pending shutdown. Call while holding <see cref="_gate"/>.</summary>
     private void CancelPending()
     {
         _pendingShutdown?.Cancel();
@@ -120,7 +120,7 @@ public sealed class BrowserLifetime(
         }
         catch (OperationCanceledException)
         {
-            return; // un onglet est revenu, ou le délai a été revu
+            return; // a tab came back, or the delay was revised
         }
 
         logger.LogInformation(

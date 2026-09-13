@@ -1,4 +1,4 @@
-// Client API CubeScope — miroir des DTO du serveur (System.Text.Json → camelCase).
+// CubeScope API client — mirrors the server DTOs (System.Text.Json → camelCase).
 import { t, currentLocale } from './i18n'
 
 export interface GridColumn {
@@ -234,18 +234,18 @@ export const api = {
   impact: (oldScript: string, newScript: string) =>
     request<ImpactReport>('POST', '/api/script/impact', { oldScript, newScript }),
 
-  // Comparaison de la même requête entre le catalogue courant et un autre du même serveur
+  // Compares the same query between the current catalog and another one on the same server
   compare: (mdx: string, catalog: string) =>
     request<CatalogComparison>('POST', '/api/compare', { mdx, catalog }),
 
-  // Sessions de l'instance (droits admin SSAS requis côté serveur)
+  // Instance sessions (SSAS admin rights required on the server side)
   sessions: () => request<SsasSessionInfo[]>('GET', '/api/sessions'),
-  // cancelled = false : la session avait déjà disparu (la liste affichée vieillit)
+  // cancelled = false: the session had already gone (the displayed list gets stale)
   cancelSession: (spid: number) =>
     request<{ spid: number; cancelled: boolean }>('POST', `/api/sessions/${spid}/cancel`),
 }
 
-/** Une cellule qui diffère entre les deux catalogues (expected = gauche, actual = droite). */
+/** A cell that differs between the two catalogs (expected = left, actual = right). */
 export interface CellDiff {
   row: number
   column: string
@@ -253,7 +253,7 @@ export interface CellDiff {
   actual: string | null
 }
 
-/** Comparaison de la même requête entre deux catalogues. summary est null quand tout concorde. */
+/** Comparison of the same query between two catalogs. summary is null when everything matches. */
 export interface CatalogComparison {
   leftCatalog: string
   rightCatalog: string
@@ -267,7 +267,7 @@ export interface CatalogComparison {
   diffs: CellDiff[]
 }
 
-/** Session ouverte sur l'instance SSAS. isMine = celle de CubeScope lui-même. */
+/** Session open on the SSAS instance. isMine = CubeScope's own session. */
 export interface SsasSessionInfo {
   spid: number
   sessionId: string
@@ -351,10 +351,10 @@ export interface MemberMeta {
 }
 
 /**
- * Un cran de l'arbre des membres. `childrenCount` vaut le nombre RÉEL d'enfants :
- * 0 = feuille (pas de flèche de dépliage), et au-delà du plafond il donne le nombre
- * de membres masqués. -1 quand le serveur ne l'a pas renvoyé — le nœud reste alors
- * dépliable, faute de quoi on le déclarerait feuille à tort.
+ * One level of the member tree. `childrenCount` is the ACTUAL number of children:
+ * 0 = leaf (no expand arrow), and beyond the cap it gives the number of hidden
+ * members. -1 when the server did not return it — the node then stays expandable,
+ * otherwise it would wrongly be declared a leaf.
  */
 export interface MemberNode {
   caption: string
@@ -364,7 +364,7 @@ export interface MemberNode {
 
 export interface MemberChildren {
   nodes: MemberNode[]
-  /** Le plafond a coupé : à annoncer, jamais à taire. */
+  /** The cap truncated the list: always announce it, never hide it. */
   hasMore: boolean
 }
 

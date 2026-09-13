@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Stats perfmon de la dernière requête (deltas de compteurs cumulés, poussés par SignalR).
-// Compteurs GLOBAUX au serveur (assumé MVP) : une activité concurrente pollue les deltas.
+// Perfmon stats of the last query (deltas of cumulative counters, pushed by SignalR).
+// Server-GLOBAL counters (accepted for the MVP): concurrent activity pollutes the deltas.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'

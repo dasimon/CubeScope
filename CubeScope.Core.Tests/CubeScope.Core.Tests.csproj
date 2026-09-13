@@ -21,11 +21,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CubeScope.Core\CubeScope.Core.csproj" />
-    <!-- Pour BrowserLifetime : sa logique de délai/annulation décide de l'arrêt de l'exe,
-         elle mérite d'être testée sans dépendre d'un vrai navigateur. -->
+    <!-- For BrowserLifetime: its delay/cancellation logic decides when the exe stops,
+         so it deserves tests that do not depend on a real browser. -->
     <ProjectReference Include="..\CubeScope.Server\CubeScope.Server.csproj" />
-    <!-- Pour LaunchModeDecider : le choix fenêtre/navigateur décide de ce que voit
-         l'utilisateur sur une machine sans runtime WebView2. -->
+    <!-- For LaunchModeDecider: the window/browser choice decides what the user sees
+         on a machine without the WebView2 runtime. -->
     <ProjectReference Include="..\CubeScope.Shell\CubeScope.Shell.csproj" />
   </ItemGroup>
 

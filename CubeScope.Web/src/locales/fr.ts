@@ -1,4 +1,4 @@
-// Catalogue français (langue par défaut). Ne pas mettre de « | » (réservé pluriel vue-i18n).
+// French catalog (default language). Do not use "|" (reserved for vue-i18n plurals).
 export default {
   common: { cancel: 'Annuler', retry: 'Réessayer', reload: 'Recharger', filter: 'Filtrer…' },
   toast: { error: 'Erreur', cacheCleared: 'Cache vidé' },

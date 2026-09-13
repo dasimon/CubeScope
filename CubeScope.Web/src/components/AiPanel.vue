@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Panneau IA : expliquer / optimiser / anti-patterns / formater le MDX courant,
-// avec les métadonnées du cube injectées côté serveur. Rendu Markdown (marked).
+// AI panel: explain / optimize / anti-patterns / format the current MDX,
+// with the cube metadata injected on the server side. Markdown rendering (marked).
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -25,7 +25,7 @@ onMounted(() => void actions.loadAiStatus())
 
 const resultHtml = computed(() => (store.aiResult ? marked.parse(store.aiResult) : ''))
 
-// Un bloc ```mdx dans la réponse → proposable à l'éditeur
+// A ```mdx block in the response → can be offered to the editor
 const hasApplicableMdx = computed(() => /```(mdx)?\s*\n[\s\S]*?```/i.test(store.aiResult))
 
 const runningLabel = computed(() => {

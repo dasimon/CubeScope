@@ -3,10 +3,10 @@ using CubeScope.Core.Project;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Le discriminant prod/dev était le NOM DU CATALOGUE (« contient dev ») tant que le dev vivait
-/// sur le serveur de prod sous un autre nom. Depuis que le dev a son propre serveur, les deux
-/// catalogues portent le même nom : c'est le SERVEUR qui décide, et seulement via une liste
-/// explicite. Ces tests verrouillent la règle, dont dépend le refus de déployer en production.
+/// The prod/dev discriminant was the CATALOG NAME ("contains dev") as long as dev lived on the
+/// prod server under another name. Since dev got its own server, both catalogs carry the same
+/// name: the SERVER decides, and only through an explicit list. These tests lock down the
+/// rule on which the refusal to deploy to production depends.
 /// </summary>
 public class DevServerGuardTests
 {
@@ -21,8 +21,8 @@ public class DevServerGuardTests
     [Fact]
     public void Liste_vide_ne_declare_aucun_serveur_de_dev()
     {
-        // Fail-closed : une configuration absente doit gêner, jamais autoriser. Si la liste
-        // vide rendait « true », un poste neuf déploierait en production sans un avertissement.
+        // Fail-closed: a missing configuration must get in the way, never allow. If the empty
+        // list returned "true", a fresh machine would deploy to production without a single warning.
         Assert.False(DevServerGuard.IsDev([], "SRV-DEV"));
     }
 
@@ -32,8 +32,8 @@ public class DevServerGuardTests
     [InlineData("  SRV-DEV  ")]
     public void La_casse_et_les_espaces_ne_changent_rien(string saisi)
     {
-        // Un nom de serveur Windows est insensible à la casse, et un espace collé au
-        // copier-coller ne doit pas transformer un serveur de dev en production.
+        // A Windows server name is case-insensitive, and a space picked up by copy-paste
+        // must not turn a dev server into production.
         Assert.True(DevServerGuard.IsDev(["SRV-DEV"], saisi));
     }
 
@@ -44,8 +44,8 @@ public class DevServerGuardTests
     [Fact]
     public void Un_serveur_vide_n_est_jamais_de_dev()
     {
-        // Sinon une liste contenant une entrée vide (saisie ratée) déclarerait « dev »
-        // une connexion sans serveur.
+        // Otherwise a list containing an empty entry (botched input) would declare a
+        // connection with no server as "dev".
         Assert.False(DevServerGuard.IsDev(["", "SRV-DEV"], ""));
         Assert.False(DevServerGuard.IsDev(["SRV-DEV"], "   "));
     }
@@ -53,8 +53,8 @@ public class DevServerGuardTests
     [Fact]
     public void Une_correspondance_partielle_ne_suffit_pas()
     {
-        // « contient » était justement le défaut de l'ancienne règle sur le nom de catalogue :
-        // un serveur nommé SRV-DEV-PROD n'est pas SRV-DEV.
+        // "contains" was precisely the flaw of the old rule on the catalog name:
+        // a server named SRV-DEV-PROD is not SRV-DEV.
         Assert.False(DevServerGuard.IsDev(["SRV-DEV"], "SRV-DEV-PROD"));
         Assert.False(DevServerGuard.IsDev(["SRV-DEV"], "SRV"));
     }

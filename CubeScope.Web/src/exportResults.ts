@@ -1,4 +1,4 @@
-// Export des résultats de requête : CSV (téléchargement) et TSV (presse-papiers, colle propre dans Excel).
+// Query result export: CSV (download) and TSV (clipboard, pastes cleanly into Excel).
 import type { GridColumn } from './api'
 
 function csvField(value: unknown): string {

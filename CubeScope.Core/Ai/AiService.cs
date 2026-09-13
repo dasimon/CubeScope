@@ -18,25 +18,25 @@ public enum AiAction
 }
 
 /// <summary>
-/// Expert IA intégré (décision actée) : prompt système par action + métadonnées
-/// pertinentes du cube injectées dans le contexte.
-/// Transport par défaut : API Anthropic (ANTHROPIC_API_KEY, claude-opus-4-8, adaptive
-/// thinking). Alternative : tout endpoint compatible OpenAI (/v1/chat/completions) si
-/// CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL sont définis — couvre Ollama/LM Studio en
-/// local (confidentialité) et OpenAI/Mistral/OpenRouter/Groq. Clés en env uniquement,
-/// jamais de stockage local (validé 2026-07-23).
+/// Built-in AI expert (settled decision): a system prompt per action + the relevant cube
+/// metadata injected into the context.
+/// Default transport: Anthropic API (ANTHROPIC_API_KEY, claude-opus-4-8, adaptive
+/// thinking). Alternative: any OpenAI-compatible endpoint (/v1/chat/completions) if
+/// CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL are set — covers Ollama/LM Studio running
+/// locally (confidentiality) and OpenAI/Mistral/OpenRouter/Groq. Keys in env vars only,
+/// never stored locally (validated 2026-07-23).
 /// </summary>
 public sealed class AiService(MetadataService metadata, SsasSession session)
 {
     private const string DefaultAnthropicModel = "claude-opus-4-8";
 
-    // Modèle Anthropic : CUBESCOPE_ANTHROPIC_MODEL si posée (ex. un autre Claude),
-    // sinon le défaut. Adaptive thinking reste actif quel que soit le modèle.
+    // Anthropic model: CUBESCOPE_ANTHROPIC_MODEL if set (e.g. another Claude model),
+    // otherwise the default. Adaptive thinking stays on whatever the model.
     private static string ModelId =>
         Env("CUBESCOPE_ANTHROPIC_MODEL") is { } m && !string.IsNullOrWhiteSpace(m) ? m.Trim() : DefaultAnthropicModel;
 
-    // Prompt système commun, stable (préfixe cacheable) — le contexte cube et le MDX
-    // arrivent dans le message utilisateur.
+    // Shared, stable system prompt (cacheable prefix) — the cube context and the MDX
+    // come in the user message.
     private const string SystemBase = """
         Tu es l'expert MDX intégré de CubeScope, un outil pour développeur SSAS
         Multidimensional. Tu réponds en Markdown, de façon précise et directement
@@ -119,9 +119,9 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             """,
     };
 
-    // Fournisseur alternatif compatible OpenAI (/v1/chat/completions) : couvre Ollama en local
-    // (données qui ne quittent pas le réseau), OpenAI, Mistral, OpenRouter, Groq, LM Studio…
-    // Activé dès que base URL + modèle sont définis ; sinon défaut = Anthropic (inchangé).
+    // Alternative OpenAI-compatible provider (/v1/chat/completions): covers local Ollama
+    // (data that does not leave the network), OpenAI, Mistral, OpenRouter, Groq, LM Studio…
+    // Enabled as soon as base URL + model are set; otherwise default = Anthropic (unchanged).
     private static string? LlmBaseUrl => Env("CUBESCOPE_LLM_BASEURL");
     private static string? LlmModel => Env("CUBESCOPE_LLM_MODEL");
     private static string? LlmKey => Env("CUBESCOPE_LLM_KEY");
@@ -135,15 +135,15 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     public static bool IsConfigured =>
         UseOpenAiCompat || !string.IsNullOrWhiteSpace(AnthropicKey);
 
-    /// <summary>Modèle actif (pour l'affichage UI) : le modèle OpenAI-compatible configuré, sinon Anthropic.</summary>
+    /// <summary>Active model (for display in the UI): the configured OpenAI-compatible model, otherwise Anthropic.</summary>
     public static string ActiveModel => UseOpenAiCompat ? LlmModel! : ModelId;
 
-    // Actions qui opèrent sur une VRAIE requête MDX existante : on peut auto-extraire les
-    // références [Dim].[Hiér] qu'elle contient et n'injecter que les métadonnées pertinentes
-    // (MdxContextBuilder). Les autres actions (GenererMdx, Tracer, OptimiserProfil) reçoivent
-    // déjà un contexte complet et auto-descriptif construit par leur appelant (Program.cs) —
-    // pour elles, ni auto-extraction (qui interrogerait le mauvais cube via cubes[0]), ni
-    // enveloppe "Requête MDX" trompeuse : le texte fourni est envoyé tel quel.
+    // Actions that work on a REAL existing MDX query: we can auto-extract the
+    // [Dim].[Hier] references it contains and inject only the relevant metadata
+    // (MdxContextBuilder). The other actions (GenererMdx, Tracer, OptimiserProfil) already
+    // receive a complete, self-describing context built by their caller (Program.cs) —
+    // for them, no auto-extraction (which would query the wrong cube via cubes[0]) and no
+    // misleading "Requête MDX" wrapper: the supplied text is sent as is.
     private static readonly HashSet<AiAction> RawMdxActions =
         [AiAction.Expliquer, AiAction.Optimiser, AiAction.AntiPatterns, AiAction.Formater];
 
@@ -155,7 +155,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
         if (string.IsNullOrWhiteSpace(mdx))
             throw new InvalidOperationException("Aucune requête MDX à analyser.");
 
-        // Langue de réponse (l'UI envoie la locale courante) — le reste du prompt est stable.
+        // Response language (the UI sends the current locale) — the rest of the prompt is stable.
         string langInstruction = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase)
             ? "Respond in English."
             : "Réponds en français.";
@@ -163,7 +163,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
         string userContent;
         if (RawMdxActions.Contains(action))
         {
-            // Contexte cube : métadonnées du cube courant si disponibles (sinon on continue sans)
+            // Cube context: metadata of the current cube if available (otherwise carry on without it)
             string cubeContext = "";
             try
             {
@@ -176,7 +176,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             }
             catch
             {
-                // Pas de connexion/cube : l'IA travaille sur le MDX seul, dégradé assumé
+                // No connection/cube: the AI works on the MDX alone, accepted degraded mode
             }
 
             userContent = $"""
@@ -200,7 +200,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
                 """;
         }
 
-        // Fournisseur compatible OpenAI configuré → HTTP /chat/completions ; sinon Anthropic (défaut).
+        // OpenAI-compatible provider configured → HTTP /chat/completions; otherwise Anthropic (default).
         if (UseOpenAiCompat)
             return await RunOpenAiCompatAsync($"{SystemBase}\n\n{langInstruction}", userContent, ct);
 
@@ -228,9 +228,9 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
         return string.Concat(parts);
     }
 
-    // Appel d'un endpoint compatible OpenAI (/v1/chat/completions, Bearer). Couvre Ollama (local,
-    // données qui ne sortent pas du réseau), OpenAI, Mistral, OpenRouter, Groq, LM Studio, etc.
-    // Non couvert (limite assumée) : Azure OpenAI (URL de déploiement + header api-key non standard).
+    // Call to an OpenAI-compatible endpoint (/v1/chat/completions, Bearer). Covers Ollama (local,
+    // data that does not leave the network), OpenAI, Mistral, OpenRouter, Groq, LM Studio, etc.
+    // Not covered (accepted limitation): Azure OpenAI (deployment URL + non-standard api-key header).
     private static async Task<string> RunOpenAiCompatAsync(string system, string user, CancellationToken ct)
     {
         string url = LlmBaseUrl!.TrimEnd('/') + "/chat/completions";

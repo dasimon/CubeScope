@@ -4,12 +4,12 @@
 publish/
 *.user
 
-# Exe publié déposé à la racine pour une vérification manuelle (~200 Mo) : `publish/`
-# est ignoré, celui-là ne l'était pas. Un `git add -A` le committait sans bruit et
-# GitHub refusait ensuite le push (blob > 100 Mo), avec réécriture d'historique à la clé.
+# Published exe dropped at the root for a manual check (~200 MB): `publish/`
+# is ignored, this one was not. A `git add -A` committed it silently and
+# GitHub then rejected the push (blob > 100 MB), with a history rewrite as the price.
 /cubescope.exe
 
-# ─── SPA générée (build Vite ; embarquée au publish via la cible EmbedSpa) ───
+# ─── Generated SPA (Vite build; embedded on publish via the EmbedSpa target) ───
 CubeScope.Server/wwwroot/
 
 # ─── Node / frontend ──────────────────────────────────────────
@@ -17,12 +17,12 @@ node_modules/
 CubeScope.Web/dist/
 CubeScope.Web/*.tsbuildinfo
 
-# ─── État local (SQLite) ──────────────────────────────────────
+# ─── Local state (SQLite) ────────────────────────────────────
 *.db
 *.db-shm
 *.db-wal
 
-# ─── IDE / outillage ──────────────────────────────────────────
+# ─── IDE / tooling ───────────────────────────────────────────
 .vs/
 .vscode/
 .idea/
@@ -32,18 +32,18 @@ CubeScope.Web/*.tsbuildinfo
 Thumbs.db
 .DS_Store
 
-# ─── Outillage perso (hors repo public) ───────────────────────
+# ─── Personal tooling (outside the public repo) ──────────────
 .clinerules
 .github/copilot-instructions.md
 
-# ─── Notes internes non caviardées (privé, lu par Claude Code) ──
+# ─── Unredacted internal notes (private, read by Claude Code) ───
 CLAUDE.local.md
 
-# ─── Doc interne non tranchée ────────────────────────────────
+# ─── Undecided internal docs ─────────────────────────────────
 docs/PROJET.md
 
-# ─── Assets de promotion (perso, hors repo public) ────────────
+# ─── Promotion assets (personal, outside the public repo) ────
 marketing/
 
-# Docs de planification SDD (internes, ne pas publier)
+# SDD planning docs (internal, do not publish)
 docs/superpowers/

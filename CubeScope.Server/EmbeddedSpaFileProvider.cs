@@ -5,15 +5,15 @@ using Microsoft.Extensions.Primitives;
 namespace CubeScope.Server;
 
 /// <summary>
-/// Sert la SPA embarquée dans l'assembly (EmbeddedResource préfixés « spa/ ») sans
-/// aucune dépendance au système de fichiers → l'exe single-file est déplaçable et
-/// fonctionne seul. Repli côté hôte : si aucune ressource « spa/ » n'est embarquée
-/// (build de dev), on garde le provider physique + proxy Vite.
+/// Serves the SPA embedded in the assembly (EmbeddedResource entries prefixed "spa/") without
+/// any file system dependency → the single-file exe can be moved and
+/// works on its own. Host-side fallback: if no "spa/" resource is embedded
+/// (dev build), the physical provider + Vite proxy are kept.
 /// </summary>
 public sealed class EmbeddedSpaFileProvider : IFileProvider
 {
     private readonly Assembly _asm;
-    // chemin normalisé (ex. "assets/index-x.js") -> nom de ressource réel
+    // normalized path (e.g. "assets/index-x.js") -> actual resource name
     private readonly Dictionary<string, string> _files;
 
     public EmbeddedSpaFileProvider(Assembly asm, string prefix)

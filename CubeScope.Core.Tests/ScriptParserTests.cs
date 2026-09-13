@@ -39,7 +39,7 @@ public class ScriptParserTests
         Assert.Equal(3, Parsed.Count(c => c.Kind == "CalculatedMember"));
         Assert.Equal(1, Parsed.Count(c => c.Kind == "NamedSet"));
         Assert.Equal(1, Parsed.Count(c => c.Kind == "Scope"));
-        Assert.DoesNotContain(Parsed, c => c.Kind == "Autre"); // CALCULATE ignoré
+        Assert.DoesNotContain(Parsed, c => c.Kind == "Autre"); // CALCULATE ignored
     }
 
     [Fact]
@@ -84,11 +84,11 @@ public class ScriptParserTests
     [Theory]
     [InlineData("STATIC")]
     [InlineData("DYNAMIC")]
-    [InlineData("")] // CREATE SET nu
+    [InlineData("")] // bare CREATE SET
     public void Parse_CreateSet_RecognizesSetModifiers(string modifier)
     {
-        // STATIC est même le type de set par défaut en MDX : un CREATE STATIC SET
-        // doit être classé NamedSet, pas "Autre" (constaté sur un vrai cube).
+        // STATIC is even the default set type in MDX: a CREATE STATIC SET
+        // must be classified as NamedSet, not "Autre" (observed on a real cube).
         string mdx = $"CREATE {modifier} SET CURRENTCUBE.[Ensemble géré] " +
                      "AS {[Dim].[Hier].[A], [Dim].[Hier].[B]};";
         var cmd = ScriptParser.Parse(mdx).Single();
@@ -124,7 +124,7 @@ public class DependencyServiceTests
         var margeNode = Assert.Single(g.Root.Dependencies, d => d.Name == "[Measures].[Marge]");
         Assert.Contains(margeNode.Dependencies, d => d.Name == "[Measures].[CA]" && d.Kind == "Measure");
         Assert.Contains(margeNode.Dependencies, d => d.Name == "[Measures].[Coûts]");
-        // CA est aussi dépendance directe du taux
+        // CA is also a direct dependency of the rate
         Assert.Contains(g.Root.Dependencies, d => d.Name == "[Measures].[CA]");
     }
 
@@ -159,6 +159,6 @@ public class DependencyServiceTests
         var b = Assert.Single(g.Root.Dependencies);
         Assert.Equal("[Measures].[B]", b.Name);
         var backToA = Assert.Single(b.Dependencies);
-        Assert.Empty(backToA.Dependencies); // le cycle est coupé
+        Assert.Empty(backToA.Dependencies); // the cycle is broken
     }
 }

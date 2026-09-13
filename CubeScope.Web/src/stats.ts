@@ -1,4 +1,4 @@
-// Connexion SignalR au hub stats : reçoit les deltas perfmon poussés après chaque requête.
+// SignalR connection to the stats hub: receives the perfmon deltas pushed after each query.
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { actions, store } from './store'
 import type { CounterDelta, QueryProfile } from './api'
@@ -13,21 +13,21 @@ export function startStatsHub(): void {
   conn.on('queryStats', (payload: { durationMs: number; deltas: CounterDelta[] }) => {
     store.stats = payload.deltas
     store.statsQueryDurationMs = payload.durationMs
-    // Un push reçu = perfmon opérationnel, quel que soit le dernier statut chargé
+    // A push received = perfmon is working, whatever the last loaded status
     store.statsStatus = { status: 'Ready', detail: store.statsStatus?.detail ?? null }
   })
 
   conn.on('queryProfile', (profile: QueryProfile) => actions.setProfile(profile))
 
   conn.start().catch(() => {
-    /* hub indisponible : les stats resteront vides, non bloquant */
+    /* hub unavailable: stats will stay empty, non-blocking */
   })
 
-  // Prévient le serveur que la page s'en va, pour qu'il distingue une fermeture (ou un F5)
-  // d'un transport qui lâche — sans ça, il ne peut pas savoir s'il doit s'arrêter vite ou
-  // patienter le temps que le client se reconnecte. sendBeacon est le seul envoi qui
-  // aboutit de façon fiable pendant le déchargement de la page.
-  // `pagehide` plutôt que `beforeunload` : il couvre aussi la mise en cache arrière/avant.
+  // Tells the server the page is leaving, so it can tell a close (or an F5) apart from
+  // a dropped transport — without this, it cannot know whether to shut down quickly or
+  // wait for the client to reconnect. sendBeacon is the only send that reliably gets
+  // through while the page is unloading.
+  // `pagehide` rather than `beforeunload`: it also covers the back/forward cache.
   window.addEventListener('pagehide', () => {
     navigator.sendBeacon('/api/leaving')
   })

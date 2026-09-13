@@ -4,9 +4,9 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Script;
 
 /// <summary>
-/// Découpage pragmatique du MDX Script (décision actée : tokenizer, pas d'AST).
-/// Statements séparés par ';' hors chaînes/commentaires/parenthèses ; blocs
-/// SCOPE…END SCOPE regroupés (imbrication gérée par comptage). ~95 % assumé.
+/// Pragmatic splitting of the MDX Script (settled decision: tokenizer, no AST).
+/// Statements separated by ';' outside strings/comments/parentheses; SCOPE…END SCOPE
+/// blocks grouped together (nesting handled by counting). ~95% accepted.
 /// </summary>
 public static partial class ScriptParser
 {
@@ -24,7 +24,7 @@ public static partial class ScriptParser
     [GeneratedRegex(@"^\s*(?://|--)\s*#endregion\b", RegexOptions.IgnoreCase)]
     private static partial Regex RegionEnd();
 
-    // Propriétés qui terminent l'expression d'un CREATE MEMBER (virgule niveau 0 + mot-clé)
+    // Properties that end the expression of a CREATE MEMBER (level-0 comma + keyword)
     private static readonly string[] MemberProperties =
     [
         "FORMAT_STRING", "VISIBLE", "DISPLAY_FOLDER", "ASSOCIATED_MEASURE_GROUP",
@@ -66,17 +66,17 @@ public static partial class ScriptParser
                 commands.Add(new ScriptCommand("Scope", firstLine, trimmed, startLine, section));
                 continue;
             }
-            if (trimmed.StartsWith("CALCULATE", StringComparison.OrdinalIgnoreCase)) continue; // le CALCULATE; racine
+            if (trimmed.StartsWith("CALCULATE", StringComparison.OrdinalIgnoreCase)) continue; // the root CALCULATE;
             commands.Add(new ScriptCommand("Autre", trimmed.Split('\n')[0].Trim(), trimmed, startLine, section));
         }
         return commands;
     }
 
-    /// <summary>"[Measures] . [X]" → "[Measures].[X]" (espaces autour des points).</summary>
+    /// <summary>"[Measures] . [X]" → "[Measures].[X]" (whitespace around the dots).</summary>
     private static string Normalize(string name) =>
         Regex.Replace(name, @"\]\s*\.\s*\[", "].[");
 
-    /// <summary>Retire les commentaires (lignes -- ou //, blocs /* */) en tête de statement.</summary>
+    /// <summary>Removes the comments (-- or // lines, /* */ blocks) at the start of a statement.</summary>
     internal static string StripLeadingComments(string text)
     {
         string t = text;
@@ -103,8 +103,8 @@ public static partial class ScriptParser
     }
 
     /// <summary>
-    /// L'expression d'un CREATE MEMBER va jusqu'à la première virgule de niveau 0
-    /// suivie d'une propriété connue (FORMAT_STRING = …), sinon tout le reste.
+    /// The expression of a CREATE MEMBER runs up to the first level-0 comma
+    /// followed by a known property (FORMAT_STRING = …), otherwise all the rest.
     /// </summary>
     internal static string ExtractMemberExpression(string afterAs)
     {
@@ -133,8 +133,8 @@ public static partial class ScriptParser
     }
 
     /// <summary>
-    /// Découpe en statements au ';' de niveau 0, en regroupant SCOPE…END SCOPE
-    /// (imbrication comptée). Retourne aussi la ligne de départ (1-based).
+    /// Splits into statements at level-0 ';', grouping SCOPE…END SCOPE together
+    /// (nesting counted). Also returns the start line (1-based).
     /// </summary>
     internal static IEnumerable<(string Text, int StartLine)> SplitStatements(string script)
     {
@@ -143,10 +143,10 @@ public static partial class ScriptParser
         bool inString = false, inBracket = false, inLineComment = false, inBlockComment = false;
         char stringChar = '"';
 
-        // Même peek-forward que celui utilisé après chaque ';' (voir plus bas) : le tout
-        // premier statement doit lui aussi voir son stmtStartLine avancer au-delà des
-        // éventuelles lignes blanches de tête du script, sinon ContentLine (qui soustrait
-        // ces mêmes lignes blanches) part d'une valeur jamais ajustée et sous-évalue la ligne.
+        // Same peek-forward as the one used after each ';' (see below): the very
+        // first statement must also have its stmtStartLine moved past any
+        // leading blank lines of the script, otherwise ContentLine (which subtracts
+        // those same blank lines) starts from a never-adjusted value and underestimates the line.
         for (int j = stmtStart; j < script.Length && char.IsWhiteSpace(script[j]); j++)
             if (script[j] == '\n') stmtStartLine++;
 
@@ -172,7 +172,7 @@ public static partial class ScriptParser
                 case '[': inBracket = true; continue;
             }
 
-            // Suivi des SCOPE / END SCOPE (mots entiers, hors chaînes/commentaires)
+            // Tracking of SCOPE / END SCOPE (whole words, outside strings/comments)
             if (char.IsLetter(c) && (i == 0 || !char.IsLetterOrDigit(script[i - 1])))
             {
                 if (IsWordAt(script, i, "SCOPE") && !IsWordAt(script, PrevWordStart(script, i), "END"))
@@ -186,7 +186,7 @@ public static partial class ScriptParser
                 results.Add((script[stmtStart..i], stmtStartLine));
                 stmtStart = i + 1;
                 stmtStartLine = line;
-                // Le début réel du prochain statement : sauter les sauts de ligne suivants
+                // The real start of the next statement: skip the following line breaks
                 for (int j = stmtStart; j < script.Length && char.IsWhiteSpace(script[j]); j++)
                     if (script[j] == '\n') stmtStartLine++;
             }
@@ -220,9 +220,9 @@ public static partial class ScriptParser
     }
 
     /// <summary>
-    /// Section (chemin de régions imbriquées) de chaque ligne, index 0 = ligne 1.
-    /// La ligne #region ouvre la région ; la ligne #endregion n'en fait plus partie.
-    /// Un #endregion sans #region est ignoré ; une région non fermée court jusqu'au bout.
+    /// Section (path of nested regions) of each line, index 0 = line 1.
+    /// The #region line opens the region; the #endregion line is no longer part of it.
+    /// An #endregion without #region is ignored; an unclosed region runs to the end.
     /// </summary>
     internal static IReadOnlyList<string?> SectionsPerLine(string script)
     {
@@ -247,18 +247,18 @@ public static partial class ScriptParser
     }
 
     /// <summary>
-    /// Ligne du premier contenu réel d'un statement (les commentaires/blancs de tête,
-    /// dont les marqueurs de région, appartiennent au statement mais pas à son contenu).
+    /// Line of the first real content of a statement (the leading comments/blank lines,
+    /// including region markers, belong to the statement but not to its content).
     /// </summary>
     /// <remarks>
-    /// <paramref name="startLine"/> pointe déjà sur la 1ʳᵉ ligne non blanche de <paramref name="raw"/>
-    /// (<see cref="SplitStatements"/> saute les lignes blanches de tête en le calculant, sans pour
-    /// autant retirer ces caractères de <paramref name="raw"/> lui-même). <see cref="StripLeadingComments"/>
-    /// ne garantit d'être un suffixe que de <paramref name="raw"/> tel quel (pas de sa version
-    /// tronquée : sans commentaire de tête elle renvoie <paramref name="raw"/> intact, avec ses
-    /// éventuels blancs de tête). On recalcule donc d'abord la ligne réelle du tout premier
-    /// caractère de <paramref name="raw"/> en soustrayant ses propres sauts de ligne blancs de tête,
-    /// puis on recompte à partir de là sur <paramref name="raw"/> non tronqué.
+    /// <paramref name="startLine"/> already points to the first non-blank line of <paramref name="raw"/>
+    /// (<see cref="SplitStatements"/> skips the leading blank lines when computing it, without
+    /// removing those characters from <paramref name="raw"/> itself). <see cref="StripLeadingComments"/>
+    /// only guarantees to return a suffix of <paramref name="raw"/> as is (not of its trimmed
+    /// version: with no leading comment it returns <paramref name="raw"/> intact, with its
+    /// possible leading whitespace). So we first recompute the real line of the very first
+    /// character of <paramref name="raw"/> by subtracting its own leading blank line breaks,
+    /// then count again from there over the untrimmed <paramref name="raw"/>.
     /// </remarks>
     private static int ContentLine(string raw, string afterComments, int startLine)
     {

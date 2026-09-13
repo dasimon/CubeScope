@@ -1,440 +1,440 @@
 # CubeScope
 
-Successeur moderne de MDX Studio : environnement de travail pour développeur
-SSAS **Multidimensional** travaillant seul. Écrire, comprendre, mesurer et
-maintenir du MDX sur des cubes existants, avec un expert IA intégré.
-Projet open source (MIT) à vocation communautaire, mais conçu d'abord pour
-l'usage quotidien de son auteur. **Hors périmètre définitif : Tabular, Power BI,
-DAX.** Ne jamais introduire d'abstraction multi-moteurs "au cas où".
+Modern successor to MDX Studio: a workbench for a developer working alone
+on SSAS **Multidimensional**. Write, understand, measure and maintain MDX
+on existing cubes, with a built-in AI expert.
+Open source project (MIT) meant for the community, but designed first for
+its author's daily use. **Permanently out of scope: Tabular, Power BI,
+DAX.** Never introduce a multi-engine abstraction "just in case".
 
-## Décisions d'architecture (actées — ne pas rouvrir sans raison forte)
+## Architecture decisions (settled — do not reopen without a strong reason)
 
-- **Un seul exécutable** `cubescope.exe` : ASP.NET Core 10 (Kestrel, port libre
-  sur localhost) servant une SPA Vue 3. **Coquille native WPF/WebView2
-  (2026-09-11, `feat/coquille-webview2`) : décision changée.** Au lancement,
-  ouverture d'une fenêtre native `CubeScope.Shell` (WPF +
-  `Microsoft.Web.WebView2.Wpf`) plutôt que du navigateur par défaut — motif :
-  icône barre des tâches, titre de fenêtre propre, raccourcis clavier
-  applicatifs (F5, Ctrl+F…) qui ne doivent plus être happés par le chrome
-  d'un navigateur, arrêt du process lié à la fermeture de la fenêtre plutôt
-  qu'à un onglet qu'on peut laisser traîner. Le serveur Kestrel/SPA est resté
-  une bibliothèque réutilisable (`CubeScope.Server`), hébergée soit par
-  `CubeScope.Shell` (fenêtre native, exe publié), soit en repli navigateur via
-  `--force-browser` (comportement d'origine, conservé pour le cas où le
-  runtime WebView2 est absent). Détails techniques : voir « Pièges connus ».
-- **Solution** : `CubeScope.Core` (services métier, aucune dépendance web),
-  `CubeScope.Server` (bibliothèque : minimal API + SignalR + hébergement SPA),
-  `CubeScope.Shell` (WPF + WebView2, **projet publié** : héberge le serveur et
-  affiche la fenêtre native), `CubeScope.Server.Cli` (point d'entrée
-  console sans fenêtre pour la boucle de dev — `--port`, `--no-browser` ; non publié),
+- **A single executable** `cubescope.exe`: ASP.NET Core 10 (Kestrel, free port
+  on localhost) serving a Vue 3 SPA. **Native WPF/WebView2 shell
+  (2026-09-11, `feat/coquille-webview2`): decision changed.** On launch,
+  a native `CubeScope.Shell` window opens (WPF +
+  `Microsoft.Web.WebView2.Wpf`) rather than the default browser — reason:
+  taskbar icon, a proper window title, application keyboard shortcuts
+  (F5, Ctrl+F…) that must no longer be swallowed by the browser
+  chrome, process shutdown tied to closing the window rather than
+  to a tab that can be left lying around. The Kestrel/SPA server remains
+  a reusable library (`CubeScope.Server`), hosted either by
+  `CubeScope.Shell` (native window, published exe), or as a browser fallback via
+  `--force-browser` (original behaviour, kept for when the
+  WebView2 runtime is missing). Technical details: see "Known pitfalls".
+- **Solution**: `CubeScope.Core` (business services, no web dependency),
+  `CubeScope.Server` (library: minimal API + SignalR + SPA hosting),
+  `CubeScope.Shell` (WPF + WebView2, **published project**: hosts the server and
+  shows the native window), `CubeScope.Server.Cli` (windowless console
+  entry point for the dev loop — `--port`, `--no-browser`; not published),
   `CubeScope.Web` (Vue 3 + TypeScript + Vite).
-- **Connectivité SSAS** : package NuGet
-  `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` (jamais la
-  variante .NET Framework). AMO (`Microsoft.AnalysisServices.NetCore.retail.amd64`)
-  uniquement pour lire le MDX Script et résoudre les ID d'objets.
-- **Métadonnées** : DMV `$SYSTEM.MDSCHEMA_*` en voie principale (mapping JSON
-  simple), schema rowsets typés en complément si besoin. Chargement paresseux
-  des membres (autocomplétion) avec cache mémoire.
-- **Stats d'exécution** : deltas de compteurs perfmon (catégories `MSAS<ver>:*`
-  ou `MSOLAP$<instance>:*`, découverte dynamique par préfixe). Compteurs
-  globaux au serveur, pas par session : assumé pour le MVP.
-- **État local** : SQLite unique (historique de requêtes, connexions récentes,
-  layouts, snippets). Pas de fichiers de config éparpillés.
-- **Frontend** : Monaco Editor (grammaire Monarch MDX maison), dockview pour
-  le layout, PrimeVue comme kit UI unique (dialogues, arbre, menus) dont le
-  `DataTable` virtualisé sert de grille de résultats v1 — encapsulé dans
-  `ResultsGrid.vue` (interface `columns`/`rows`) pour basculer sur AG Grid
-  Community si les crossjoins larges rament (constaté, pas supposé). SignalR
-  pour tout ce qui streame (progression, futures traces) — introduit en
-  Phase 2 avec les stats, pas avant.
-- **Parseur MDX = tokenizer pragmatique**, pas d'AST complet. Sert la
-  coloration, la détection de références `[Dim].[Hier]` / `[Measures].[X]` et
-  le graphe de dépendances par matching de tokens (~95 % de précision, assumé).
-- **IA** : service appelant l'API Anthropic (expliquer / optimiser / détecter
-  les anti-patterns / formater), avec injection des métadonnées pertinentes du
-  cube dans le contexte. Le formatage MDX passe par l'IA : **ne pas écrire de
-  formateur déterministe** (piège à effort identifié).
+- **SSAS connectivity**: NuGet package
+  `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` (never the
+  .NET Framework variant). AMO (`Microsoft.AnalysisServices.NetCore.retail.amd64`)
+  only to read the MDX Script and resolve object IDs.
+- **Metadata**: DMV `$SYSTEM.MDSCHEMA_*` as the main path (simple JSON
+  mapping), typed schema rowsets as a complement if needed. Lazy loading
+  of members (autocompletion) with an in-memory cache.
+- **Execution stats**: perfmon counter deltas (categories `MSAS<ver>:*`
+  or `MSOLAP$<instance>:*`, dynamic discovery by prefix). Counters are
+  server-wide, not per session: accepted for the MVP.
+- **Local state**: a single SQLite database (query history, recent connections,
+  layouts, snippets). No scattered config files.
+- **Frontend**: Monaco Editor (home-made Monarch MDX grammar), dockview for
+  the layout, PrimeVue as the only UI kit (dialogs, tree, menus) whose
+  virtualized `DataTable` serves as the v1 results grid — wrapped in
+  `ResultsGrid.vue` (`columns`/`rows` interface) to switch to AG Grid
+  Community if wide crossjoins crawl (observed, not assumed). SignalR
+  for everything that streams (progress, future traces) — introduced in
+  Phase 2 with the stats, not before.
+- **MDX parser = pragmatic tokenizer**, no full AST. It serves
+  syntax highlighting, detection of `[Dim].[Hier]` / `[Measures].[X]` references and
+  the dependency graph through token matching (~95% accuracy, accepted).
+- **AI**: service calling the Anthropic API (explain / optimize / detect
+  anti-patterns / format), injecting the relevant cube metadata
+  into the context. MDX formatting goes through the AI: **do not write a
+  deterministic formatter** (identified effort trap).
 
-## Reporté / interdit pour le MVP
+## Deferred / forbidden for the MVP
 
-Formateur déterministe, cartographie graphique interactive (la vue arbre
-suffit), viewer Extended Events (perfmon d'abord), impact analysis croisée
-(SSRS/Excel), refactoring, système de plugins.
+Deterministic formatter, interactive graphical map (the tree view
+is enough), Extended Events viewer (perfmon first), cross impact analysis
+(SSRS/Excel), refactoring, plugin system.
 
-## Environnement de dev
+## Dev environment
 
-- Windows uniquement. Cible un SSAS **Multidimensional** réel (testé sur
-  SSAS 2022, instance par défaut port 2383, plus une instance nommée sur port
-  fixe — la syntaxe `hôte\instance` ne marche pas si SQL Browser (UDP 2382) est
-  fermé, utiliser `Data Source=hôte:port`). Pour tout ce qui vide le cache :
-  cibler un catalogue **de dev** (ClearCache est scopé au `DatabaseID`, la prod
-  n'est pas touchée), jamais un catalogue de prod.
-- Sécurité intégrée Windows pour toutes les connexions SSAS. Aucun credential
-  en clair nulle part.
-- .NET 10 SDK, Node LTS, Vue 3 + TypeScript strict.
+- Windows only. Targets a real SSAS **Multidimensional** (tested on
+  SSAS 2022, default instance on port 2383, plus a named instance on a fixed
+  port — the `host\instance` syntax does not work if SQL Browser (UDP 2382) is
+  closed, use `Data Source=host:port`). For anything that clears the cache:
+  target a **dev** catalog (ClearCache is scoped to the `DatabaseID`, prod
+  is not touched), never a prod catalog.
+- Windows integrated security for all SSAS connections. No plain-text credential
+  anywhere.
+- .NET 10 SDK, Node LTS, Vue 3 + strict TypeScript.
 
-## Pièges connus (déjà identifiés, ne pas redécouvrir)
+## Known pitfalls (already identified, do not rediscover)
 
-- Perfmon distant : nécessite l'appartenance au groupe "Performance Monitor
-  Users" sur le serveur SSAS et le service Remote Registry démarré. En cas
-  d'échec, tester sur le serveur pour distinguer droits vs noms de compteurs.
-  Symptôme droits : `Win32Exception "Accès refusé"` dès
-  `PerformanceCounterCategory.GetCategories` (SID du groupe = `S-1-5-32-558`).
-- Catégories perfmon SSAS **localisées** (si l'OS serveur est en français) :
-  séparateur `" : "` AVEC espaces et libellés traduits — `MSAS16 : MDX`,
+- Remote perfmon: requires membership of the "Performance Monitor
+  Users" group on the SSAS server and the Remote Registry service running. On
+  failure, test on the server to tell permissions apart from counter names.
+  Permissions symptom: `Win32Exception "Accès refusé"` as early as
+  `PerformanceCounterCategory.GetCategories` (group SID = `S-1-5-32-558`).
+- SSAS perfmon categories are **localized** (if the server OS is in French):
+  separator `" : "` WITH spaces and translated labels — `MSAS16 : MDX`,
   `MSAS16 : cache`, `MSAS16 : mémoire`, `MSAS16 : connexion`, `MSAS16 : requête
   du moteur de stockage`, `MSAS16 : verrous`, `MSAS16 : threads`,
   `MSAS16 : traitement`, `MSAS16 : traitement des agrégations`, `MSAS16 :
-  traitement des index`, `MSAS16 : mise en cache proactive`, etc. Deux
-  catégories restent en anglais sans espaces : `MSAS16:Database Auto Image
-  Load`, `MSAS16:Reliability Metrics`. Instance nommée = préfixe
-  `MSOLAP$<instance>` (mêmes libellés). ⇒ Matcher le libellé après le premier
-  `:` (trim) en FR ET EN ; ne jamais filtrer les compteurs par nom (`/sec`
-  devient `/s`) mais par `CounterType` (`NumberOfItems32/64` = cumulatifs à
-  delta).
-- Un cube **non processé disparaît de `MDSCHEMA_CUBES`** (plus aucune ligne
-  `CUBE_SOURCE=1` ; les dimensions `$` restent listées) — symptôme : « base
-  vide » alors que le catalogue existe. Vérifier `LAST_DATA_UPDATE` via le mode
-  `--discover` du spike (constaté sur un catalogue redéployé non processé).
-- Rowsets ADOMD → `DataTable.Load` : les rowsets (DMV comme schema rowsets)
-  déclarent des contraintes d'unicité que leurs propres données violent
-  (`ConstraintException "Failed to enable constraints"`). Toujours charger la
-  `DataTable` dans un `DataSet { EnforceConstraints = false }` avant `Load`.
-- `CellSet` : une requête à un seul axe n'a pas d'`Axes[1]` ; toujours tester
-  `Axes.Count`. (Confirmé au spike : 1 axe → `Axes.Count = 1`.)
-- `ClearCache` XMLA : exige le `DatabaseID`, qui diffère du nom en cas de
-  renommage — résoudre via AMO, pas par convention. (Au spike, `DatabaseID` =
-  nom du catalogue a fonctionné sur une base jamais renommée ; ne pas en faire
-  une règle.)
-- Ne PAS mettre `Initial Catalog` inexistant dans la chaîne ADOMD : ouvrir sans
-  catalogue puis `ChangeDatabase()` marche très bien et permet de lister
-  `DBSCHEMA_CATALOGS` d'abord.
-- Profiler (trace SSAS, `CubeScope.Spike --profile`) : l'AMO .NET Core 19.84.1
-  supporte bien la souscription live `Trace.OnEvent` (événements poussés en
-  temps réel). Nécessite des droits **admin SSAS** (création de trace).
-  **PIÈGE MAJEUR** : chaque `TraceEventClass` a sa propre liste blanche de
-  colonnes, validée **côté serveur au `Trace.Update()`** (pas au `Columns.Add`,
-  client-side, qui ne lève rien). Couple invalide → `OperationException`
-  « L'ID d'événement Id=X ne contient pas l'ID Id=Y » avec
-  X=`(int)TraceEventClass`, Y=`(int)TraceColumn`. Solution retenue
-  (`ProfileSpike.cs`) : boucle auto-corrective qui parse (X,Y), retire la
-  colonne Y de l'événement X et réessaie `Update()`. Ne suivre QUE les
-  événements « complétés » (`QueryEnd`, `QuerySubcube(Verbose)`,
-  `GetDataFrom*`, `*End`) — les « Begin » n'ont pas de `Duration`. Découpage :
+  traitement des index`, `MSAS16 : mise en cache proactive`, etc. Two
+  categories stay in English without spaces: `MSAS16:Database Auto Image
+  Load`, `MSAS16:Reliability Metrics`. Named instance = prefix
+  `MSOLAP$<instance>` (same labels). ⇒ Match the label after the first
+  `:` (trimmed) in FR AND EN; never filter counters by name (`/sec`
+  becomes `/s`) but by `CounterType` (`NumberOfItems32/64` = cumulative, use
+  deltas).
+- An **unprocessed cube disappears from `MDSCHEMA_CUBES`** (no more
+  `CUBE_SOURCE=1` row; the `$` dimensions are still listed) — symptom: "empty
+  database" although the catalog exists. Check `LAST_DATA_UPDATE` with the spike's
+  `--discover` mode (observed on a redeployed, unprocessed catalog).
+- ADOMD rowsets → `DataTable.Load`: rowsets (DMVs as well as schema rowsets)
+  declare uniqueness constraints that their own data violate
+  (`ConstraintException "Failed to enable constraints"`). Always load the
+  `DataTable` inside a `DataSet { EnforceConstraints = false }` before `Load`.
+- `CellSet`: a single-axis query has no `Axes[1]`; always test
+  `Axes.Count`. (Confirmed in the spike: 1 axis → `Axes.Count = 1`.)
+- XMLA `ClearCache`: requires the `DatabaseID`, which differs from the name after
+  a rename — resolve it through AMO, not by convention. (In the spike, `DatabaseID` =
+  catalog name worked on a database that was never renamed; do not make it
+  a rule.)
+- Do NOT put a non-existent `Initial Catalog` in the ADOMD connection string: opening
+  without a catalog then calling `ChangeDatabase()` works fine and allows listing
+  `DBSCHEMA_CATALOGS` first.
+- Profiler (SSAS trace, `CubeScope.Spike --profile`): AMO .NET Core 19.84.1
+  does support the live `Trace.OnEvent` subscription (events pushed in
+  real time). Requires **SSAS admin** rights (trace creation).
+  **MAJOR PITFALL**: each `TraceEventClass` has its own whitelist of
+  columns, validated **server-side at `Trace.Update()`** (not at `Columns.Add`,
+  client-side, which throws nothing). Invalid pair → `OperationException`
+  « L'ID d'événement Id=X ne contient pas l'ID Id=Y » with
+  X=`(int)TraceEventClass`, Y=`(int)TraceColumn`. Chosen solution
+  (`ProfileSpike.cs`): a self-correcting loop that parses (X,Y), removes
+  column Y from event X and retries `Update()`. Only follow the
+  "completed" events (`QueryEnd`, `QuerySubcube(Verbose)`,
+  `GetDataFrom*`, `*End`) — the "Begin" ones have no `Duration`. Breakdown:
   `QueryEnd`.Duration = total, Σ `QuerySubcube`.Duration = Storage Engine,
-  FE = total − SE, + hits cache/agg. Filtrer par `SessionID` (colonne trace =
-  `AdomdConnection.SessionID`). Trace serveur = **globale** → toujours
-  `Stop()`+`Drop()` en `finally` ; nettoyer les traces orphelines `CubeScope_*`
-  en cas de crash.
-- Package `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` 19.84.1 :
-  tirait `Microsoft.Identity.Client` 4.56.0 en transitive, avec 2 vulnérabilités
-  connues (NU1901/NU1902, gravité faible/moyenne). **Résolu** : pin direct de
-  `Microsoft.Identity.Client` 4.86.1 dans `CubeScope.Core` et `CubeScope.Spike`
-  (force la transitive vers la version patchée — audit `dotnet list --vulnerable`
-  vide, build 0 warning). MSAL 4.86.1 compatible ADOMD 19.84.1 (auth Entra non
-  utilisée de toute façon, on est en Integrated Security). Resynchroniser ce pin
-  si ADOMD/AMO montent de version.
-- Cibler `net10.0-windows` (pas `net10.0`) : `System.Diagnostics.PerformanceCounter`
-  est Windows-only et génère ~30 warnings CA1416 sinon.
-- DMV : **crocheter toutes les colonnes** (`SELECT [HIERARCHY_UNIQUE_NAME] …`) —
-  `HIERARCHY` (entre autres) est un mot réservé MDX, la requête non crochetée
-  échoue en syntaxe. `CUBE_NAME`/`MEASURE_NAME` passent nus par chance.
-- **Caption d'un membre par sa clé** (survol des `…&[clé]` dans le script) : NE PAS
-  passer par `$SYSTEM.MDSCHEMA_MEMBERS`. (a) Le DMV **ne supporte pas `IN (…)`**
-  (« La syntaxe de "IN" est incorrecte »). (b) Filtrer par `MEMBER_UNIQUE_NAME`
-  seul (même avec `HIERARCHY_UNIQUE_NAME`) fait **scanner toute la dimension** →
-  gel sur une dimension titres (milliers d'ISIN). La bonne méthode = **MDX**
-  `StrToMember('[Dim].[Hier].[Niveau].&[clé]').Properties("MEMBER_CAPTION")` :
-  résolution directe par clé, zéro scan ; une seule requête résout tout un paquet
-  (`WITH MEMBER [Measures].[__capN] AS … SELECT {…} ON 0 FROM [cube]`), repli
-  membre par membre si une référence périmée fait échouer le paquet entier.
-  Cache persistant SQLite (`MemberCaption`) invalidé sur l'empreinte
-  `LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE` du cube.
-- `CELL PROPERTIES VALUE` (requêtes copiées d'Excel/SSMS) : le serveur ne renvoie
-  QUE les propriétés listées → `Cell.FormattedValue` vaut **chaîne vide, pas
-  null** (le `??` ne suffit pas). Toujours se replier sur `Cell.Value` quand
-  FormattedValue est null OU vide (fait dans `CellSetMapper.CellValue`), sinon
-  la grille affiche des colonnes vides alors que les données sont là.
-- **Cellule en erreur** : XMLA renvoie `<Cell><Value><Error><Description>…`, et ADOMD
-  relaie cette Description en `AdomdErrorResponseException` levée sur `Cell.Value`
-  **ET** `Cell.FormattedValue` **ET** les `CellProperties` `VALUE`/`FORMATTED_VALUE`
-  (vérifié sur un cube réel — aucun accesseur ne rend l'erreur sans lever). Ne jamais
-  avaler l'exception : `CellSetMapper.CellValue` garde `ex.Message` et `Build` l'écrit
-  sous une clé jumelle `v{c}__err` dans la ligne (pas de changement du modèle ni de la
-  sérialisation ; l'export CSV/TSV n'itère que sur `Columns` et l'ignore). La grille
-  affiche `#Erreur` en rouge, message en infobulle et au clic.
-- `CellSet` : `axis.Set.Hierarchies` déclenche une résolution paresseuse d'objets
-  schéma qui peut échouer (`ArgumentException "Impossible de trouver l'objet
-  [Dimension].[Membre]"`, constaté sur un cube réel) alors que positions/cellules
-  sont déjà là. `CellSetMapper` a un repli : libellés déduits des `UniqueName`
-  des membres (attention, pour une mesure `[Measures].[X]` le 2ᵉ segment est le
-  membre, pas la hiérarchie).
-- PrimeVue : **rester en v4.5.x + `@primeuix/themes`**. npm installe v5 par
-  défaut, qui exige `@primeuix/styled` ^1.0 (incompatible `@primevue/themes` 4.x)
-  et embarque un `license-manager` non audité. Mode sombre permanent : classe
-  `p-dark` sur `<html>` + `darkModeSelector: '.p-dark'` (`':root'` ne marche pas).
-- monaco-editor ≥ 0.56 : exports map `"./*" → "./esm/vs/*.js"` — importer
-  `monaco-editor/editor/editor.worker?worker`, plus jamais le chemin `esm/vs/…`
-  (Vite/Rolldown ne résout plus). Monaco utilise EditContext : plus de
-  `textarea.inputarea` pour les tests E2E, cliquer `.view-lines` puis clavier.
-- dockview-vue : `DockviewVue` est **multi-root** (portals) → le CSS scoped du
-  parent ne l'atteint pas (hauteur 0 silencieuse). L'entourer d'un wrapper div
-  dimensionné et lui passer `style="width:100%;height:100%"`.
-- Monaco dégraissé : `src/monaco-core.ts` reproduit `editor.main.js` SANS les
-  81 langages ni les 4 features à workers (dist 26 Mo → 6 Mo). Liste d'imports
-  à **resynchroniser à chaque montée de version monaco** (générée depuis
+  FE = total − SE, + cache/agg hits. Filter by `SessionID` (trace column =
+  `AdomdConnection.SessionID`). Server trace = **global** → always
+  `Stop()`+`Drop()` in `finally`; clean up orphaned `CubeScope_*` traces
+  after a crash.
+- Package `Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64` 19.84.1:
+  pulled `Microsoft.Identity.Client` 4.56.0 transitively, with 2 known
+  vulnerabilities (NU1901/NU1902, low/moderate severity). **Resolved**: direct pin of
+  `Microsoft.Identity.Client` 4.86.1 in `CubeScope.Core` and `CubeScope.Spike`
+  (forces the transitive dependency to the patched version — `dotnet list --vulnerable` audit
+  empty, build 0 warnings). MSAL 4.86.1 is compatible with ADOMD 19.84.1 (Entra auth not
+  used anyway, we run with Integrated Security). Resync this pin
+  if ADOMD/AMO move up a version.
+- Target `net10.0-windows` (not `net10.0`): `System.Diagnostics.PerformanceCounter`
+  is Windows-only and produces ~30 CA1416 warnings otherwise.
+- DMV: **bracket every column** (`SELECT [HIERARCHY_UNIQUE_NAME] …`) —
+  `HIERARCHY` (among others) is an MDX reserved word, the unbracketed query
+  fails with a syntax error. `CUBE_NAME`/`MEASURE_NAME` get through bare by luck.
+- **Caption of a member from its key** (hovering `…&[key]` in the script): do NOT
+  go through `$SYSTEM.MDSCHEMA_MEMBERS`. (a) The DMV **does not support `IN (…)`**
+  (« La syntaxe de "IN" est incorrecte »). (b) Filtering by `MEMBER_UNIQUE_NAME`
+  alone (even with `HIERARCHY_UNIQUE_NAME`) **scans the whole dimension** →
+  freeze on a securities dimension (thousands of ISINs). The right method = **MDX**
+  `StrToMember('[Dim].[Hier].[Level].&[key]').Properties("MEMBER_CAPTION")`:
+  direct resolution by key, zero scan; a single query resolves a whole batch
+  (`WITH MEMBER [Measures].[__capN] AS … SELECT {…} ON 0 FROM [cube]`), with a
+  member-by-member fallback if a stale reference makes the whole batch fail.
+  Persistent SQLite cache (`MemberCaption`) invalidated on the cube's
+  `LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE` fingerprint.
+- `CELL PROPERTIES VALUE` (queries copied from Excel/SSMS): the server returns
+  ONLY the listed properties → `Cell.FormattedValue` is an **empty string, not
+  null** (`??` is not enough). Always fall back to `Cell.Value` when
+  FormattedValue is null OR empty (done in `CellSetMapper.CellValue`), otherwise
+  the grid shows empty columns although the data is there.
+- **Cell in error**: XMLA returns `<Cell><Value><Error><Description>…`, and ADOMD
+  relays that Description as an `AdomdErrorResponseException` thrown on `Cell.Value`
+  **AND** `Cell.FormattedValue` **AND** the `VALUE`/`FORMATTED_VALUE` `CellProperties`
+  (verified on a real cube — no accessor returns the error without throwing). Never
+  swallow the exception: `CellSetMapper.CellValue` keeps `ex.Message` and `Build` writes it
+  under a twin key `v{c}__err` in the row (no change to the model or to
+  serialization; the CSV/TSV export only iterates over `Columns` and ignores it). The grid
+  shows `#Erreur` in red, with the message in a tooltip and on click.
+- `CellSet`: `axis.Set.Hierarchies` triggers a lazy resolution of schema
+  objects that can fail (`ArgumentException "Impossible de trouver l'objet
+  [Dimension].[Membre]"`, observed on a real cube) although positions/cells
+  are already there. `CellSetMapper` has a fallback: labels inferred from the members'
+  `UniqueName` (careful, for a measure `[Measures].[X]` the 2nd segment is the
+  member, not the hierarchy).
+- PrimeVue: **stay on v4.5.x + `@primeuix/themes`**. npm installs v5 by
+  default, which requires `@primeuix/styled` ^1.0 (incompatible with `@primevue/themes` 4.x)
+  and ships an unaudited `license-manager`. Permanent dark mode: class
+  `p-dark` on `<html>` + `darkModeSelector: '.p-dark'` (`':root'` does not work).
+- monaco-editor ≥ 0.56: exports map `"./*" → "./esm/vs/*.js"` — import
+  `monaco-editor/editor/editor.worker?worker`, never again the `esm/vs/…` path
+  (Vite/Rolldown no longer resolves it). Monaco uses EditContext: no more
+  `textarea.inputarea` for E2E tests, click `.view-lines` then use the keyboard.
+- dockview-vue: `DockviewVue` is **multi-root** (portals) → the parent's scoped CSS
+  does not reach it (silent zero height). Wrap it in a sized div
+  and pass it `style="width:100%;height:100%"`.
+- Slimmed-down Monaco: `src/monaco-core.ts` reproduces `editor.main.js` WITHOUT the
+  81 languages or the 4 worker-based features (dist 26 MB → 6 MB). The import list
+  must be **resynced on every monaco version bump** (generated from
   `esm/vs/editor/editor.main.js`).
-- Perfmon en marche : catégories utiles par requête = `MDX`, `cache`,
-  `requête du moteur de stockage` (~53 compteurs cumulatifs, constaté).
-  Limite MVP assumée : préfixe `MSAS*` (instance par défaut) — pour une
-  connexion à une instance nommée sur port fixe, le mapping port→instance n'est
-  pas découvrable, les compteurs restent ceux de l'instance par défaut. La
-  découverte (`Initialize`) prend ~2-4 s → lancée en arrière-plan à la
-  connexion ; une requête partie avant la fin n'a simplement pas de stats.
-- Exe single-file **autonome** : le publish laisse par défaut la SPA (`wwwroot`)
-  ET les DLL natives (`e_sqlite3`, `msalruntime`…) en fichiers **libres à côté**
-  de l'exe → déplacé seul, 404 sur `index.html` (`ContentRoot` = dossier de
-  l'exe) et SQLite plante. Corrigé : `IncludeNativeLibrariesForSelfExtract=true`
-  + SPA embarquée dans l'assembly (`EmbeddedResource` préfixe `spa/`, servie par
-  `EmbeddedSpaFileProvider`). Pièges MSBuild : hooker la cible d'embarquement à
-  `BeforeTargets="PrepareForBuild"` (à `CoreCompile` c'est trop tard, 0 ressource
-  embarquée) ; le `LogicalName` avec `%(Filename)` sur un Include auto-référencé
-  s'évalue vide (collision `CS1508`) → passer par un item intermédiaire qualifié ;
-  glob `**\*.*` (pas `**\*`, qui matche les dossiers). Cible active seulement au
-  publish (`_IsPublishing` OU `-p:EmbedSpa=true`).
-- Serveur de dev qui redémarre : toujours vérifier qu'aucun process orphelin ne
-  garde le port ni ne verrouille les DLL (`cubescope.exe` résiduel) — sinon
-  binaire obsolète servi en silence (le fallback SPA renvoie index.html pour
-  toute route API inconnue : un 200 HTML sur un endpoint attendu = symptôme de
-  vieux binaire, pas de bug front).
-- **Arrêt automatique à la fermeture du navigateur** (`BrowserLifetime`) : les
-  connexions du `StatsHub` servent de signal de vie. ⚠️ **PIÈGE — une déconnexion
-  du hub ne veut PAS dire que la page est partie** : le client est en
-  `withAutomaticReconnect()`, qui réessaie à **0, 2, 10 puis 30 s**. Couper au bout
-  d'un délai court sur une simple coupure de transport tue le serveur sous une page
-  encore ouverte (« Failed to fetch ») — et comme l'exe prend un **port libre** au
-  lancement, le relancer donne un autre port : l'onglet resté ouvert vise un port
-  mort. D'où deux délais : la page prévient de son départ par
-  `navigator.sendBeacon('/api/leaving')` sur `pagehide` (fermeture **ou** F5) →
-  grâce courte (10 s) ; sans préavis, c'est le transport qui a lâché → grâce longue
-  (45 s), au-delà de la fenêtre de reconnexion. La balise et la fermeture du socket
-  courent l'une contre l'autre : les deux ordres d'arrivée sont gérés (`NoticeClientLeaving`
-  raccourcit un arrêt déjà armé). ⚠️ **Couplé à `--no-browser`** : ce drapeau
-  désactive aussi l'arrêt automatique, sinon la boucle de dev et les tests se
-  couperaient dès qu'on ferme la page. Donc en dev le serveur ne s'arrête jamais
-  seul — c'est voulu, pas une panne. Rien ne s'arme tant qu'aucun client ne s'est
-  connecté (l'exe ne peut pas se couper pendant l'ouverture du navigateur).
-- **Comparaison entre catalogues** (`CatalogComparisonService`) : la même requête est jouée
-  sur le catalogue courant (via la session, donc vue du Profiler) et sur un autre catalogue
-  du même serveur via `SsasSession.WithTransientConnectionAsync` — connexion neuve, **même
-  chaîne de connexion donc même locale**, sinon les libellés de colonnes différeraient et
-  `ResultComparer` verrait de faux écarts. Conséquence assumée : la requête de droite a son
-  propre SessionID, le Profiler ne la voit pas. ⚠️ La comparaison porte sur les valeurs
-  **formatées** (`CellSetMapper` privilégie `FormattedValue`, comme la non-régression) : un
-  simple changement de `FORMAT_STRING` entre deux catalogues apparaît donc comme un écart.
-  Diffs plafonnés à 200.
-- **Sessions SSAS** (`SessionsService`, panneau Sessions) : le moteur DMV n'accepte
-  **ni JOIN, ni GROUP BY, ni LIKE, ni CAST** → `DISCOVER_SESSIONS` et
-  `DISCOVER_COMMANDS` sont lues séparément puis rapprochées en C# sur `SESSION_SPID`.
-  Lire ces DMV exige les **droits admin serveur**. Colonnes utiles (constatées sur
-  SSAS 2022) : `SESSION_ID` (GUID), `SESSION_SPID`, `SESSION_USER_NAME`,
+- Perfmon in practice: useful categories per query = `MDX`, `cache`,
+  `requête du moteur de stockage` (~53 cumulative counters, observed).
+  Accepted MVP limit: `MSAS*` prefix (default instance) — for a
+  connection to a named instance on a fixed port, the port→instance mapping is
+  not discoverable, the counters remain those of the default instance. Discovery
+  (`Initialize`) takes ~2-4 s → started in the background on
+  connection; a query started before it ends simply has no stats.
+- **Self-contained** single-file exe: by default publish leaves the SPA (`wwwroot`)
+  AND the native DLLs (`e_sqlite3`, `msalruntime`…) as **loose files next to**
+  the exe → moved on its own, 404 on `index.html` (`ContentRoot` = the exe's
+  folder) and SQLite crashes. Fixed: `IncludeNativeLibrariesForSelfExtract=true`
+  + SPA embedded in the assembly (`EmbeddedResource` with prefix `spa/`, served by
+  `EmbeddedSpaFileProvider`). MSBuild pitfalls: hook the embedding target to
+  `BeforeTargets="PrepareForBuild"` (at `CoreCompile` it is too late, 0 resources
+  embedded); a `LogicalName` using `%(Filename)` on a self-referencing Include
+  evaluates to empty (`CS1508` collision) → go through a qualified intermediate item;
+  glob `**\*.*` (not `**\*`, which matches folders). Target active only on
+  publish (`_IsPublishing` OR `-p:EmbedSpa=true`).
+- Dev server restarting: always check that no orphaned process
+  holds the port or locks the DLLs (leftover `cubescope.exe`) — otherwise
+  an outdated binary is served silently (the SPA fallback returns index.html for
+  any unknown API route: an HTML 200 on an expected endpoint = symptom of an
+  old binary, not a front-end bug).
+- **Automatic shutdown when the browser closes** (`BrowserLifetime`): the
+  `StatsHub` connections serve as a heartbeat. ⚠️ **PITFALL — a hub disconnection
+  does NOT mean the page is gone**: the client uses
+  `withAutomaticReconnect()`, which retries after **0, 2, 10 then 30 s**. Shutting down after
+  a short delay on a mere transport drop kills the server under a page that is
+  still open ("Failed to fetch") — and since the exe takes a **free port** on
+  launch, restarting it yields another port: the tab left open points at a dead
+  port. Hence two delays: the page announces its departure with
+  `navigator.sendBeacon('/api/leaving')` on `pagehide` (close **or** F5) →
+  short grace period (10 s); without notice, it is the transport that dropped → long grace period
+  (45 s), beyond the reconnection window. The beacon and the socket close
+  race each other: both arrival orders are handled (`NoticeClientLeaving`
+  shortens an already armed shutdown). ⚠️ **Coupled with `--no-browser`**: this flag
+  also disables automatic shutdown, otherwise the dev loop and the tests would
+  stop as soon as the page is closed. So in dev the server never stops
+  on its own — that is intended, not a failure. Nothing is armed until a client has
+  connected (the exe cannot shut down while the browser is opening).
+- **Comparison between catalogs** (`CatalogComparisonService`): the same query is run
+  on the current catalog (through the session, hence visible to the Profiler) and on another catalog
+  of the same server through `SsasSession.WithTransientConnectionAsync` — a fresh connection, **same
+  connection string and therefore same locale**, otherwise column labels would differ and
+  `ResultComparer` would see false differences. Accepted consequence: the right-hand query has its
+  own SessionID, the Profiler does not see it. ⚠️ The comparison is on the
+  **formatted** values (`CellSetMapper` prefers `FormattedValue`, like the regression harness): a
+  mere `FORMAT_STRING` change between two catalogs therefore shows up as a difference.
+  Diffs capped at 200.
+- **SSAS sessions** (`SessionsService`, Sessions panel): the DMV engine accepts
+  **neither JOIN, nor GROUP BY, nor LIKE, nor CAST** → `DISCOVER_SESSIONS` and
+  `DISCOVER_COMMANDS` are read separately then matched in C# on `SESSION_SPID`.
+  Reading these DMVs requires **server admin rights**. Useful columns (observed on
+  SSAS 2022): `SESSION_ID` (GUID), `SESSION_SPID`, `SESSION_USER_NAME`,
   `SESSION_CURRENT_DATABASE`, `SESSION_LAST_COMMAND`, `SESSION_CPU_TIME_MS`,
-  `SESSION_IDLE_TIME_MS` ; durées en `UInt64` côté sessions, `Int64` côté commandes
-  (convertir, ne pas caster). ⚠️ La liste contient les sessions des **jobs de prod et
-  des autres utilisateurs** — d'où la confirmation détaillée avant annulation.
-  Annulation = `<Cancel>` XMLA avec `<SPID>` + `<CancelAssociated>` ([doc MS](https://learn.microsoft.com/analysis-services/instances/disconnect-users-and-sessions-on-analysis-services-server)).
-  Un **SPID vieillit** : la liste affichée peut viser une session déjà partie, d'où le
-  contrôle d'existence avant d'émettre le Cancel (sinon « La session spécifiée est
-  introuvable » remonte brut à l'utilisateur).
-- **Annuler SA PROPRE session** laisse ADOMD avec une connexion en état **`Open`** dont
-  l'ID de session n'existe plus côté serveur : l'appel suivant échoue sur « L'ID de
+  `SESSION_IDLE_TIME_MS`; durations are `UInt64` on the sessions side, `Int64` on the commands side
+  (convert, do not cast). ⚠️ The list contains the sessions of **prod jobs and
+  other users** — hence the detailed confirmation before cancelling.
+  Cancellation = XMLA `<Cancel>` with `<SPID>` + `<CancelAssociated>` ([MS docs](https://learn.microsoft.com/analysis-services/instances/disconnect-users-and-sessions-on-analysis-services-server)).
+  A **SPID gets stale**: the displayed list may target a session that is already gone, hence the
+  existence check before issuing the Cancel (otherwise « La session spécifiée est
+  introuvable » reaches the user raw).
+- **Cancelling YOUR OWN session** leaves ADOMD with a connection in the **`Open`** state whose
+  session ID no longer exists on the server: the next call fails with « L'ID de
   session … est introuvable. Soit la session n'existe pas, soit elle a déjà expiré »,
-  puis ADOMD en renégocie une (donc l'appel d'après passe). `conn.State` ne trahit
-  rien — c'est un mode de défaillance **distinct** de « La connexion n'est pas
-  ouverte ». D'où `SsasSession.ResetAsync()`, appelé après avoir annulé sa propre
+  then ADOMD negotiates a new one (so the call after that succeeds). `conn.State` gives
+  nothing away — it is a failure mode **distinct** from « La connexion n'est pas
+  ouverte ». Hence `SsasSession.ResetAsync()`, called after cancelling one's own
   session.
-- **Raccourcis clavier dans le navigateur** (repli `--force-browser`
-  uniquement — la fenêtre native par défaut ne l'utilise plus, voir ci-dessous) :
-  `F12` est pris par les outils de développement d'Edge/Chrome et **n'est pas
-  interceptable** par le contenu de la page — inutile de le lier dans Monaco.
-  « Aller à la définition » utilise `Alt+F12` et `Ctrl+Alt+G` (les deux
-  vérifiés au navigateur), plus le menu contextuel. `F5` est interceptable,
-  lui (déjà utilisé pour l'exécution). **Dans la fenêtre native
-  (`CubeScope.Shell`, cas par défaut depuis le 2026-09-11)** : `F12` est
-  libéré pour l'application (`AreBrowserAcceleratorKeysEnabled = false`
-  coupe la confiscation par les devtools Edge — voir le bloc « Coquille
-  WPF/WebView2 » plus bas), donc redevient liable dans Monaco si besoin.
-- Nom "MDX" pollué par Markdown+JSX dans l'écosystème npm/GitHub : ne pas
-  nommer de packages `mdx-*` côté frontend.
-- Round-trip `.cube` (mode projet SSDT) : `XDocument.Load` doit utiliser
-  `LoadOptions.PreserveWhitespace`, sinon l'indentation XML est reformatée en
-  silence à l'enregistrement.
-- `Save` et `Load` (`CubeProjectService`) doivent s'accorder sur la définition
-  d'un `Command` éditable — un `<Text>` composé uniquement d'espaces ne compte
-  pas comme du contenu, sinon `CanEdit` (calculé au `Load`) et la garde de
-  sauvegarde (recomptée au `Save`) divergent.
-- Pliage Monaco par régions (`// #region` / `// #endregion`) : se déclare via
-  `folding.markers` (regex) dans la config de langage `monaco-mdx.ts`, la
-  contribution folding elle-même est déjà importée par `monaco-core.ts`.
-- `en.ts` typé `typeof fr` impose la complétude des clés i18n à la
-  compilation : une clé manquante devient une erreur TypeScript, pas un texte
-  vide silencieux en prod.
-- **Coquille WPF/WebView2 (chantier 2026-09-11)** — pièges constatés en la
-  construisant :
-  - Par défaut, WebView2 crée son dossier de données **à côté de l'exe**
-    (`{nom}.exe.WebView2`) — ce qui casse un exécutable déplacé (doc
-    Microsoft). ⇒ imposer explicitement un dossier sous
-    `%LOCALAPPDATA%\CubeScope\WebView2` à `CoreWebView2Environment.CreateAsync`.
-  - `IHostApplicationLifetime.StopApplication()` ne déclenche **que**
-    `ApplicationStopping` ; le pont vers `ApplicationStopped` vit dans
-    `WaitForShutdownAsync()`, que `ServerHost.StartAsync` n'appelle pas.
-    S'abonner à `ApplicationStopped` depuis le Shell attendrait un événement
-    qui n'arrive jamais.
-  - `StopAsync()` ne libère **pas** les singletons `IDisposable` : c'est
-    `DisposeAsync()` sur l'hôte qui détruit le conteneur DI, et donc qui
-    déclenche le `Stop()`+`Drop()` de la trace SSAS dans
-    `ProfilerService.Dispose()`. `app.Run()` le faisait dans son `finally` ;
-    en pilotant le cycle de vie soi-même (Shell), on reprend cette
-    obligation — appeler les deux à la fermeture de la fenêtre.
-  - `SystemParameters.WorkArea` ne décrit que l'**écran principal**. Pour
-    raisonner sur plusieurs écrans (restauration de géométrie de fenêtre), il
-    faut `SystemParameters.VirtualScreenLeft/Top/Width/Height`.
-  - `AreBrowserAcceleratorKeysEnabled = false` coupe aussi le **zoom**
-    (Ctrl+Plus/Minus/0), qu'il faut rebrancher soi-même ; les autres
-    raccourcis coupés (Ctrl+F, F3, F5…) continuent d'atteindre le contenu
-    web, donc Monaco les récupère normalement.
-  - `-p:EmbedSpa=true` doit être **explicite** au publish : la cible vit dans
-    `CubeScope.Server.csproj`, qui n'est plus le projet publié (c'est
-    `CubeScope.Shell` désormais — voir README section Publish).
-  - **Sort de `WebView2Loader.dll` en single-file — constaté le 2026-09-11**
-    (tâche de vérification finale, exe isolé dans un dossier vierge, lancé
-    sans argument) : le loader **survit** au publish single-file. Il n'est
-    copié ni à côté de l'exe ni dans `publish/` — il s'auto-extrait au
-    lancement (mécanisme standard .NET `IncludeNativeLibrariesForSelfExtract`,
-    pas un comportement spécifique à WebView2). **Preuve autoportante** :
-    relancé avec `DOTNET_BUNDLE_EXTRACT_BASE_DIR` pointé sur un dossier créé
-    pour l'occasion et confirmé **vide avant le lancement** (0 élément) —
-    `WebView2Loader.dll` y apparaît bien après coup, donc rien de préexistant
-    sur la machine n'a pu servir. L'exe isolé a démarré normalement (fenêtre
-    « CubeScope », port local en écoute, `GET /index.html`, `/assets/*.js`,
-    `/api/*` tous en 200) et aucun dossier `*.WebView2` n'est apparu à côté de
-    lui — les données sont bien allées sous
-    `%LOCALAPPDATA%\CubeScope\WebView2\EBWebView`, comme attendu.
-  - **Un arrêt de session Windows peut laisser une trace SSAS vivante**
-    (constaté au raisonnement le 2026-09-11, relecture finale — non reproduit
-    en vrai) : un redémarrage ou une déconnexion appelle `Shutdown()` et éteint
-    le Dispatcher sans garantir que la continuation de `StopAsync` reprenne. Le
-    `DisposeAsync` de l'hôte — donc le `Stop()` + `Drop()` de la trace — peut
-    être **sauté**, et `CubeScope_Profiler_<pid>` survivre au redémarrage.
-    Auto-guérissant (le nettoyage des orphelines, au prochain `Initialize`,
-    droppe les traces dont le PID est mort), mais entre-temps la trace tourne
-    sur un serveur SSAS partagé avec la production. Structurel : Windows ne
-    promet pas de temps supplémentaire à un process au logoff. Non corrigeable
-    proprement → assumé et documenté ici plutôt que rustiné.
-  - **`beforeunload` n'est jamais évalué dans la fenêtre native** : détruire un
-    contrôle WebView2 ne passe pas par le chemin de fermeture du navigateur, le
-    handler de `ScriptPanel.vue` ne sert donc plus qu'au repli
-    `--force-browser`. Le garde-fou est refait côté coquille depuis le
-    2026-09-11 : la page publie son état dans `window.__cubescopeDirty` (watch
-    sur `dirty`, `immediate`), et `MainWindow.Closing` — synchrone alors que la
-    réponse est asynchrone — annule la fermeture, lit le drapeau par
-    `ExecuteScriptAsync` (réponse = **chaîne JSON** `"true"`/`"false"`, tout ce
-    qui n'est pas exactement `true` valant « rien à perdre »), demande
-    confirmation par `MessageBox` si besoin, puis rappelle `Close()` ;
-    `_fermetureConfirmee` distingue les deux passages. Trois garde-fous rendent
-    la croix increvable, parce qu'un garde-fou qui empêche de QUITTER serait pire
-    que pas de garde-fou : (a) toute exception laisse fermer (WebView2 non
-    initialisée, page pas chargée) ; (b) l'interrogation est bornée à **2 s** par
-    un `Task.WhenAny` — `ExecuteScriptAsync` est posté sur le thread JS du
-    renderer et ne se résout jamais tant qu'un traitement synchrone l'occupe, ce
-    qui rendrait la croix inerte ; (c) un drapeau `_verificationEnCours` empêche
-    qu'un second clic sur la croix relance une vérification concurrente (dialogues
-    empilés, `Close()` qui lève sur une fenêtre déjà fermée). La géométrie est
-    enregistrée à CHAQUE passage et non sur le seul passage confirmé : WPF ignore
-    `e.Cancel` lors d'un `Application.Shutdown()` (fin de session Windows), où la
-    géométrie serait sinon perdue. **Limite
-    assumée : il ne couvre que ce que la page expose** — seul le MDX Script d'un
-    projet SSDT alimente ce drapeau (ni requête en cours, ni onglet de
-    résultats), et si le panneau Script est démonté, la dernière valeur publiée
-    reste en place (au pire une question de trop, jamais une perte silencieuse).
+- **Keyboard shortcuts in the browser** (`--force-browser` fallback
+  only — the default native window no longer uses it, see below):
+  `F12` is taken by the Edge/Chrome developer tools and **cannot be
+  intercepted** by page content — no point binding it in Monaco.
+  "Go to definition" uses `Alt+F12` and `Ctrl+Alt+G` (both
+  verified in the browser), plus the context menu. `F5` can be intercepted,
+  though (already used for execution). **In the native window
+  (`CubeScope.Shell`, the default since 2026-09-11)**: `F12` is
+  freed for the application (`AreBrowserAcceleratorKeysEnabled = false`
+  stops the Edge devtools from grabbing it — see the "WPF/WebView2
+  shell" block below), so it can be bound in Monaco again if needed.
+- The name "MDX" is polluted by Markdown+JSX in the npm/GitHub ecosystem: do not
+  name front-end packages `mdx-*`.
+- `.cube` round-trip (SSDT project mode): `XDocument.Load` must use
+  `LoadOptions.PreserveWhitespace`, otherwise the XML indentation is silently
+  reformatted on save.
+- `Save` and `Load` (`CubeProjectService`) must agree on the definition
+  of an editable `Command` — a `<Text>` made only of whitespace does not count
+  as content, otherwise `CanEdit` (computed at `Load`) and the save
+  guard (recounted at `Save`) diverge.
+- Monaco folding by regions (`// #region` / `// #endregion`): declared through
+  `folding.markers` (regex) in the language config `monaco-mdx.ts`; the
+  folding contribution itself is already imported by `monaco-core.ts`.
+- `en.ts` typed as `typeof fr` enforces completeness of the i18n keys at
+  compile time: a missing key becomes a TypeScript error, not a silent empty
+  text in prod.
+- **WPF/WebView2 shell (2026-09-11 work)** — pitfalls observed while
+  building it:
+  - By default, WebView2 creates its data folder **next to the exe**
+    (`{name}.exe.WebView2`) — which breaks a moved executable (Microsoft
+    docs). ⇒ explicitly force a folder under
+    `%LOCALAPPDATA%\CubeScope\WebView2` in `CoreWebView2Environment.CreateAsync`.
+  - `IHostApplicationLifetime.StopApplication()` triggers **only**
+    `ApplicationStopping`; the bridge to `ApplicationStopped` lives in
+    `WaitForShutdownAsync()`, which `ServerHost.StartAsync` does not call.
+    Subscribing to `ApplicationStopped` from the Shell would wait for an event
+    that never comes.
+  - `StopAsync()` does **not** release `IDisposable` singletons: it is
+    `DisposeAsync()` on the host that destroys the DI container, and therefore
+    triggers the `Stop()`+`Drop()` of the SSAS trace in
+    `ProfilerService.Dispose()`. `app.Run()` did it in its `finally`;
+    when driving the lifecycle yourself (Shell), you take over that
+    obligation — call both when the window closes.
+  - `SystemParameters.WorkArea` only describes the **primary screen**. To
+    reason about several screens (restoring the window geometry), you
+    need `SystemParameters.VirtualScreenLeft/Top/Width/Height`.
+  - `AreBrowserAcceleratorKeysEnabled = false` also disables **zoom**
+    (Ctrl+Plus/Minus/0), which has to be wired back by hand; the other
+    disabled shortcuts (Ctrl+F, F3, F5…) still reach the web
+    content, so Monaco gets them normally.
+  - `-p:EmbedSpa=true` must be **explicit** on publish: the target lives in
+    `CubeScope.Server.csproj`, which is no longer the published project (it is
+    `CubeScope.Shell` now — see README, Publish section).
+  - **Fate of `WebView2Loader.dll` in single-file — observed on 2026-09-11**
+    (final verification task, exe isolated in a blank folder, launched
+    without arguments): the loader **survives** the single-file publish. It is
+    copied neither next to the exe nor into `publish/` — it self-extracts at
+    launch (standard .NET `IncludeNativeLibrariesForSelfExtract` mechanism,
+    not a WebView2-specific behaviour). **Self-contained proof**:
+    relaunched with `DOTNET_BUNDLE_EXTRACT_BASE_DIR` pointed at a folder created
+    for the occasion and confirmed **empty before launch** (0 items) —
+    `WebView2Loader.dll` does appear there afterwards, so nothing pre-existing
+    on the machine could have been used. The isolated exe started normally (window
+    "CubeScope", local port listening, `GET /index.html`, `/assets/*.js`,
+    `/api/*` all 200) and no `*.WebView2` folder appeared next to
+    it — the data did go under
+    `%LOCALAPPDATA%\CubeScope\WebView2\EBWebView`, as expected.
+  - **A Windows session shutdown can leave an SSAS trace alive**
+    (found by reasoning on 2026-09-11, final review — not reproduced
+    for real): a restart or a logoff calls `Shutdown()` and shuts down
+    the Dispatcher without guaranteeing that the `StopAsync` continuation resumes. The
+    host's `DisposeAsync` — hence the trace's `Stop()` + `Drop()` — can
+    be **skipped**, and `CubeScope_Profiler_<pid>` survive the restart.
+    Self-healing (the orphan cleanup, on the next `Initialize`,
+    drops traces whose PID is dead), but in the meantime the trace runs
+    on an SSAS server shared with production. Structural: Windows does not
+    promise a process extra time at logoff. Cannot be fixed
+    cleanly → accepted and documented here rather than patched over.
+  - **`beforeunload` is never evaluated in the native window**: destroying a
+    WebView2 control does not go through the browser's closing path, so the
+    `ScriptPanel.vue` handler now only serves the
+    `--force-browser` fallback. The safeguard has been rebuilt on the shell side since
+    2026-09-11: the page publishes its state in `window.__cubescopeDirty` (watch
+    on `dirty`, `immediate`), and `MainWindow.Closing` — synchronous whereas the
+    answer is asynchronous — cancels the close, reads the flag through
+    `ExecuteScriptAsync` (answer = **JSON string** `"true"`/`"false"`, anything
+    that is not exactly `true` meaning "nothing to lose"), asks for
+    confirmation with a `MessageBox` if needed, then calls `Close()` again;
+    `_fermetureConfirmee` tells the two passes apart. Three safeguards make
+    the close button unbreakable, because a safeguard that prevents QUITTING would be worse
+    than no safeguard: (a) any exception lets the window close (WebView2 not
+    initialized, page not loaded); (b) the query is capped at **2 s** by
+    a `Task.WhenAny` — `ExecuteScriptAsync` is posted to the renderer's JS thread
+    and never resolves while synchronous work keeps it busy, which
+    would make the close button inert; (c) a `_verificationEnCours` flag prevents
+    a second click on the close button from starting a concurrent check (stacked
+    dialogs, `Close()` throwing on an already closed window). The geometry is
+    saved on EVERY pass and not only on the confirmed pass: WPF ignores
+    `e.Cancel` during an `Application.Shutdown()` (end of Windows session), where the
+    geometry would otherwise be lost. **Accepted
+    limit: it only covers what the page exposes** — only the MDX Script of an
+    SSDT project feeds this flag (neither a running query nor a results
+    tab), and if the Script panel is unmounted, the last published value
+    stays in place (at worst one question too many, never a silent loss).
 
-## Conventions de travail
+## Working conventions
 
-- Chaque phase se termine par un binaire utilisable au quotidien ; pas de
-  grand refactoring spéculatif.
-- Toute proposition d'architecture nouvelle doit être justifiée contre :
-  simplicité, robustesse, faible maintenance, rapidité de livraison.
-- Tests : couvrir le tokenizer MDX et les services Core ; pas d'objectif de
-  couverture sur l'UI.
+- Each phase ends with a binary usable day to day; no
+  large speculative refactoring.
+- Any new architecture proposal must be justified against:
+  simplicity, robustness, low maintenance, speed of delivery.
+- Tests: cover the MDX tokenizer and the Core services; no
+  coverage target for the UI.
 
-## Statut
+## Status
 
-**Roadmap terminée, produit en usage quotidien.** Publié sur
-`github.com/dasimon/CubeScope`, versions taguées jusqu'à **v0.14.0** (chaque tag
-déclenche la Release GitHub Actions). Historique détaillé et daté de chaque
-évolution : `docs/PROJET.md` (source de vérité — cette section n'en est que le
-résumé).
+**Roadmap complete, product in daily use.** Published on
+`github.com/dasimon/CubeScope`, tagged versions up to **v0.14.0** (each tag
+triggers the GitHub Actions Release). Detailed, dated history of every
+change: `docs/PROJET.md` (source of truth — this section is only its
+summary).
 
-MVP livré (Phases 1–5) : connexion + éditeur Monaco + exécution + grille ;
-explorateur de métadonnées, autocomplétion, stats perfmon, ClearCache,
-historique ; panneau IA (API Anthropic, `claude-opus-4-8`) ; MDX Script +
-graphe de dépendances + doc Markdown exportable ; publication GitHub (MIT,
-CI + Release GitHub Actions). Extras post-MVP : **Profiler** (découpage
-Formula/Storage Engine par requête via trace SSAS), **i18n FR/EN**.
+MVP delivered (Phases 1–5): connection + Monaco editor + execution + grid;
+metadata explorer, autocompletion, perfmon stats, ClearCache,
+history; AI panel (Anthropic API, `claude-opus-4-8`); MDX Script +
+dependency graph + exportable Markdown doc; GitHub publication (MIT,
+CI + GitHub Actions Release). Post-MVP extras: **Profiler** (per-query
+Formula/Storage Engine breakdown through an SSAS trace), **FR/EN i18n**.
 
-Livré ensuite (v0.2 → v0.10), par thème :
+Delivered afterwards (v0.2 → v0.10), by theme:
 
-- **Productivité éditeur** : export CSV/presse-papiers, bibliothèque de snippets,
-  scaffold de membre calculé, exécution de la sélection, onglets de résultats,
-  drillthrough, signatures de fonctions, recherche dans le script, renommage de
-  membre (`MemberRenamer`), pliage structurel `{ }` / `( )` / SCOPE.
-- **Métadonnées au survol** : hover résolvant une référence mesure/membre vers sa
-  caption + description, y compris les clés `&[clé]` et les clés composites, avec
-  préchargement progressif et **cache SQLite persistant** invalidé sur l'empreinte
-  du cube. Descriptions de mesures dans l'explorateur et l'autocomplétion.
-- **Mode projet SSDT** (détaillé ci-dessous) : navigateur de fichiers `.cube`,
-  édition des `CalculationProperty`, diff Monaco côte à côte au déploiement.
-- **Analyse** : harnais de non-régression MDX (requêtes de référence, ré-exécution,
-  diff), analyse d'impact d'un changement (diff de versions de script + impact
-  aval), historique de runs du Profiler avec comparaison avant/après.
-- **IA** : « Expliquer ce calcul » (traceur de membre calculé), « Optimiser
-  (profil) » adossé aux chiffres réels du profil d'exécution (FE/SE, sous-cubes,
-  hits), génération **NL → MDX** ancrée dans les métadonnées du cube, et
-  **providers alternatifs compatibles OpenAI** en plus de l'API Anthropic.
+- **Editor productivity**: CSV/clipboard export, snippet library,
+  calculated member scaffold, run selection, results tabs,
+  drillthrough, function signatures, search in the script, member
+  renaming (`MemberRenamer`), structural folding `{ }` / `( )` / SCOPE.
+- **Metadata on hover**: hover resolving a measure/member reference to its
+  caption + description, including `&[key]` keys and composite keys, with
+  progressive preloading and a **persistent SQLite cache** invalidated on the
+  cube fingerprint. Measure descriptions in the explorer and in autocompletion.
+- **SSDT project mode** (detailed below): `.cube` file browser,
+  editing of `CalculationProperty`, side-by-side Monaco diff on deployment.
+- **Analysis**: MDX regression harness (reference queries, re-execution,
+  diff), change impact analysis (script version diff + downstream
+  impact), Profiler run history with before/after comparison.
+- **AI**: "Explain this calculation" (calculated member tracer), "Optimize
+  (profile)" backed by the real figures of the execution profile (FE/SE, subcubes,
+  hits), **NL → MDX** generation grounded in the cube metadata, and
+  **alternative OpenAI-compatible providers** in addition to the Anthropic API.
 
-**Mode projet SSDT : TERMINÉ (2026-07-24)** — ouverture/édition du fichier
-`.cube` d'un projet SSDT Multidimensional (`CubeProjectService`,
-`CubeScope.Core/Project/`) : lecture XML `PreserveWhitespace`, script
-éditable seulement si exactement 1 `Command` non vide (`CanEdit`), régions
-`// #region` / `// #endregion` (parsées par `ScriptParser`, pliage Monaco
-assorti), sauvegarde round-trip dans le `.cube` + export texte
-`<nom>.mdxscript.mdx` (diffs Git lisibles) + `.bak` une fois par session,
-rapport des `CalculationProperty` orphelines (référence à un membre/set
-calculé disparu — signalé, jamais supprimé automatiquement). Déploiement du
-script seul vers un cube de dev via AMO façon BIDS Helper
-(`ScriptDeployService`) avec garde de divergence (compare serveur vs projet,
-refuse sans `force` si différent) et **garde serveur de dev**.
+**SSDT project mode: DONE (2026-07-24)** — opening/editing the
+`.cube` file of an SSDT Multidimensional project (`CubeProjectService`,
+`CubeScope.Core/Project/`): XML read with `PreserveWhitespace`, script
+editable only if there is exactly 1 non-empty `Command` (`CanEdit`), regions
+`// #region` / `// #endregion` (parsed by `ScriptParser`, matching Monaco
+folding), round-trip save into the `.cube` + text export
+`<name>.mdxscript.mdx` (readable Git diffs) + `.bak` once per session,
+report of orphaned `CalculationProperty` entries (reference to a vanished calculated
+member/set — reported, never deleted automatically). Deployment of the
+script alone to a dev cube through AMO, BIDS Helper style
+(`ScriptDeployService`) with a divergence guard (compares server vs project,
+refuses without `force` if different) and a **dev server guard**.
 
-⚠️ **La garde serveur a changé de nature le 2026-09-11.** Elle reniflait le nom du
-catalogue (« contient dev ») et vivait **uniquement dans l'UI** — un appel direct à
-l'API la contournait. Deux raisons de la refaire : (a) quand le dev cesse de partager
-le serveur de la production, prod et dev portent le **même nom de catalogue** et le nom
-ne discrimine plus rien ; (b) une règle par sous-chaîne rangerait « SRV-DEV-PROD » du
-côté dev. Désormais : liste **explicite** de serveurs (`DevServerGuard`, table
-`DevServer` du StateStore, déclarée dans le dialogue de connexion — délibérément pas
-dans celui de déploiement, où le garde-fou se désarmerait sous la pression du geste).
-La garde est **dans `ScriptDeployService.Deploy`**, avant toute connexion AMO, et
-`force` ne la contourne pas : `force` veut dire « écrase un script serveur qui a
-divergé », jamais « déploie en production ». Liste vide = aucun serveur autorisé
-(fail-closed). Côté tests, `TestTarget.ServerDev` + `AssertDevServerDistinct()`
-interrompt tout test destructif dont le serveur de dev vaut celui de production.
+⚠️ **The server guard changed nature on 2026-09-11.** It sniffed the
+catalog name ("contains dev") and lived **only in the UI** — a direct call to
+the API bypassed it. Two reasons to rebuild it: (a) once dev stops sharing
+the production server, prod and dev carry the **same catalog name** and the name
+no longer tells anything apart; (b) a substring rule would file "SRV-DEV-PROD" on
+the dev side. From now on: an **explicit** list of servers (`DevServerGuard`, StateStore
+`DevServer` table, declared in the connection dialog — deliberately not
+in the deployment dialog, where the safeguard would get disarmed under the pressure of the action).
+The guard lives **in `ScriptDeployService.Deploy`**, before any AMO connection, and
+`force` does not bypass it: `force` means "overwrite a server script that has
+diverged", never "deploy to production". Empty list = no server allowed
+(fail-closed). On the test side, `TestTarget.ServerDev` + `AssertDevServerDistinct()`
+aborts any destructive test whose dev server equals the production one.
 
-`cubescope.exe` est un single-file self-contained : SPA et DLL natives sont
-embarquées dans l'assembly (voir `EmbeddedSpaFileProvider` + la cible `EmbedSpa`
-du `.csproj`) → l'exe fonctionne seul, déplaçable.
+`cubescope.exe` is a self-contained single-file: the SPA and native DLLs are
+embedded in the assembly (see `EmbeddedSpaFileProvider` + the `EmbedSpa` target
+of the `.csproj`) → the exe works on its own and can be moved.
 
-Roadmap (US) : Phase 1 = connexion + éditeur + exécution + grille (US 1-4) ;
-Phase 2 = explorateur, autocomplétion, stats, cache, historique (US 5-12) ;
-Phase 3 = panneau IA (US 13-15) ; Phase 4 = script, dépendances, doc (US 16-20) ;
-Phase 5 = publication GitHub. Le projet `CubeScope.Spike` reste dans la solution
-comme harnais de non-régression serveur en lecture seule (`--discover`).
+Roadmap (US): Phase 1 = connection + editor + execution + grid (US 1-4);
+Phase 2 = explorer, autocompletion, stats, cache, history (US 5-12);
+Phase 3 = AI panel (US 13-15); Phase 4 = script, dependencies, doc (US 16-20);
+Phase 5 = GitHub publication. The `CubeScope.Spike` project stays in the solution
+as a read-only server regression harness (`--discover`).

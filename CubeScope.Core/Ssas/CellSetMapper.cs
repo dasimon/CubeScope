@@ -3,30 +3,30 @@ using Microsoft.AnalysisServices.AdomdClient;
 
 namespace CubeScope.Core.Ssas;
 
-/// <summary>Représentation légère d'un axe : positions × membres (1 membre par hiérarchie projetée).</summary>
+/// <summary>Lightweight representation of an axis: positions × members (1 member per projected hierarchy).</summary>
 public sealed record AxisData(IReadOnlyList<string> HierarchyCaptions, IReadOnlyList<IReadOnlyList<string>> Positions);
 
 /// <summary>
-/// Contenu d'une cellule : valeur d'affichage, plus le message d'erreur du serveur quand la
-/// cellule est en erreur (XMLA renvoie alors &lt;Value&gt;&lt;Error&gt;&lt;Description&gt;…, qu'ADOMD
-/// relaie en AdomdErrorResponseException sur Value ET FormattedValue — constaté sur un cube réel).
+/// Contents of a cell: display value, plus the server's error message when the
+/// cell is in error (XMLA then returns &lt;Value&gt;&lt;Error&gt;&lt;Description&gt;…, which ADOMD
+/// surfaces as AdomdErrorResponseException on Value AND FormattedValue — observed on a real cube).
 /// </summary>
 public readonly record struct CellData(object? Value, string? Error = null);
 
 /// <summary>
-/// Aplatit un CellSet (0, 1 ou 2 axes) en QueryResult pour la grille.
-/// Piège connu : une requête mono-axe n'a pas d'Axes[1] — toujours tester Axes.Count.
+/// Flattens a CellSet (0, 1 or 2 axes) into a QueryResult for the grid.
+/// Known pitfall: a single-axis query has no Axes[1] — always check Axes.Count.
 /// </summary>
 public static class CellSetMapper
 {
-    /// <summary>Texte affiché à la place de la valeur d'une cellule en erreur.</summary>
+    /// <summary>Text displayed instead of the value of a cell in error.</summary>
     public const string ErrorPlaceholder = "#Erreur";
 
     /// <summary>
-    /// Suffixe de la clé « jumelle » portant le message d'erreur d'une cellule dans la ligne
-    /// (ex. la cellule "v3" en erreur ajoute "v3__err"). Clé parallèle plutôt que valeur
-    /// structurée : aucun changement du modèle ni de la sérialisation, et l'export CSV/TSV
-    /// (qui n'itère que sur Columns) l'ignore naturellement.
+    /// Suffix of the "twin" key carrying a cell's error message in the row
+    /// (e.g. cell "v3" in error adds "v3__err"). A parallel key rather than a structured
+    /// value: no change to the model or the serialization, and the CSV/TSV export
+    /// (which only iterates over Columns) naturally ignores it.
     /// </summary>
     public const string ErrorSuffix = "__err";
 
@@ -42,16 +42,16 @@ public static class CellSetMapper
     }
 
     /// <summary>
-    /// Valeur d'affichage d'une cellule. Piège : `CELL PROPERTIES VALUE` (requêtes copiées
-    /// d'Excel/SSMS) restreint les propriétés renvoyées — FormattedValue est alors null,
-    /// il faut se replier sur Value (brut). Une cellule en erreur ne doit pas tout casser :
-    /// on garde le message du serveur au lieu de l'avaler, la grille l'expose en infobulle.
+    /// Display value of a cell. Pitfall: `CELL PROPERTIES VALUE` (queries copied
+    /// from Excel/SSMS) restricts the returned properties — FormattedValue is then null,
+    /// so fall back to Value (raw). A cell in error must not break everything:
+    /// we keep the server's message instead of swallowing it, and the grid shows it as a tooltip.
     /// </summary>
     private static CellData CellValue(Cell cell)
     {
         try
         {
-            // FormattedValue vaut "" (pas null) quand FORMATTED_VALUE n'a pas été demandé
+            // FormattedValue is "" (not null) when FORMATTED_VALUE was not requested
             var formatted = cell.FormattedValue;
             return new CellData(string.IsNullOrEmpty(formatted) ? cell.Value : formatted);
         }
@@ -62,7 +62,7 @@ public static class CellSetMapper
         }
     }
 
-    /// <summary>Message serveur nettoyé (ADOMD ajoute des espaces en fin de Description).</summary>
+    /// <summary>Cleaned-up server message (ADOMD appends trailing spaces to Description).</summary>
     private static string? Describe(Exception ex)
     {
         var message = ex.Message?.Trim();
@@ -81,10 +81,10 @@ public static class CellSetMapper
         }
         catch (Exception)
         {
-            // Piège : Set.Hierarchies résout paresseusement les objets schéma et peut échouer
-            // (constaté sur un cube réel : ArgumentException "Impossible de trouver l'objet
-            // [Dimension].[Hiérarchie]"). Repli sans round-trip serveur : déduire le libellé des
-            // UniqueName des membres de la première position, déjà dans la réponse XMLA.
+            // Pitfall: Set.Hierarchies lazily resolves schema objects and can fail
+            // (observed on a real cube: ArgumentException "Impossible de trouver l'objet
+            // [Dimension].[Hiérarchie]"). Fallback without a server round-trip: derive the label from the
+            // UniqueName of the members of the first position, already in the XMLA response.
             hierarchies = positions.Count > 0
                 ? axis.Positions[0].Members.Cast<Member>().Select(m => HierarchyFromUniqueName(m.UniqueName)).ToList()
                 : [];
@@ -93,8 +93,8 @@ public static class CellSetMapper
     }
 
     /// <summary>
-    /// "[Dim].[Hier].&amp;[X]" → "Hier" ; "[Measures].[M]" → "Measures" (le 2ᵉ segment
-    /// d'une mesure est le MEMBRE, pas la hiérarchie — cas particulier).
+    /// "[Dim].[Hier].&amp;[X]" → "Hier"; "[Measures].[M]" → "Measures" (the 2nd segment
+    /// of a measure is the MEMBER, not the hierarchy — special case).
     /// </summary>
     internal static string HierarchyFromUniqueName(string uniqueName)
     {
@@ -108,8 +108,8 @@ public static class CellSetMapper
     }
 
     /// <summary>
-    /// Logique pure d'aplatissement (testable sans serveur). Ordinal des cellules ADOMD :
-    /// ordinal = colonne + ligne * nbColonnes (l'axe 0 varie le plus vite).
+    /// Pure flattening logic (testable without a server). ADOMD cell ordinal:
+    /// ordinal = column + row * columnCount (axis 0 varies fastest).
     /// </summary>
     public static QueryResult Build(AxisData? columnsAxis, AxisData? rowsAxis,
         Func<int, CellData> cellAt, int cellCount, long durationMs)
@@ -117,14 +117,14 @@ public static class CellSetMapper
         var gridColumns = new List<GridColumn>();
         var gridRows = new List<Dictionary<string, object?>>();
 
-        // Écrit la valeur sous "v{c}" et, si la cellule est en erreur, le message sous "v{c}__err"
+        // Writes the value under "v{c}" and, if the cell is in error, the message under "v{c}__err"
         static void SetCell(Dictionary<string, object?> row, string field, CellData cell)
         {
             row[field] = cell.Value;
             if (cell.Error is not null) row[field + ErrorSuffix] = cell.Error;
         }
 
-        // 0 axe : une seule cellule scalaire
+        // 0 axes: a single scalar cell
         if (columnsAxis is null)
         {
             gridColumns.Add(new GridColumn("v0", "Valeur", IsRowHeader: false));
@@ -135,13 +135,13 @@ public static class CellSetMapper
             return new QueryResult(gridColumns, gridRows, cellCount, 0, durationMs);
         }
 
-        // Colonnes de données : une par position sur COLUMNS (libellé = captions joints)
+        // Data columns: one per position on COLUMNS (label = joined captions)
         for (int c = 0; c < columnsAxis.Positions.Count; c++)
             gridColumns.Add(new GridColumn($"v{c}", string.Join(" / ", columnsAxis.Positions[c]), IsRowHeader: false));
 
         int nCols = columnsAxis.Positions.Count;
 
-        // 1 axe : une seule ligne de valeurs
+        // 1 axis: a single row of values
         if (rowsAxis is null)
         {
             var row = new Dictionary<string, object?>();
@@ -150,7 +150,7 @@ public static class CellSetMapper
             return new QueryResult(gridColumns, gridRows, cellCount, 1, durationMs);
         }
 
-        // 2 axes : colonnes d'en-tête de ligne (une par hiérarchie sur ROWS) + données
+        // 2 axes: row header columns (one per hierarchy on ROWS) + data
         var headerCols = new List<GridColumn>();
         for (int h = 0; h < rowsAxis.HierarchyCaptions.Count; h++)
             headerCols.Add(new GridColumn($"h{h}", rowsAxis.HierarchyCaptions[h], IsRowHeader: true));

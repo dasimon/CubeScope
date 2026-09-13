@@ -5,9 +5,9 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Script;
 
 /// <summary>
-/// Documentation Markdown déterministe du cube : structure (dimensions, mesures par
-/// dossier) + membres calculés / sets du script avec expression et dépendances directes.
-/// L'explication IA reste à la demande, membre par membre (jamais en boucle sur tout).
+/// Deterministic Markdown documentation of the cube: structure (dimensions, measures per
+/// folder) + the script's calculated members / sets with expression and direct dependencies.
+/// The AI explanation stays on demand, member by member (never looped over everything).
 /// </summary>
 public static class DocGenerator
 {
@@ -30,7 +30,7 @@ public static class DocGenerator
         }
         sb.AppendLine();
 
-        // --- Mesures physiques ---
+        // --- Physical measures ---
         int measureCount = meta.MeasureFolders.Sum(f => f.Measures.Count);
         sb.AppendLine($"## Mesures ({measureCount})");
         sb.AppendLine();
@@ -43,7 +43,7 @@ public static class DocGenerator
             sb.AppendLine();
         }
 
-        // --- Script : membres calculés et sets ---
+        // --- Script: calculated members and sets ---
         var calculated = script.Commands.Where(c => c.Kind == "CalculatedMember").ToList();
         var sets = script.Commands.Where(c => c.Kind == "NamedSet").ToList();
         var scopes = script.Commands.Where(c => c.Kind == "Scope").ToList();
@@ -90,7 +90,7 @@ public static class DocGenerator
         return sb.ToString();
     }
 
-    /// <summary>Dépendances directes (non récursives) d'une commande, pour la doc.</summary>
+    /// <summary>Direct (non-recursive) dependencies of a command, for the documentation.</summary>
     private static IReadOnlyList<string> DirectDependencies(ScriptCommand cmd, CubeScript script, CubeMeta meta)
     {
         var refs = MdxContextBuilder.ExtractReferences(cmd.Expression);

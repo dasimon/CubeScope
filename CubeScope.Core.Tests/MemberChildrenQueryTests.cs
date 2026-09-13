@@ -3,10 +3,10 @@ using CubeScope.Core.Ssas;
 namespace CubeScope.Core.Tests;
 
 /// <summary>
-/// Le drill-down de l'explorateur passe par MDX et non par MDSCHEMA_MEMBERS : filtrer cette
-/// DMV par membre scanne toute la dimension et gèle sur une dimension titres (piège documenté).
-/// `StrToMember(...).Children` résout par clé, sans scan. Ces tests verrouillent la forme de
-/// la requête — l'exécution réelle contre un cube est couverte à part, en intégration.
+/// The explorer's drill-down goes through MDX, not MDSCHEMA_MEMBERS: filtering that DMV by
+/// member scans the whole dimension and freezes on a securities dimension (documented pitfall).
+/// `StrToMember(...).Children` resolves by key, with no scan. These tests lock down the shape of
+/// the query — actual execution against a cube is covered separately, in integration.
 /// </summary>
 public class MemberChildrenQueryTests
 {
@@ -16,8 +16,8 @@ public class MemberChildrenQueryTests
         string mdx = MemberChildrenQuery.Build(
             "CubeDemo", "[Devise].[Devise]", isHierarchy: true, limit: 500);
 
-        // Le premier cran sous « Membres » doit rendre le sommet de la hiérarchie (le (All)
-        // habituel), pas ses enfants — sinon on saute un niveau par rapport à SSMS.
+        // The first step under "Membres" must return the top of the hierarchy (the usual
+        // (All)), not its children — otherwise we skip a level compared to SSMS.
         Assert.Contains("[Devise].[Devise].Levels(0).Members", mdx);
         Assert.DoesNotContain(".Children", mdx);
     }
@@ -48,17 +48,17 @@ public class MemberChildrenQueryTests
         string mdx = MemberChildrenQuery.Build(
             "CubeDemo", "[Devise].[Devise].[All]", isHierarchy: false, limit: 500);
 
-        // Elle sert deux fois : distinguer une feuille d'un nœud dépliable, et annoncer
-        // le nombre exact de membres masqués par le plafond. Sans elle, il faudrait une
-        // requête de plus par nœud.
+        // It serves twice: telling a leaf from an expandable node, and announcing the
+        // exact number of members hidden by the cap. Without it, one more query per node
+        // would be needed.
         Assert.Contains("CHILDREN_CARDINALITY", mdx);
     }
 
     [Fact]
     public void Une_apostrophe_dans_le_nom_est_doublee()
     {
-        // Un membre nommé « L'Oréal » casserait la chaîne passée à StrToMember, et pire,
-        // permettrait d'injecter du MDX par un nom de membre venu du cube.
+        // A member named "L'Oréal" would break the string passed to StrToMember and, worse,
+        // would allow MDX injection through a member name coming from the cube.
         string mdx = MemberChildrenQuery.Build(
             "CubeDemo", "[Produit].[Produit].&[L'Oréal]", isHierarchy: false, limit: 500);
 
@@ -77,8 +77,8 @@ public class MemberChildrenQueryTests
     [Fact]
     public void Un_seul_axe_est_demande()
     {
-        // Aucune cellule n'est lue : seules les positions de l'axe comptent. Un second axe
-        // ne servirait qu'à faire calculer des valeurs pour rien.
+        // No cell is read: only the axis positions matter. A second axis would only make
+        // the server compute values for nothing.
         string mdx = MemberChildrenQuery.Build(
             "CubeDemo", "[Devise].[Devise]", isHierarchy: true, limit: 500);
 

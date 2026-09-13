@@ -3,21 +3,21 @@ using CubeScope.Core.Models;
 namespace CubeScope.Core.Project;
 
 /// <summary>
-/// Navigateur de fichiers côté serveur (le serveur a accès complet au disque local ;
-/// le navigateur, lui, cache le vrai chemin système). Sert à choisir un fichier .cube
-/// de projet SSDT sans devoir taper le chemin à la main.
+/// Server-side file browser (the server has full access to the local disk;
+/// the browser hides the real system path). Used to pick an SSDT project .cube file
+/// without having to type the path by hand.
 /// </summary>
 public sealed class FileBrowserService
 {
     /// <summary>
-    /// Liste un dossier local : sous-dossiers + fichiers .cube, avec le parent et les lecteurs.
-    /// path null/vide/inexistant → repli sur le profil utilisateur ; un fichier → son dossier.
-    /// Enumération résiliente (dossiers inaccessibles ignorés, pas d'exception).
+    /// Lists a local folder: subfolders + .cube files, with the parent and the drives.
+    /// null/empty/non-existent path → fallback to the user profile; a file → its folder.
+    /// Resilient enumeration (inaccessible folders skipped, no exception).
     /// </summary>
     public DirectoryListing List(string? path)
     {
-        // GetFullPath : garantir un chemin absolu quel que soit l'input (un dossier
-        // existant passé en relatif serait sinon renvoyé tel quel dans DirectoryListing.Path).
+        // GetFullPath: guarantee an absolute path whatever the input (an existing folder
+        // passed as a relative path would otherwise be returned as is in DirectoryListing.Path).
         string dir = System.IO.Path.GetFullPath(ResolveDirectory(path));
 
         var enumOptions = new EnumerationOptions { IgnoreInaccessible = true };
