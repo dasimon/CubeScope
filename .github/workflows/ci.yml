@@ -6,18 +6,27 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET 10 (preview)
-        uses: actions/setup-dotnet@v6
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-          dotnet-quality: preview
+
+      - name: Setup Node LTS
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: CubeScope.Web/package-lock.json
 
       - name: Restore
         run: dotnet restore CubeScope.slnx
@@ -29,3 +38,25 @@ jobs:
       # (see TestTarget + CUBESCOPE_TEST_* variables) and are excluded in CI.
       - name: Test (unit only)
         run: dotnet test CubeScope.Core.Tests -c Release --no-build --filter "Category!=Integration"
+
+      # Front-end type check (vue-tsc) + Vite build.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: CubeScope.Web
+
+      - name: Build web
+        run: npm run build
+        working-directory: CubeScope.Web
+
+      # Same command as release.yml: catches a broken single-file publish before a tag.
+      - name: Publish single-file executable
+        run: >
+          dotnet publish CubeScope.Shell -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true -p:EmbedSpa=true -o publish
+
+      - name: Check executable
+        shell: pwsh
+        run: |
+          $exe = Get-Item publish/cubescope.exe -ErrorAction Stop
+          Write-Host "cubescope.exe: $($exe.Length) bytes"
+          if ($exe.Length -le 100MB) { throw "cubescope.exe is only $($exe.Length) bytes (expected > 100 MB)" }

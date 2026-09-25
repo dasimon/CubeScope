@@ -118,7 +118,8 @@ if that runtime isn't present — no server component to deploy, no cloud.
 
 **To build from source, additionally:**
 
-- **.NET 10 SDK** (currently preview) — target framework `net10.0-windows`.
+- **.NET 10 SDK** (10.0.401 or a later feature band, see `global.json`) —
+  target framework `net10.0-windows`.
 - **Node.js LTS** — builds the Vue SPA that gets embedded into the executable.
 
 ---
@@ -184,7 +185,8 @@ which is no longer the published project; it builds the Vue SPA and embeds
 `EmbeddedResource` under the `spa/` prefix, served at runtime by
 `EmbeddedSpaFileProvider` (not extracted to a `wwwroot` folder on disk).
 This produces a single self-contained `publish/cubescope.exe`
-(209,651,609 bytes, ~200 MB — it bundles the .NET runtime).
+(~200 MB — it bundles the .NET runtime). Each GitHub Release also ships
+`cubescope.exe.sha256` to verify the download (`Get-FileHash cubescope.exe`).
 
 ---
 
@@ -203,7 +205,7 @@ default browser when the WebView2 runtime is unavailable, or when passed
 | **CubeScope.Shell** | WPF window hosting Kestrel and a WebView2 control. Produces `cubescope.exe`, the published executable. |
 | **CubeScope.Server.Cli** | Headless console host, no window — used for the local dev loop; the same entry point (`ServerHost`) is also what `CubeScope.Core.Tests` (e.g. `ServerHostTests`) exercises directly, not this Cli project. Not published (`IsPublishable=false`). |
 | **CubeScope.Web** | Vue 3 + TypeScript (strict) + Vite. Monaco editor, dockview layout, PrimeVue components. |
-| **CubeScope.Spike** | Read-only SSAS server-behaviour harness kept as a non-regression tool (`--discover`). |
+| **CubeScope.Spike** | SSAS server-behaviour harness kept as a non-regression tool. Read-only by default (`--discover`, see below). |
 
 Key technical choices:
 
@@ -217,6 +219,24 @@ Key technical choices:
 - **Local state** in a single SQLite file (history, recent connections, layouts).
 - **MDX parsing** is a pragmatic tokenizer (no full AST) — it powers highlighting,
   reference detection and the dependency graph.
+
+### Server harness (`CubeScope.Spike`)
+
+```powershell
+# Read-only (default, same as --discover): version, catalogs, cubes, LAST_DATA_UPDATE
+dotnet run --project CubeScope.Spike -- <server>
+
+# Full go/no-go run — clears the SSAS cache of a catalog, so it is refused unless the
+# server is listed (exact name, case-insensitive, ';'-separated) in this variable.
+# Empty or missing list = refused (exit code 2).
+$env:CUBESCOPE_SPIKE_DEV_SERVERS = 'my-dev-ssas'
+dotnet run --project CubeScope.Spike -- my-dev-ssas --clear-cache [--catalog <catalog>]
+
+# Profiler spike — creates (then drops) a server-side trace; SSAS admin rights required
+dotnet run --project CubeScope.Spike -- <server> --profile [--catalog <catalog>]
+```
+
+`<server>` defaults to `CUBESCOPE_SPIKE_SERVER`, then `localhost`.
 
 ---
 

@@ -12,18 +12,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET 10 (preview)
-        uses: actions/setup-dotnet@v6
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-          dotnet-quality: preview
 
       - name: Setup Node LTS
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: lts/*
+          cache: npm
+          cache-dependency-path: CubeScope.Web/package-lock.json
+
+      # Tests marked [Trait("Category","Integration")] require a real SSAS and are excluded.
+      - name: Test (unit only)
+        run: dotnet test CubeScope.Core.Tests -c Release --filter "Category!=Integration"
 
       # The .csproj EmbedSpa target runs "npm run build" on publish: the front-end
       # deps must be installed first.
@@ -31,13 +36,23 @@ jobs:
         run: npm ci
         working-directory: CubeScope.Web
 
+      # Tag v1.2.3 -> assembly/file version 1.2.3
       - name: Publish single-file executable
+        shell: bash
         run: >
           dotnet publish CubeScope.Shell -c Release -r win-x64
-          --self-contained true -p:PublishSingleFile=true -p:EmbedSpa=true -o publish
+          --self-contained true -p:PublishSingleFile=true -p:EmbedSpa=true
+          -p:Version=${GITHUB_REF_NAME#v} -o publish
+
+      - name: Compute SHA256
+        shell: bash
+        working-directory: publish
+        run: sha256sum cubescope.exe > cubescope.exe.sha256 && cat cubescope.exe.sha256
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: publish/cubescope.exe
+          files: |
+            publish/cubescope.exe
+            publish/cubescope.exe.sha256
           generate_release_notes: true
