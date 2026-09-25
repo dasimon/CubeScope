@@ -200,13 +200,19 @@ api.MapPost("/drillthrough", async (DrillthroughRequest req, QueryService querie
     }
 });
 
-// ClearCache of the current catalog (DatabaseID resolved through AMO — confirmation is on the UI side)
-api.MapPost("/cache/clear", async (CacheService cache, CancellationToken ct) =>
+// ClearCache of the current catalog (DatabaseID resolved through AMO — confirmation is on the UI side).
+// Dev servers only (DevServerGuard, same explicit list as the script deployment).
+api.MapPost("/cache/clear", async (CacheService cache, StateStore store, CancellationToken ct) =>
 {
     try
     {
-        var (databaseId, durationMs) = await cache.ClearCacheAsync(ct);
+        var (databaseId, durationMs) = await cache.ClearCacheAsync(store.GetDevServers(), ct);
         return Results.Ok(new { databaseId, durationMs });
+    }
+    catch (ClearCacheRefusedException ex)
+    {
+        // Stable code for the UI to translate; the English message stays as a fallback.
+        return Results.BadRequest(new { error = ex.Message, code = "notDevServer" });
     }
     catch (Exception ex)
     {
@@ -339,7 +345,14 @@ api.MapPost("/project/save", (ProjectSaveRequest req, CubeProjectService project
 {
     try
     {
-        return Results.Ok(new { warnings = projects.Save(req.Path, req.FullText) });
+        var saved = projects.Save(req.Path, req.FullText, req.ExpectedHash);
+        return Results.Ok(new { warnings = saved.Warnings, contentHash = saved.ContentHash });
+    }
+    catch (ProjectConflictException ex)
+    {
+        // The file changed on disk since it was opened: nothing written, the UI decides
+        // (reload, or save again without expectedHash to overwrite).
+        return Results.Conflict(new { error = ex.Message });
     }
     catch (Exception ex)
     {
@@ -352,6 +365,10 @@ api.MapPost("/project/deploy", async (ProjectDeployRequest req, CubeProjectServi
     try
     {
         var script = projects.Load(req.Path); // always the project's ON-DISK state (the UI saves first)
+        // Several Commands would be joined into one on the server: a script the project
+        // itself cannot represent. Same rule as editing (CanEdit).
+        if (!script.CanEdit)
+            return Results.BadRequest(new { error = script.ReadOnlyReason });
         var result = await Task.Run(
             () => deploy.Deploy(req.Server, req.Catalog, script.CubeName, script.FullText,
                 req.Force, store.GetDevServers()), ct);
@@ -385,9 +402,9 @@ api.MapPost("/project/calcprops", (CalcPropRequest req, CubeProjectService proje
 {
     try
     {
-        projects.SaveCalculationProperty(
+        string contentHash = projects.SaveCalculationProperty(
             req.Path, req.Reference, req.FormatString, req.DisplayFolder, req.Description);
-        return Results.Ok();
+        return Results.Ok(new { contentHash });
     }
     catch (Exception ex)
     {
@@ -761,7 +778,7 @@ internal sealed record AiRequest(string Mdx, string? Lang);
 internal sealed record AiOptimizeProfileRequest(string Mdx, QueryProfile Profile, string? Lang);
 internal sealed record GenerateMdxRequest(string Cube, string Question, string? Lang);
 internal sealed record ProjectOpenRequest(string Path);
-internal sealed record ProjectSaveRequest(string Path, string FullText);
+internal sealed record ProjectSaveRequest(string Path, string FullText, string? ExpectedHash);
 internal sealed record ProjectDeployRequest(string Path, string Server, string Catalog, bool Force);
 internal sealed record DevServerRequest(string Server, bool IsDev);
 internal sealed record CaptionsRequest(string Cube, string[] Names);

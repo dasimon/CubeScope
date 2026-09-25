@@ -1,13 +1,20 @@
 namespace CubeScope.Core.Models;
 
-/// <summary>The MDX Script read from an SSDT project .cube file (source of truth).</summary>
+/// <summary>The MDX Script read from an SSDT project .cube file (source of truth).
+/// ContentHash = SHA-256 (hex) of the file bytes read, to send back as Save's expectedHash:
+/// it detects a modification made outside CubeScope in the meantime.</summary>
 public sealed record ProjectScript(
     string Path,
     string CubeName,
     string FullText,
     IReadOnlyList<ScriptCommand> Commands,
     bool CanEdit,
-    string? ReadOnlyReason);
+    string? ReadOnlyReason,
+    string ContentHash);
+
+/// <summary>Result of a project save: orphan CalculationProperty warnings + the new
+/// ContentHash of the file (the expectedHash of the next save).</summary>
+public sealed record ProjectSaveResult(IReadOnlyList<string> Warnings, string ContentHash);
 
 /// <summary>Recently opened .cube project (persisted in SQLite).</summary>
 public sealed record RecentProject(string Path, DateTime LastUsedUtc);

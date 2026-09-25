@@ -19,7 +19,7 @@ public class ScriptDeployGuardTests
     public void Refuse_un_serveur_absent_de_la_liste()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            _svc.Deploy("SRV-PROD", "Ratios", "CubeDemo", "-- mdx", force: false,
+            _svc.Deploy("SRV-PROD", "SsasDb", "CubeDemo", "-- mdx", force: false,
                 devServers: ["SRV-DEV"]));
 
         // The message must name the refused server: "déploiement refusé" without saying which
@@ -33,7 +33,7 @@ public class ScriptDeployGuardTests
         // `force` means "overwrite a server script that has diverged", not "deploy to
         // production". If the Forcer button opened up prod, the guard would be worthless.
         Assert.Throws<InvalidOperationException>(() =>
-            _svc.Deploy("SRV-PROD", "Ratios", "CubeDemo", "-- mdx", force: true,
+            _svc.Deploy("SRV-PROD", "SsasDb", "CubeDemo", "-- mdx", force: true,
                 devServers: ["SRV-DEV"]));
     }
 
@@ -42,7 +42,7 @@ public class ScriptDeployGuardTests
     {
         // Fail-closed: on a machine where nothing has been declared, nothing deploys anywhere.
         Assert.Throws<InvalidOperationException>(() =>
-            _svc.Deploy("SRV-DEV", "Ratios", "CubeDemo", "-- mdx", force: false,
+            _svc.Deploy("SRV-DEV", "SsasDb", "CubeDemo", "-- mdx", force: false,
                 devServers: []));
     }
 
@@ -53,7 +53,7 @@ public class ScriptDeployGuardTests
         // the guard let it through. A guard's message and a failed connection's message must
         // stay distinct, otherwise there is no telling which of the two spoke.
         var ex = Record.Exception(() =>
-            _svc.Deploy("serveur-inexistant-pour-ce-test", "Ratios", "CubeDemo", "-- mdx",
+            _svc.Deploy("serveur-inexistant-pour-ce-test", "SsasDb", "CubeDemo", "-- mdx",
                 force: false, devServers: ["serveur-inexistant-pour-ce-test"]));
 
         Assert.NotNull(ex);

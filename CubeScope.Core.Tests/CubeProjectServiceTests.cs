@@ -9,8 +9,8 @@ public class CubeProjectServiceTests : IDisposable
     private const string SampleCube = """
         <?xml version="1.0" encoding="utf-8"?>
         <Cube xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ddl2="http://schemas.microsoft.com/analysisservices/2003/engine/2" xmlns:ddl2_2="http://schemas.microsoft.com/analysisservices/2003/engine/2/2" xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
-          <ID>Portefeuilles</ID>
-          <Name>Portefeuilles</Name>
+          <ID>CubeDemo</ID>
+          <Name>CubeDemo</Name>
           <Annotations>
             <Annotation>
               <Name>http://schemas.microsoft.com/DataWarehouse/Designer/1.0:DiagramLayout</Name>
@@ -48,7 +48,7 @@ public class CubeProjectServiceTests : IDisposable
         """;
 
     private readonly string _dir = Directory.CreateTempSubdirectory("cubescope-test-").FullName;
-    private string WriteFixture(string content, string name = "Portefeuilles.cube")
+    private string WriteFixture(string content, string name = "CubeDemo.cube")
     {
         string path = Path.Combine(_dir, name);
         File.WriteAllText(path, content);
@@ -62,7 +62,7 @@ public class CubeProjectServiceTests : IDisposable
     {
         var svc = new CubeProjectService();
         var p = svc.Load(WriteFixture(SampleCube));
-        Assert.Equal("Portefeuilles", p.CubeName);
+        Assert.Equal("CubeDemo", p.CubeName);
         Assert.True(p.CanEdit);
         Assert.Null(p.ReadOnlyReason);
         Assert.Contains("CREATE MEMBER CURRENTCUBE.[Measures].[Marge]", p.FullText);
@@ -136,7 +136,7 @@ public class CubeProjectServiceTests : IDisposable
         svc.Save(path, NewScript + "\n-- v2");
         Assert.Contains("[Measures].[CA] - [Measures].[Coûts],", File.ReadAllText(bak)); // .bak NOT overwritten
 
-        string mdx = Path.Combine(_dir, "Portefeuilles.mdxscript.mdx");
+        string mdx = Path.Combine(_dir, "CubeDemo.mdxscript.mdx");
         Assert.True(File.Exists(mdx));
         Assert.EndsWith("-- v2", File.ReadAllText(mdx).TrimEnd());
     }
@@ -147,7 +147,7 @@ public class CubeProjectServiceTests : IDisposable
         var svc = new CubeProjectService();
         string path = WriteFixture(SampleCube);
         // NewScript no longer defines [Measures].[Disparu] (which has a CalculationProperty)
-        var warnings = svc.Save(path, NewScript);
+        var warnings = svc.Save(path, NewScript).Warnings;
         Assert.Contains(warnings, w => w.Contains("[Measures].[Disparu]"));
         Assert.DoesNotContain(warnings, w => w.Contains("[Measures].[Marge]"));
     }
@@ -196,7 +196,110 @@ public class CubeProjectServiceTests : IDisposable
     [Fact]
     public void Load_Directory_ThrowsClearMessage()
     {
-        var ex = Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Load(_dir));
+        // A folder named like a .cube file: passes the path guard, then must fail with a clear message.
+        string folder = Directory.CreateDirectory(Path.Combine(_dir, "Folder.cube")).FullName;
+        var ex = Assert.Throws<InvalidOperationException>(() => new CubeProjectService().Load(folder));
         Assert.Contains("introuvable", ex.Message);
+    }
+
+    [Fact]
+    public void Load_RefusesANonCubeFile()
+        => Assert.Throws<InvalidOperationException>(() =>
+            new CubeProjectService().Load(WriteFixture(SampleCube, "CubeDemo.xml")));
+
+    [Fact]
+    public void Load_ReturnsAContentHash_StableForTheSameContent()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        string hash = svc.Load(path).ContentHash;
+        Assert.False(string.IsNullOrEmpty(hash));
+        Assert.Equal(hash, svc.Load(path).ContentHash);
+    }
+
+    [Fact]
+    public void Save_WithTheLoadedHash_Succeeds_AndReturnsTheNewHash()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        string loaded = svc.Load(path).ContentHash;
+
+        var saved = svc.Save(path, NewScript, loaded);
+
+        Assert.NotEqual(loaded, saved.ContentHash);
+        Assert.Equal(svc.Load(path).ContentHash, saved.ContentHash);
+        // The returned hash chains into the next save.
+        svc.Save(path, NewScript + "\n-- v2", saved.ContentHash);
+    }
+
+    [Fact]
+    public void Save_AfterAnExternalModification_ThrowsConflict_AndWritesNothing()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        string loaded = svc.Load(path).ContentHash;
+
+        // Edited in SSDT (or a Git checkout) while the editor had the file open.
+        string external = SampleCube.Replace("[Measures].[CA] - [Measures].[Coûts],", "[Measures].[CA] * 2,");
+        File.WriteAllText(path, external);
+
+        Assert.Throws<ProjectConflictException>(() => svc.Save(path, NewScript, loaded));
+        Assert.Equal(external, File.ReadAllText(path));
+        Assert.False(File.Exists(path + ".bak"));
+        Assert.False(File.Exists(Path.Combine(_dir, "CubeDemo.mdxscript.mdx")));
+    }
+
+    [Fact]
+    public void Save_WithoutExpectedHash_StillOverwrites()
+    {
+        // expectedHash is optional: an explicit "overwrite anyway" after a conflict.
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        svc.Load(path);
+        File.WriteAllText(path, SampleCube.Replace("<Name>CubeDemo</Name>", "<Name>Autre</Name>"));
+
+        svc.Save(path, NewScript);
+
+        Assert.Equal(NoCrlf(NewScript), NoCrlf(svc.Load(path).FullText));
+    }
+
+    [Fact]
+    public void Save_LeavesNoTemporaryFileBehind()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        svc.Save(path, NewScript);
+        svc.SaveCalculationProperty(path, "[Measures].[Marge]", "'0.0'", null, null);
+
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+    }
+
+    [Fact]
+    public void SaveCalculationProperty_ReturnsTheHashTheEditorMustAdopt()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        string loaded = svc.Load(path).ContentHash;
+
+        string afterProps = svc.SaveCalculationProperty(path, "[Measures].[Marge]", "'0.0'", null, null);
+
+        Assert.Equal(svc.Load(path).ContentHash, afterProps);
+        // Its own write must not read as an external change for the next script save…
+        svc.Save(path, NewScript, afterProps);
+        // …whereas the hash from before it does.
+        Assert.Throws<ProjectConflictException>(() => svc.Save(path, NewScript, loaded));
+    }
+
+    [Fact]
+    public void Concurrent_writes_are_serialized_and_none_is_lost()
+    {
+        var svc = new CubeProjectService();
+        string path = WriteFixture(SampleCube);
+        var refs = Enumerable.Range(0, 12).Select(i => $"[Measures].[M{i}]").ToList();
+
+        Parallel.ForEach(refs, r => svc.SaveCalculationProperty(path, r, "'0'", null, null));
+
+        var saved = svc.GetCalculationProperties(path).Select(p => p.Reference).ToHashSet();
+        Assert.All(refs, r => Assert.Contains(r, saved));
     }
 }

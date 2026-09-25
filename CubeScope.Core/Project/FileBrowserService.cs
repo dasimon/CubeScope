@@ -11,7 +11,8 @@ public sealed class FileBrowserService
 {
     /// <summary>
     /// Lists a local folder: subfolders + .cube files, with the parent and the drives.
-    /// null/empty/non-existent path → fallback to the user profile; a file → its folder.
+    /// null/empty/non-existent path → fallback to the user profile; a file → its folder;
+    /// a non-local path (UNC, URI, relative) → refused.
     /// Resilient enumeration (inaccessible folders skipped, no exception).
     /// </summary>
     public DirectoryListing List(string? path)
@@ -42,6 +43,9 @@ public sealed class FileBrowserService
     {
         if (!string.IsNullOrEmpty(path))
         {
+            // Refused rather than silently replaced by the profile: Directory.Exists on a UNC
+            // path would already open an SMB connection (see LocalPathGuard).
+            path = LocalPathGuard.EnsureLocal(path);
             if (Directory.Exists(path))
                 return path;
             if (File.Exists(path))

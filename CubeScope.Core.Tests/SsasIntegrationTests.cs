@@ -90,7 +90,7 @@ public class SsasIntegrationTests : IDisposable
         await _session.SetCatalogAsync(TestTarget.CatalogDev);
         var svc = new CacheService(_session);
 
-        var (databaseId, durationMs) = await svc.ClearCacheAsync();
+        var (databaseId, durationMs) = await svc.ClearCacheAsync([TestTarget.ServerDev]);
 
         Assert.False(string.IsNullOrWhiteSpace(databaseId));
         Assert.True(durationMs >= 0);

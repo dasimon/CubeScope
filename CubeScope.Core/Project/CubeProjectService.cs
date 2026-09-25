@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Xml.Linq;
 using CubeScope.Core.Models;
 using CubeScope.Core.Script;
@@ -11,6 +12,7 @@ namespace CubeScope.Core.Project;
 /// the rest of the XML document is preserved (LoadOptions.PreserveWhitespace).
 /// v1: editing is supported only if the MdxScript has exactly one Command
 /// (standard SSDT case); otherwise read-only.
+/// Every entry point validates its path first (LocalPathGuard: local .cube file only).
 /// </summary>
 public sealed class CubeProjectService
 {
@@ -18,11 +20,12 @@ public sealed class CubeProjectService
 
     public ProjectScript Load(string path)
     {
+        path = LocalPathGuard.EnsureLocalCubeFile(path);
         if (!File.Exists(path))
             throw new InvalidOperationException(
                 $"Fichier .cube introuvable ou chemin pointant sur un dossier : {path}");
 
-        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
+        var (doc, hash) = ReadDocument(path);
         var (cube, script) = FindScript(doc, path);
         string cubeName = cube.Element(Ns + "Name")?.Value
             ?? System.IO.Path.GetFileNameWithoutExtension(path);
@@ -30,7 +33,8 @@ public sealed class CubeProjectService
         string fullText = string.Join("\n\n", texts);
         bool canEdit = texts.Count == 1;
         return new ProjectScript(path, cubeName, fullText, ScriptParser.Parse(fullText), canEdit,
-            canEdit ? null : $"MdxScript à {texts.Count} Command — édition non supportée (v1, cas SSDT standard = 1).");
+            canEdit ? null : $"MdxScript à {texts.Count} Command — édition non supportée (v1, cas SSDT standard = 1).",
+            hash);
     }
 
     internal static (XElement Cube, XElement Script) FindScript(XDocument doc, string path)
@@ -48,36 +52,88 @@ public sealed class CubeProjectService
             .Select(t => t!)
             .ToList() ?? [];
 
+    /// <summary>
+    /// Parses the file from the SAME bytes that are hashed: the hash handed to the UI
+    /// describes exactly the content it was shown, never a later version.
+    /// </summary>
+    private static (XDocument Doc, string Hash) ReadDocument(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        using var stream = new MemoryStream(bytes);
+        return (XDocument.Load(stream, LoadOptions.PreserveWhitespace), HashOf(bytes));
+    }
+
+    private static string HashOf(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+
+    /// <summary>
+    /// Writes next to the target then swaps: a crash or a full disk mid-write leaves the
+    /// previous file intact instead of a truncated .cube (the SSDT project's source of truth).
+    /// </summary>
+    private static void WriteAtomically(string path, Action<string> write)
+    {
+        string tmp = path + ".tmp";
+        try
+        {
+            write(tmp);
+            if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+            else File.Move(tmp, path);
+        }
+        finally
+        {
+            if (File.Exists(tmp)) File.Delete(tmp);
+        }
+    }
+
     // .bak backup: only once per session (spec §3) — the service is a singleton.
+    // Only touched under _gate.
     private readonly HashSet<string> _backedUp = new(StringComparer.OrdinalIgnoreCase);
+
+    // Serializes every read-modify-write of a .cube (Save, SaveCalculationProperty): two
+    // concurrent requests would otherwise each rewrite the file from the same old version,
+    // and the second would silently drop the first one's change.
+    private readonly object _gate = new();
 
     /// <summary>
     /// Rewrites the text of the single MdxScript Command in the .cube, exports the
     /// script as plain text (.mdxscript.mdx, readable Git diffs) and returns the
-    /// CalculationProperties that became orphans (never deleted automatically).
+    /// CalculationProperties that became orphans (never deleted automatically), with the
+    /// new ContentHash of the file.
+    /// <paramref name="expectedHash"/> (optional) = the ContentHash returned by Load: if the
+    /// file changed on disk since then (SSDT, Git checkout…), nothing is written and
+    /// <see cref="ProjectConflictException"/> is thrown — the editor's text would otherwise
+    /// overwrite that change without a word.
     /// </summary>
-    public IReadOnlyList<string> Save(string path, string fullText)
+    public ProjectSaveResult Save(string path, string fullText, string? expectedHash = null)
     {
-        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
-        var (_, script) = FindScript(doc, path);
-        // Same notion of "editable Command" as Load.CanEdit (CommandTexts): a
-        // <Text> that is present but blank does not count as a real Command.
-        var commands = script.Element(Ns + "Commands")?.Elements(Ns + "Command")
-            .Where(c => !string.IsNullOrWhiteSpace(c.Element(Ns + "Text")?.Value)).ToList() ?? [];
-        if (commands.Count != 1)
-            throw new InvalidOperationException(
-                $"Édition non supportée : le MdxScript a {commands.Count} Command (v1 = exactement 1).");
+        path = LocalPathGuard.EnsureLocalCubeFile(path);
+        lock (_gate)
+        {
+            var (doc, hash) = ReadDocument(path);
+            if (expectedHash is not null && !string.Equals(expectedHash, hash, StringComparison.OrdinalIgnoreCase))
+                throw new ProjectConflictException(
+                    $"The .cube file was modified outside CubeScope since it was opened: {path}");
 
-        if (_backedUp.Add(path))
-            File.Copy(path, path + ".bak", overwrite: true);
+            var (_, script) = FindScript(doc, path);
+            // Same notion of "editable Command" as Load.CanEdit (CommandTexts): a
+            // <Text> that is present but blank does not count as a real Command.
+            var commands = script.Element(Ns + "Commands")?.Elements(Ns + "Command")
+                .Where(c => !string.IsNullOrWhiteSpace(c.Element(Ns + "Text")?.Value)).ToList() ?? [];
+            if (commands.Count != 1)
+                throw new InvalidOperationException(
+                    $"Édition non supportée : le MdxScript a {commands.Count} Command (v1 = exactement 1).");
 
-        commands[0].Element(Ns + "Text")!.Value = fullText;
-        doc.Save(path);
+            if (_backedUp.Add(path))
+                File.Copy(path, path + ".bak", overwrite: true);
 
-        string mdxPath = System.IO.Path.ChangeExtension(path, ".mdxscript.mdx");
-        File.WriteAllText(mdxPath, fullText);
+            commands[0].Element(Ns + "Text")!.Value = fullText;
+            WriteAtomically(path, doc.Save);
 
-        return OrphanCalculationProperties(script, fullText);
+            string mdxPath = System.IO.Path.ChangeExtension(path, ".mdxscript.mdx");
+            WriteAtomically(mdxPath, tmp => File.WriteAllText(tmp, fullText));
+
+            return new ProjectSaveResult(
+                OrphanCalculationProperties(script, fullText), HashOf(File.ReadAllBytes(path)));
+        }
     }
 
     /// <summary>
@@ -86,7 +142,8 @@ public sealed class CubeProjectService
     /// </summary>
     public IReadOnlyList<CalculationProp> GetCalculationProperties(string path)
     {
-        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
+        path = LocalPathGuard.EnsureLocalCubeFile(path);
+        var (doc, _) = ReadDocument(path);
         var (_, script) = FindScript(doc, path);
         return script.Element(Ns + "CalculationProperties")?
             .Elements(Ns + "CalculationProperty")
@@ -104,35 +161,42 @@ public sealed class CubeProjectService
     /// element if it exists; a non-empty value creates or updates it. Touches no
     /// other CalculationProperty nor the MdxScript Command — the
     /// rest of the document is preserved (LoadOptions.PreserveWhitespace).
+    /// Returns the new ContentHash of the file: the editor must adopt it, otherwise its next
+    /// Save would take this very write for an external modification.
     /// </summary>
-    public void SaveCalculationProperty(
+    public string SaveCalculationProperty(
         string path, string reference, string? formatString, string? displayFolder, string? description)
     {
-        var doc = XDocument.Load(path, LoadOptions.PreserveWhitespace);
-        var (_, script) = FindScript(doc, path);
-
-        var container = script.Element(Ns + "CalculationProperties");
-        if (container is null)
+        path = LocalPathGuard.EnsureLocalCubeFile(path);
+        lock (_gate)
         {
-            container = new XElement(Ns + "CalculationProperties");
-            script.Add(container);
+            var (doc, _) = ReadDocument(path);
+            var (_, script) = FindScript(doc, path);
+
+            var container = script.Element(Ns + "CalculationProperties");
+            if (container is null)
+            {
+                container = new XElement(Ns + "CalculationProperties");
+                script.Add(container);
+            }
+
+            var prop = container.Elements(Ns + "CalculationProperty")
+                .FirstOrDefault(p => p.Element(Ns + "CalculationReference")?.Value == reference);
+            if (prop is null)
+            {
+                prop = new XElement(Ns + "CalculationProperty",
+                    new XElement(Ns + "CalculationReference", reference),
+                    new XElement(Ns + "CalculationType", "Member"));
+                container.Add(prop);
+            }
+
+            SetOrRemoveChild(prop, Ns + "FormatString", formatString);
+            SetOrRemoveChild(prop, Ns + "DisplayFolder", displayFolder);
+            SetOrRemoveChild(prop, Ns + "Description", description);
+
+            WriteAtomically(path, doc.Save);
+            return HashOf(File.ReadAllBytes(path));
         }
-
-        var prop = container.Elements(Ns + "CalculationProperty")
-            .FirstOrDefault(p => p.Element(Ns + "CalculationReference")?.Value == reference);
-        if (prop is null)
-        {
-            prop = new XElement(Ns + "CalculationProperty",
-                new XElement(Ns + "CalculationReference", reference),
-                new XElement(Ns + "CalculationType", "Member"));
-            container.Add(prop);
-        }
-
-        SetOrRemoveChild(prop, Ns + "FormatString", formatString);
-        SetOrRemoveChild(prop, Ns + "DisplayFolder", displayFolder);
-        SetOrRemoveChild(prop, Ns + "Description", description);
-
-        doc.Save(path);
     }
 
     /// <summary>Named child element: non-empty value → created/updated (appended at the end of
@@ -174,3 +238,6 @@ public sealed class CubeProjectService
             .ToList() ?? [];
     }
 }
+
+/// <summary>The .cube changed on disk since the editor loaded it (HTTP 409 on the API side).</summary>
+public sealed class ProjectConflictException(string message) : InvalidOperationException(message);

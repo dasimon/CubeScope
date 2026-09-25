@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using CubeScope.Core.Project;
 using Microsoft.AnalysisServices.AdomdClient;
 
 namespace CubeScope.Core.Ssas;
@@ -13,10 +14,19 @@ public sealed class CacheService(SsasSession session)
 {
     private readonly ConcurrentDictionary<string, string> _idCache = new();
 
-    public async Task<(string DatabaseId, long DurationMs)> ClearCacheAsync(CancellationToken ct = default)
+    /// <param name="devServers">
+    /// Servers where clearing the cache is allowed (explicit list, see <see cref="DevServerGuard"/>).
+    /// Empty = none (fail-closed). Same rule as the script deployment: emptying the cache of a
+    /// production catalog slows every user down until it warms up again.
+    /// </param>
+    public async Task<(string DatabaseId, long DurationMs)> ClearCacheAsync(
+        IReadOnlyList<string> devServers, CancellationToken ct = default)
     {
         string server = session.Server ?? throw new InvalidOperationException("Aucune connexion ouverte.");
         string catalog = session.Catalog ?? throw new InvalidOperationException("Aucun catalogue sélectionné.");
+
+        // BEFORE the AMO resolution below, which already connects to the server.
+        EnsureDevServer(server, devServers);
 
         string databaseId = await ResolveDatabaseIdAsync(server, catalog, ct);
 
@@ -36,6 +46,15 @@ public sealed class CacheService(SsasSession session)
         }, ct);
         sw.Stop();
         return (databaseId, sw.ElapsedMilliseconds);
+    }
+
+    /// <summary>Refuses a server absent from the dev list — the API may be called without the UI.</summary>
+    internal static void EnsureDevServer(string server, IReadOnlyList<string> devServers)
+    {
+        if (!DevServerGuard.IsDev(devServers, server))
+            throw new ClearCacheRefusedException(
+                $"ClearCache refused: server \"{server}\" is not declared as a development server. "
+                + "Declare it in the connection dialog if it is one.");
     }
 
     /// <summary>Catalog name → DatabaseID through AMO (short dedicated connection, result cached).</summary>
@@ -62,3 +81,6 @@ public sealed class CacheService(SsasSession session)
         return id;
     }
 }
+
+/// <summary>ClearCache refused by the dev server guard (distinct from a failed connection).</summary>
+public sealed class ClearCacheRefusedException(string message) : InvalidOperationException(message);
