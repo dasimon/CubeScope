@@ -391,7 +391,7 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
 ## Status
 
 **Roadmap complete, product in daily use.** Published on
-`github.com/dasimon/CubeScope`, tagged versions up to **v0.15.0** (each tag
+`github.com/dasimon/CubeScope`, tagged versions up to **v0.16.0** (each tag
 triggers the GitHub Actions Release). Detailed, dated history of every
 change: kept in the author's private notes (not published) — this section
 is only its summary.
