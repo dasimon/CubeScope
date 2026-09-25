@@ -18,7 +18,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.90.0" />
     <!-- Explicit pin: 2.1.11, pulled in transitively, has a known vulnerability (NU1903) -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.12" />
   </ItemGroup>
 
