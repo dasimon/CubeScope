@@ -1,8 +1,21 @@
 // CubeScope — Phase 0: go/no-go spike against a real SSAS Multidimensional server.
 // Validates: (1) NuGet AdomdClient connection, (2) $SYSTEM.MDSCHEMA_* DMVs, (3) typed schema
 // rowset (GetSchemaDataSet), (4) XMLA ClearCache + cold/warm ExecuteCellSet, (5) perfmon deltas.
-// Usage: CubeScope.Spike [server]   (default: CUBESCOPE_SPIKE_SERVER env var, otherwise localhost.
-// Target a dev/acceptance-testing server, never prod — the spike clears the cache.)
+//
+// Usage: CubeScope.Spike [server] [--discover | --clear-cache | --profile] [--catalog <catalog>]
+//   server         SSAS data source (hostname, or host:port for a named instance on a fixed port).
+//                  Default: CUBESCOPE_SPIKE_SERVER env var, otherwise localhost.
+//   (no flag)      same as --discover.
+//   --discover     READ-ONLY (default): server name/version/mode, catalogs, cubes and their
+//                  LAST_DATA_UPDATE. Never touches the cache.
+//   --clear-cache  full go/no-go run (steps 1-5 above). DESTRUCTIVE for performance: it issues an
+//                  XMLA ClearCache on the selected catalog (the first one with a cube, or --catalog).
+//                  Refused (exit code 2) unless the server is listed in the CUBESCOPE_SPIKE_DEV_SERVERS
+//                  env var (';'-separated, case-insensitive exact match on the server argument).
+//                  Empty or missing list = nothing allowed (fail-closed).
+//   --profile      profiler spike (ProfileSpike.cs): creates a server-side SSAS trace (admin rights
+//                  required), runs one query, then stops and drops the trace. No cache clear.
+//   --catalog <c>  catalog to use for --clear-cache / --profile.
 
 using System.Data;
 using System.Diagnostics;
@@ -11,12 +24,24 @@ using Microsoft.AnalysisServices.AdomdClient;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-string server = args.Length > 0 ? args[0]
-    : Environment.GetEnvironmentVariable("CUBESCOPE_SPIKE_SERVER") ?? "localhost";
+int iCatalogArg = Array.IndexOf(args, "--catalog");
+string? catalogArg = iCatalogArg >= 0 && iCatalogArg + 1 < args.Length ? args[iCatalogArg + 1] : null;
+// Server = first positional argument (not a flag, not the value of --catalog)
+string server = args.Where((a, i) => !a.StartsWith("--") && !(iCatalogArg >= 0 && i == iCatalogArg + 1))
+                    .FirstOrDefault()
+    ?? Environment.GetEnvironmentVariable("CUBESCOPE_SPIKE_SERVER") ?? "localhost";
 var verdicts = new List<(string Etape, bool Ok, string Detail)>();
 
-// Read-only mode: identify the instance (name, version, catalogs) without touching the cache
-if (args.Contains("--discover"))
+string[] modes = args.Where(a => a is "--discover" or "--clear-cache" or "--profile").Distinct().ToArray();
+if (modes.Length > 1)
+{
+    Console.Error.WriteLine($"Choose a single mode, got: {string.Join(" ", modes)}");
+    return 2;
+}
+string mode = modes.Length == 1 ? modes[0] : "--discover";
+
+// Read-only mode (default): identify the instance (name, version, catalogs) without touching the cache
+if (mode == "--discover")
 {
     using var c = new AdomdConnection($"Data Source={server};Integrated Security=SSPI;");
     c.Open();
@@ -43,12 +68,24 @@ if (args.Contains("--discover"))
 
 // Profiler spike (post-MVP): SSAS trace, Formula Engine / Storage Engine breakdown per query.
 // Usage: CubeScope.Spike <SSAS-server> --profile [--catalog <catalog>]
-if (args.Contains("--profile"))
+if (mode == "--profile")
 {
-    int iCat = Array.IndexOf(args, "--catalog");
-    string profileCatalog = iCat >= 0 && iCat + 1 < args.Length ? args[iCat + 1]
-        : Environment.GetEnvironmentVariable("CUBESCOPE_TEST_CATALOG") ?? "SsasDb";
+    string profileCatalog = catalogArg
+        ?? Environment.GetEnvironmentVariable("CUBESCOPE_TEST_CATALOG") ?? "SsasDb";
     return ProfileSpike.Run(server, profileCatalog);
+}
+
+// --clear-cache: explicit allowlist of dev servers, fail-closed. The catalog name cannot tell
+// dev from prod (both may be called the same), and a substring rule would be too permissive.
+string[] devServers = (Environment.GetEnvironmentVariable("CUBESCOPE_SPIKE_DEV_SERVERS") ?? "")
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (!devServers.Contains(server, StringComparer.OrdinalIgnoreCase))
+{
+    Console.Error.WriteLine($"Refused: --clear-cache clears the SSAS cache, and '{server}' is not listed in " +
+        "CUBESCOPE_SPIKE_DEV_SERVERS" + (devServers.Length == 0 ? " (variable empty or missing)." : $" ({string.Join(";", devServers)})."));
+    Console.Error.WriteLine("Add the exact server name (as passed on the command line) to that ';'-separated list " +
+        "to allow it — dev servers only, never a server shared with production. Use --discover for a read-only run.");
+    return 2;
 }
 
 Console.WriteLine("==============================================================");
@@ -89,8 +126,7 @@ try
         string.Join(", ", catalogs.Rows.Cast<DataRow>().Select(r => r["CATALOG_NAME"])));
 
     // Catalog forced by --catalog <name>, otherwise the first catalog with a real cube (CUBE_SOURCE = 1)
-    int iCat = Array.IndexOf(args, "--catalog");
-    string? forced = iCat >= 0 && iCat + 1 < args.Length ? args[iCat + 1] : null;
+    string? forced = catalogArg;
     foreach (DataRow r in catalogs.Rows)
     {
         if (forced != null && !string.Equals((string)r["CATALOG_NAME"], forced, StringComparison.OrdinalIgnoreCase)) continue;
