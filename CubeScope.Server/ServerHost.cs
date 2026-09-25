@@ -102,10 +102,19 @@ app.Use(async (ctx, next) =>
 var embedded = new EmbeddedSpaFileProvider(Assembly.GetExecutingAssembly(), "spa/");
 IFileProvider? spa = embedded.Count > 0 ? embedded : null;
 
-if (spa is not null)
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = spa });
-else
-    app.UseStaticFiles();
+// FileProvider null = default web root (dev). Same options for the fallback below, so that
+// index.html served for a client route gets the same Cache-Control.
+StaticFileOptions SpaFiles() => new()
+{
+    FileProvider = spa,
+    OnPrepareResponse = ctx =>
+    {
+        string? cacheControl = SpaCachePolicy.For(ctx.Context.Request.Path, ctx.File.Name);
+        if (cacheControl is not null) ctx.Context.Response.Headers.CacheControl = cacheControl;
+    },
+};
+
+app.UseStaticFiles(SpaFiles());
 
 var api = app.MapGroup("/api");
 
@@ -730,10 +739,7 @@ api.MapPost("/leaving", (BrowserLifetime browser) =>
 app.MapHub<StatsHub>("/hubs/stats");
 
 // SPA fallback (client-side routes) — same provider as the static files
-if (spa is not null)
-    app.MapFallbackToFile("index.html", new StaticFileOptions { FileProvider = spa });
-else
-    app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", SpaFiles());
 
     await app.StartAsync();
     string url = app.Urls.First();
