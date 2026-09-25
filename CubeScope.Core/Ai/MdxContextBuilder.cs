@@ -23,6 +23,35 @@ public static partial class MdxContextBuilder
         return refs;
     }
 
+    // Left-to-right scan: comments, strings and bracketed identifiers are consumed whole, so
+    // a "FROM" inside them ([From Date], // … from [X]) is never taken for the clause.
+    [GeneratedRegex("""//[^\n]*|--[^\n]*|/\*[\s\S]*?\*/|"[^"]*"|'[^']*'|\[(?:[^\]]|\]\])*\]|\bFROM\s*(?:\[(?<b>(?:[^\]]|\]\])+)\]|(?<p>[A-Za-z_]\w*))""",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex FromClauseScan();
+
+    /// <summary>
+    /// Cube named by the FROM clause, unbracketed. Sub-select (FROM (SELECT … FROM [X])): the
+    /// outer FROM is followed by "(", so the first FROM naming a cube is the inner one — the
+    /// real cube. null if none (no FROM, or unparseable).
+    /// </summary>
+    internal static string? CubeFromMdx(string mdx)
+    {
+        foreach (Match m in FromClauseScan().Matches(mdx))
+        {
+            if (m.Groups["b"].Success) return m.Groups["b"].Value.Replace("]]", "]");
+            if (m.Groups["p"].Success) return m.Groups["p"].Value;
+        }
+        return null;
+    }
+
+    /// <summary>The cube of the FROM clause if the catalog has it, otherwise the first cube (null if none).</summary>
+    internal static string? ChooseCube(IReadOnlyList<string> cubes, string mdx)
+    {
+        string? named = CubeFromMdx(mdx);
+        return cubes.FirstOrDefault(c => string.Equals(c, named, StringComparison.OrdinalIgnoreCase))
+            ?? cubes.FirstOrDefault();
+    }
+
     /// <summary>Compact text block of the metadata referenced by the MDX.</summary>
     public static string Build(CubeMeta meta, string mdx)
     {

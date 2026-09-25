@@ -125,15 +125,25 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     private static string? LlmBaseUrl => Env("CUBESCOPE_LLM_BASEURL");
     private static string? LlmModel => Env("CUBESCOPE_LLM_MODEL");
     private static string? LlmKey => Env("CUBESCOPE_LLM_KEY");
-    private static bool UseOpenAiCompat =>
-        !string.IsNullOrWhiteSpace(LlmBaseUrl) && !string.IsNullOrWhiteSpace(LlmModel);
+    private static bool UseOpenAiCompat => CurrentProvider == AiProvider.OpenAiCompatible;
     private static string? AnthropicKey => Env("ANTHROPIC_API_KEY");
     private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
+    private static AiProvider CurrentProvider => SelectProvider(LlmBaseUrl, LlmModel, AnthropicKey);
+
+    internal enum AiProvider { None, Anthropic, OpenAiCompatible }
+
+    /// <summary>
+    /// OpenAI-compatible as soon as base URL AND model are set (it wins over an Anthropic key
+    /// that may also be present); otherwise Anthropic if its key is set; otherwise none.
+    /// </summary>
+    internal static AiProvider SelectProvider(string? llmBaseUrl, string? llmModel, string? anthropicKey) =>
+        !string.IsNullOrWhiteSpace(llmBaseUrl) && !string.IsNullOrWhiteSpace(llmModel) ? AiProvider.OpenAiCompatible
+        : !string.IsNullOrWhiteSpace(anthropicKey) ? AiProvider.Anthropic
+        : AiProvider.None;
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
-    public static bool IsConfigured =>
-        UseOpenAiCompat || !string.IsNullOrWhiteSpace(AnthropicKey);
+    public static bool IsConfigured => CurrentProvider != AiProvider.None;
 
     /// <summary>Active model (for display in the UI): the configured OpenAI-compatible model, otherwise Anthropic.</summary>
     public static string ActiveModel => UseOpenAiCompat ? LlmModel! : ModelId;
@@ -168,9 +178,11 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             try
             {
                 var cubes = await metadata.GetCubesAsync(ct);
-                if (cubes.Count > 0 && session.Catalog is not null)
+                // The cube of the FROM clause, not blindly the catalog's first one: on a
+                // multi-cube catalog the AI would otherwise get another cube's metadata.
+                if (MdxContextBuilder.ChooseCube(cubes, mdx) is { } cube && session.Catalog is not null)
                 {
-                    var meta = await metadata.GetCubeMetaAsync(cubes[0], ct: ct);
+                    var meta = await metadata.GetCubeMetaAsync(cube, ct: ct);
                     cubeContext = MdxContextBuilder.Build(meta, mdx);
                 }
             }
