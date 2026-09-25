@@ -1,13 +1,13 @@
 <script setup lang="ts">
 // AI panel: explain / optimize / anti-patterns / format the current MDX,
-// with the cube metadata injected on the server side. Markdown rendering (marked).
+// with the cube metadata injected on the server side. Markdown rendering (marked + DOMPurify).
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
-import { marked } from 'marked'
+import { renderMarkdown } from '../markdown'
 import type { AiAction } from '../api'
 import { actions, store } from '../store'
 
@@ -23,7 +23,7 @@ const ACTIONS: { action: AiAction; labelKey: string; icon: string }[] = [
 
 onMounted(() => void actions.loadAiStatus())
 
-const resultHtml = computed(() => (store.aiResult ? marked.parse(store.aiResult) : ''))
+const resultHtml = computed(() => (store.aiResult ? renderMarkdown(store.aiResult) : ''))
 
 // A ```mdx block in the response → can be offered to the editor
 const hasApplicableMdx = computed(() => /```(mdx)?\s*\n[\s\S]*?```/i.test(store.aiResult))
@@ -74,8 +74,8 @@ const runningLabel = computed(() => {
         icon="pi pi-gauge"
         size="small"
         severity="secondary"
-        :disabled="store.aiRunning || store.aiConfigured === false || !store.profile"
-        :title="!store.profile ? t('ai.needProfile') : t('ai.optimizeProfile')"
+        :disabled="store.aiRunning || store.aiConfigured === false || !store.profile || !store.profileMdx"
+        :title="!store.profile || !store.profileMdx ? t('ai.needProfile') : t('ai.optimizeProfile')"
         @click="actions.runAiOptimizeProfile()"
       />
       <span class="ai-spacer" />

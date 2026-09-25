@@ -1,6 +1,6 @@
 // French catalog (default language). Do not use "|" (reserved for vue-i18n plurals).
 export default {
-  common: { cancel: 'Annuler', retry: 'Réessayer', reload: 'Recharger', filter: 'Filtrer…' },
+  common: { cancel: 'Annuler', retry: 'Réessayer', reload: 'Recharger', filter: 'Filtrer…', close: 'Fermer' },
   toast: { error: 'Erreur', cacheCleared: 'Cache vidé' },
   lang: { label: 'Langue', fr: 'FR', en: 'EN' },
   toolbar: {
@@ -31,11 +31,12 @@ export default {
     result: 'Cache vidé (DatabaseID « {id} », {ms} ms).',
     confirm: 'Vider le cache',
     redo: 'Revider',
+    notDev: "« {server} » n'est pas déclaré comme serveur de développement : le vidage du cache sera refusé. Déclarez-le dans le dialogue de connexion si c'en est un.",
   },
   connect: {
     title: 'Connexion SSAS',
     server: 'Serveur',
-    devServer: 'Serveur de développement (déploiement de script autorisé)',
+    devServer: 'Serveur de développement (déploiement de script et vidage du cache autorisés)',
     serverPlaceholder: 'hôte ou hôte:port',
     recent: 'Récentes :',
     connect: 'Se connecter',
@@ -57,6 +58,7 @@ export default {
     maxRows: 'Lignes max',
     cellErrorHint: 'Cellule en erreur — cliquer pour le détail',
     cellErrorCopied: "Message d'erreur copié dans le presse-papiers",
+    rows: 'ligne(s)',
   },
   explorer: {
     measures: 'Mesures ({n})',
@@ -77,6 +79,7 @@ export default {
     cells: 'Cellules',
     loadInEditor: "Charger dans l'éditeur",
     copyMdx: 'Copier le MDX',
+    mdxCopied: 'MDX copié dans le presse-papiers',
   },
   stats: {
     unavailable: 'Stats indisponibles : {detail}',
@@ -124,6 +127,16 @@ export default {
     pickTwo: 'Sélectionnez deux runs à comparer',
     noHistory: 'Aucun run enregistré',
     refresh: 'Rafraîchir',
+    col: {
+      total: 'Total (ms)',
+      fe: 'Formula Engine (ms)',
+      se: 'Storage Engine (ms)',
+      feShort: 'FE (ms)',
+      seShort: 'SE (ms)',
+      subcubes: 'Sous-cubes',
+      cacheHits: 'Hits cache',
+      aggHits: 'Hits agrégation',
+    },
   },
   script: {
     reload: 'Recharger le script',
@@ -151,6 +164,7 @@ export default {
     searchCapped: '{n} résultats (tronqué)',
     searchNone: 'Aucun résultat',
     findRefs: 'Références',
+    projectServerOnly: "Mode projet : les dépendances et l'explication IA lisent le cube déployé sur le serveur, pas le .cube ouvert. Fermez le projet pour les utiliser.",
   },
   rename: {
     title: 'Renommer le membre',
@@ -171,6 +185,8 @@ export default {
     queryCanceled: 'Requête annulée.',
     aiCanceled: 'Analyse annulée.',
     http: 'Erreur HTTP {status}',
+    notDevServer: "Serveur non déclaré comme serveur de développement : vider le cache y est refusé. Déclarez-le dans le dialogue de connexion si c'en est un.",
+    notJson: 'Réponse inattendue du serveur pour {url} (HTML au lieu de JSON) : un ancien cubescope.exe tourne peut-être encore. Fermez-le puis relancez CubeScope.',
   },
   compare: {
     title: 'Comparer entre deux catalogues',
@@ -244,6 +260,11 @@ export default {
     folders: 'Dossiers',
     cubeFilesLabel: 'Fichiers .cube',
     noCubeHere: 'Aucun fichier .cube dans ce dossier',
+    discard: 'Abandonner les modifications',
+    conflictHeader: 'Fichier modifié hors de CubeScope',
+    conflict: "Rien n'a été enregistré ({detail}). Recharger : abandonne vos modifications et relit le fichier. Écraser : remplace le fichier par votre version.",
+    conflictReload: 'Recharger',
+    conflictOverwrite: 'Écraser le fichier',
   },
   deploylog: {
     title: 'Historique des déploiements',
@@ -260,6 +281,12 @@ export default {
     changed: 'Modifié',
     downstream: '{n} membre(s) impacté(s) en aval',
     none: 'Aucun changement',
+    line: 'ligne {line}',
+    detail: {
+      Expression: 'expression',
+      Properties: 'propriétés',
+      ExpressionAndProperties: 'expression et propriétés',
+    },
   },
   calcprops: {
     title: 'Propriétés',
@@ -278,6 +305,7 @@ export default {
     inserted: 'Snippet inséré',
     deleteTitle: 'Supprimer',
     save: 'Enregistrer',
+    deleteConfirm: 'Supprimer le snippet « {name} » ?',
   },
   regression: {
     title: 'Non-régression',
@@ -291,6 +319,23 @@ export default {
     needResult: "Exécute d'abord une requête pour la capturer",
     delete: 'Supprimer',
     saved: 'Cas enregistré',
+    deleteConfirm: 'Supprimer le cas « {name} » ?',
+    noDrillthrough: 'Un drillthrough ne peut pas servir de référence : sélectionnez un onglet de requête.',
+    baselineOf: 'Référence enregistrée : onglet {tab} (son MDX et son résultat)',
+  },
+  panels: {
+    menu: 'Panneaux',
+    menuTitle: 'Afficher ou rouvrir un panneau',
+    closeScriptHeader: 'Fermer le panneau Script ?',
+    closeAnyway: 'Fermer sans enregistrer',
+  },
+  completion: {
+    kind: {
+      member: 'membre',
+      dimension: 'dimension',
+      hierarchy: 'hiérarchie',
+      level: 'niveau',
+    },
   },
   member: {
     title: 'Nouveau membre calculé',

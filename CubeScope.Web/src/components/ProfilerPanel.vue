@@ -71,12 +71,12 @@ const compareRows = computed<CompareRow[]>(() => {
   const b = runB.value
   if (!a || !b) return []
   return [
-    compareRow('Total (ms)', a.totalMs, b.totalMs, true),
-    compareRow('Formula Engine (ms)', a.formulaEngineMs, b.formulaEngineMs, true),
-    compareRow('Storage Engine (ms)', a.storageEngineMs, b.storageEngineMs, true),
-    compareRow('Subcubes', a.subcubeCount, b.subcubeCount, true),
-    compareRow('Cache hits', a.cacheHits, b.cacheHits, false),
-    compareRow('Aggregation hits', a.aggregationHits, b.aggregationHits, false),
+    compareRow(t('profiler.col.total'), a.totalMs, b.totalMs, true),
+    compareRow(t('profiler.col.fe'), a.formulaEngineMs, b.formulaEngineMs, true),
+    compareRow(t('profiler.col.se'), a.storageEngineMs, b.storageEngineMs, true),
+    compareRow(t('profiler.col.subcubes'), a.subcubeCount, b.subcubeCount, true),
+    compareRow(t('profiler.col.cacheHits'), a.cacheHits, b.cacheHits, false),
+    compareRow(t('profiler.col.aggHits'), a.aggregationHits, b.aggregationHits, false),
   ]
 })
 </script>
@@ -152,9 +152,9 @@ const compareRows = computed<CompareRow[]>(() => {
           <Column :header="t('history.executed')">
             <template #body="{ data }">{{ localTime(data.executedUtc) }}</template>
           </Column>
-          <Column field="totalMs" header="Total (ms)" class="prof-dur" style="width: 5rem" />
-          <Column field="formulaEngineMs" header="FE (ms)" class="prof-dur" style="width: 5rem" />
-          <Column field="storageEngineMs" header="SE (ms)" class="prof-dur" style="width: 5rem" />
+          <Column field="totalMs" :header="t('profiler.col.total')" class="prof-dur" style="width: 5rem" />
+          <Column field="formulaEngineMs" :header="t('profiler.col.feShort')" class="prof-dur" style="width: 5rem" />
+          <Column field="storageEngineMs" :header="t('profiler.col.seShort')" class="prof-dur" style="width: 5rem" />
           <Column header="MDX">
             <template #body="{ data }">
               <span class="prof-subcube-text" :title="data.mdx">{{ shortMdx(data.mdx) }}</span>

@@ -5,6 +5,7 @@ import { monaco } from './monaco-mdx'
 import { api, type MemberMeta } from './api'
 import { store } from './store'
 import { mdxFunctions } from './mdxFunctions'
+import { t } from './i18n'
 
 const KEYWORD_SUGGESTIONS = [
   'SELECT', 'FROM', 'WHERE', 'ON COLUMNS', 'ON ROWS', 'NON EMPTY', 'WITH MEMBER', 'WITH SET',
@@ -174,16 +175,18 @@ export function normalizeRef(s: string): string {
  * Result cached by unique name. Null if not resolved.
  */
 async function resolveMemberCaption(normRef: string): Promise<string | null> {
-  if (!store.cube) return null
+  const cube = store.cube
+  if (!cube) return null
   if (captionCache.has(normRef)) return captionCache.get(normRef) ?? null
-  let caption: string | null = null
   try {
-    caption = (await api.memberCaption(store.cube, normRef)).caption
+    const caption = (await api.memberCaption(cube, normRef)).caption
+    // Only a real answer is cached (null = the server says "no such member"), and only if
+    // it still belongs to the current cube.
+    if (store.cube === cube) captionCache.set(normRef, caption)
+    return caption
   } catch {
-    caption = null
+    return null // transient failure: not cached, the next hover retries
   }
-  captionCache.set(normRef, caption)
-  return caption
 }
 
 /** Map of normalized uniqueName → caption/description, built from the current cube. */
@@ -236,7 +239,7 @@ monaco.languages.registerHoverProvider('mdx', {
       const entry = buildRefLookup().get(normRef)
       if (entry) {
         const contents: { value: string }[] = [
-          { value: '**' + entry.caption + '**' + (entry.kind === 'measure' ? '' : ' _(' + entry.kind + ')_') },
+          { value: '**' + entry.caption + '**' + (entry.kind === 'measure' ? '' : ' _(' + t('completion.kind.' + entry.kind) + ')_') },
         ]
         if (entry.description) contents.push({ value: entry.description })
         contents.push({ value: '`' + normRef + '`' })
@@ -245,7 +248,7 @@ monaco.languages.registerHoverProvider('mdx', {
       // 2) Member (key &[…] or name) → caption loaded on the fly from the hierarchy
       const caption = await resolveMemberCaption(normRef)
       if (caption)
-        return { range, contents: [{ value: '**' + caption + '** _(membre)_' }, { value: '`' + normRef + '`' }] }
+        return { range, contents: [{ value: '**' + caption + '** _(' + t('completion.kind.member') + ')_' }, { value: '`' + normRef + '`' }] }
     }
     // 3) Fallback: known MDX function → signature + short doc
     const word = model.getWordAtPosition(position)

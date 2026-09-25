@@ -2,16 +2,18 @@
 // Metadata explorer: measures (by folder) + dimensions → hierarchies → levels,
 // and under each hierarchy a "Members" folder that goes down to the leaves (SSMS-style).
 // Double-click or drag to the editor: inserts the UniqueName.
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tree from 'primevue/tree'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
+import { useToast } from 'primevue/usetoast'
 import type { TreeNode } from 'primevue/treenode'
 import { api, type MemberNode } from '../api'
 import { actions, store } from '../store'
 
 const { t } = useI18n()
+const toast = useToast()
 
 
 // Levels already loaded, by node key. Kept apart from the tree itself because `nodes` is a
@@ -20,6 +22,25 @@ const { t } = useI18n()
 const loaded = ref(new Map<string, { nodes: MemberNode[]; hasMore: boolean }>())
 const pending = ref(new Set<string>())
 const failed = ref(new Set<string>())
+
+// Expanded members belong to the cube they were read from: forget them when the server,
+// catalog or cube changes (same unique names can exist on the other side).
+watch(
+  () => store.contextRevision,
+  () => {
+    loaded.value = new Map()
+    pending.value = new Set()
+    failed.value = new Set()
+  },
+)
+
+async function onSelectCube(cube: string, refresh = false) {
+  try {
+    await actions.selectCube(cube, refresh)
+  } catch (e) {
+    toast.add({ severity: 'error', summary: t('toast.error'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
+  }
+}
 
 /** Recursively builds the already-loaded subtree under a key. */
 function buildMembers(key: string, parentCount: number): TreeNode[] {
@@ -63,19 +84,23 @@ async function onNodeExpand(node: TreeNode): Promise<void> {
   if (!estHierarchie && !key.startsWith('m:')) return
 
   const parent = key.slice(key.indexOf(':') + 1)
+  // The answer is dropped if the context changed while it was in flight (the maps were reset).
+  const revision = store.contextRevision
   pending.value = new Set(pending.value).add(key)
   failed.value.delete(key)
   try {
     const cran = await api.children(store.cube, parent, estHierarchie)
-    loaded.value = new Map(loaded.value).set(key, cran)
+    if (revision === store.contextRevision) loaded.value = new Map(loaded.value).set(key, cran)
   } catch {
     // An unreadable level (permissions, member gone since the metadata was loaded) must not
     // leave a node spinning forever: mark it, and the user can collapse it.
-    failed.value = new Set(failed.value).add(key)
+    if (revision === store.contextRevision) failed.value = new Set(failed.value).add(key)
   } finally {
-    const p = new Set(pending.value)
-    p.delete(key)
-    pending.value = p
+    if (revision === store.contextRevision) {
+      const p = new Set(pending.value)
+      p.delete(key)
+      pending.value = p
+    }
   }
 }
 
@@ -175,7 +200,8 @@ function onDragStart(e: DragEvent, node: TreeNode) {
         :options="store.cubes"
         size="small"
         class="explorer-cube"
-        @update:model-value="(c: string) => actions.selectCube(c)"
+        :disabled="store.running"
+        @update:model-value="(c: string) => onSelectCube(c)"
       />
       <span v-else class="explorer-cube-name">{{ store.cube ?? '—' }}</span>
       <Button
@@ -184,7 +210,7 @@ function onDragStart(e: DragEvent, node: TreeNode) {
         size="small"
         :title="t('explorer.refresh')"
         :loading="store.metaLoading"
-        @click="store.cube && actions.selectCube(store.cube, true)"
+        @click="store.cube && onSelectCube(store.cube, true)"
       />
     </div>
     <Tree
@@ -198,7 +224,7 @@ function onDragStart(e: DragEvent, node: TreeNode) {
     >
       <template #default="{ node }">
         <span
-          :title="(node as any).title || (typeof node.data === 'string' ? node.data : '')"
+          :title="node.title || (typeof node.data === 'string' ? node.data : '')"
           :draggable="typeof node.data === 'string'"
           @dblclick="onNodeDblClick(node)"
           @dragstart="onDragStart($event, node)"

@@ -1,17 +1,18 @@
 // Query result export: CSV (download) and TSV (clipboard, pastes cleanly into Excel).
 import type { GridColumn } from './api'
 
-function csvField(value: unknown): string {
+function csvField(value: unknown, sep: string): string {
   const s = value === null || value === undefined ? '' : String(value)
-  if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+  if (s.includes('"') || s.includes(sep) || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`
   }
   return s
 }
 
-export function toCsv(columns: GridColumn[], rows: Record<string, unknown>[]): string {
-  const header = columns.map((c) => csvField(c.header)).join(',')
-  const lines = rows.map((row) => columns.map((c) => csvField(row[c.field])).join(','))
+/** `sep`: ';' for locales whose formatted values use a decimal comma (what Excel expects there). */
+export function toCsv(columns: GridColumn[], rows: Record<string, unknown>[], sep = ','): string {
+  const header = columns.map((c) => csvField(c.header, sep)).join(sep)
+  const lines = rows.map((row) => columns.map((c) => csvField(row[c.field], sep)).join(sep))
   return [header, ...lines].join('\r\n')
 }
 

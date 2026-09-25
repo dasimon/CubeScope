@@ -111,6 +111,26 @@ export interface RegressionRunResult {
   diffs: RegressionDiff[]
 }
 
+/** HTTP error carrying the status and the server's stable error code (if any). */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message)
+    this.status = status
+    this.code = code
+  }
+}
+
+function isJson(res: Response): boolean {
+  return (res.headers.get('Content-Type') ?? '').toLowerCase().includes('json')
+}
+
+function isPlainText(res: Response): boolean {
+  const ct = (res.headers.get('Content-Type') ?? '').toLowerCase()
+  return ct === '' || ct.includes('text/plain')
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -119,10 +139,32 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
     signal,
   })
   if (!res.ok) {
-    const payload = await res.json().catch(() => null)
-    throw new Error(payload?.error ?? t('errors.http', { status: res.status }))
+    // JSON { error, code? } from the endpoints; plain text from the local request guard (403).
+    const text = await res.text().catch(() => '')
+    let payload: { error?: string; code?: string } | null = null
+    if (isJson(res)) {
+      try {
+        payload = JSON.parse(text)
+      } catch {
+        payload = null
+      }
+    }
+    const code = payload?.code ?? null
+    const message =
+      code === 'notDevServer'
+        ? t('errors.notDevServer')
+        : (payload?.error ?? (isPlainText(res) && text.trim() ? text.trim().slice(0, 500) : null) ??
+          t('errors.http', { status: res.status }))
+    throw new ApiError(message, res.status, code)
   }
-  return res.status === 204 ? (undefined as T) : ((await res.json().catch(() => undefined)) as T)
+  if (res.status === 204) return undefined as T
+  // A 200 that is not JSON on an API route = SPA fallback (index.html) served by an outdated binary.
+  if (!isJson(res)) {
+    const text = await res.text().catch(() => '')
+    if (!text) return undefined as T
+    throw new ApiError(t('errors.notJson', { url }), res.status)
+  }
+  return (await res.json()) as T
 }
 
 export const api = {
@@ -189,8 +231,13 @@ export const api = {
       signal,
     ),
   projectOpen: (path: string) => request<ProjectScript>('POST', '/api/project/open', { path }),
-  projectSave: (path: string, fullText: string) =>
-    request<{ warnings: string[] }>('POST', '/api/project/save', { path, fullText }),
+  // expectedHash omitted = overwrite whatever is on disk (after an explicit confirmation).
+  projectSave: (path: string, fullText: string, expectedHash?: string) =>
+    request<{ warnings: string[]; contentHash: string }>('POST', '/api/project/save', {
+      path,
+      fullText,
+      expectedHash,
+    }),
   projectDeploy: (path: string, server: string, catalog: string, force: boolean) =>
     request<DeployScriptResult>('POST', '/api/project/deploy', { path, server, catalog, force }),
   projectRecent: () => request<RecentProject[]>('GET', '/api/project/recent'),
@@ -204,7 +251,7 @@ export const api = {
     displayFolder: string | null,
     description: string | null,
   ) =>
-    request<void>('POST', '/api/project/calcprops', {
+    request<{ contentHash: string }>('POST', '/api/project/calcprops', {
       path,
       reference,
       formatString,
@@ -314,6 +361,8 @@ export interface ProjectScript {
   commands: ScriptCommand[]
   canEdit: boolean
   readOnlyReason: string | null
+  /** SHA-256 of the file as read: sent back as the save's expectedHash. */
+  contentHash: string
 }
 export interface RecentProject {
   path: string
@@ -395,9 +444,13 @@ export interface QueryProfile {
 
 export interface MemberChange {
   name: string
-  kind: string
+  kind: 'CalculatedMember' | 'NamedSet' | 'Scope' | 'Autre'
   change: 'Added' | 'Removed' | 'Changed'
   impactedDownstream: string[]
+  /** Set only for a Changed member/set. */
+  detail: 'Expression' | 'Properties' | 'ExpressionAndProperties' | null
+  /** 1-based line in the new script (in the old one for a Removed command). */
+  startLine: number
 }
 export interface ImpactReport {
   changes: MemberChange[]

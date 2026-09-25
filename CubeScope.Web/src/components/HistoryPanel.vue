@@ -7,10 +7,12 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
+import { useToast } from 'primevue/usetoast'
 import type { HistoryEntry } from '../api'
 import { actions, store } from '../store'
 
 const { t } = useI18n()
+const toast = useToast()
 const filter = ref('')
 
 const filtered = computed(() => {
@@ -29,7 +31,12 @@ function onRowDblClick(e: { data: HistoryEntry }) {
 }
 
 async function copyMdx(entry: HistoryEntry) {
-  await navigator.clipboard.writeText(entry.mdx)
+  try {
+    await navigator.clipboard.writeText(entry.mdx)
+    toast.add({ severity: 'success', summary: t('history.mdxCopied'), life: 3000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: t('results.copyFailed'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
+  }
 }
 
 function shortMdx(mdx: string): string {

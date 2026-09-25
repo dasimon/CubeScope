@@ -2,7 +2,7 @@
 import type fr from './fr'
 
 const en: typeof fr = {
-  common: { cancel: 'Cancel', retry: 'Retry', reload: 'Reload', filter: 'Filter…' },
+  common: { cancel: 'Cancel', retry: 'Retry', reload: 'Reload', filter: 'Filter…', close: 'Close' },
   toast: { error: 'Error', cacheCleared: 'Cache cleared' },
   lang: { label: 'Language', fr: 'FR', en: 'EN' },
   toolbar: {
@@ -33,11 +33,12 @@ const en: typeof fr = {
     result: 'Cache cleared (DatabaseID “{id}”, {ms} ms).',
     confirm: 'Clear cache',
     redo: 'Clear again',
+    notDev: '"{server}" is not declared as a development server: clearing the cache will be refused. Declare it in the connection dialog if it is one.',
   },
   connect: {
     title: 'SSAS connection',
     server: 'Server',
-    devServer: 'Development server (script deployment allowed)',
+    devServer: 'Development server (script deployment and cache clearing allowed)',
     serverPlaceholder: 'host or host:port',
     recent: 'Recent:',
     connect: 'Connect',
@@ -59,6 +60,7 @@ const en: typeof fr = {
     maxRows: 'Max rows',
     cellErrorHint: 'Cell in error — click for details',
     cellErrorCopied: 'Error message copied to clipboard',
+    rows: 'row(s)',
   },
   explorer: {
     measures: 'Measures ({n})',
@@ -79,6 +81,7 @@ const en: typeof fr = {
     cells: 'Cells',
     loadInEditor: 'Load into editor',
     copyMdx: 'Copy MDX',
+    mdxCopied: 'MDX copied to clipboard',
   },
   stats: {
     unavailable: 'Stats unavailable: {detail}',
@@ -126,6 +129,16 @@ const en: typeof fr = {
     pickTwo: 'Pick two runs to compare',
     noHistory: 'No runs recorded',
     refresh: 'Refresh',
+    col: {
+      total: 'Total (ms)',
+      fe: 'Formula Engine (ms)',
+      se: 'Storage Engine (ms)',
+      feShort: 'FE (ms)',
+      seShort: 'SE (ms)',
+      subcubes: 'Subcubes',
+      cacheHits: 'Cache hits',
+      aggHits: 'Aggregation hits',
+    },
   },
   script: {
     reload: 'Reload the script',
@@ -153,6 +166,7 @@ const en: typeof fr = {
     searchCapped: '{n} results (capped)',
     searchNone: 'No result',
     findRefs: 'References',
+    projectServerOnly: 'Project mode: dependencies and the AI explanation read the cube deployed on the server, not the opened .cube. Close the project to use them.',
   },
   rename: {
     title: 'Rename member',
@@ -173,6 +187,8 @@ const en: typeof fr = {
     queryCanceled: 'Query canceled.',
     aiCanceled: 'Analysis canceled.',
     http: 'HTTP error {status}',
+    notDevServer: 'This server is not declared as a development server: clearing its cache is refused. Declare it in the connection dialog if it is one.',
+    notJson: 'Unexpected server response for {url} (HTML instead of JSON): an old cubescope.exe may still be running. Close it, then restart CubeScope.',
   },
   compare: {
     title: 'Compare across two catalogues',
@@ -246,6 +262,11 @@ const en: typeof fr = {
     folders: 'Folders',
     cubeFilesLabel: '.cube files',
     noCubeHere: 'No .cube file in this folder',
+    discard: 'Discard changes',
+    conflictHeader: 'File modified outside CubeScope',
+    conflict: 'Nothing was saved ({detail}). Reload: discards your changes and reads the file again. Overwrite: replaces the file with your version.',
+    conflictReload: 'Reload',
+    conflictOverwrite: 'Overwrite the file',
   },
   deploylog: {
     title: 'Deployment history',
@@ -262,6 +283,12 @@ const en: typeof fr = {
     changed: 'Changed',
     downstream: '{n} downstream member(s) impacted',
     none: 'No change',
+    line: 'line {line}',
+    detail: {
+      Expression: 'expression',
+      Properties: 'properties',
+      ExpressionAndProperties: 'expression and properties',
+    },
   },
   calcprops: {
     title: 'Properties',
@@ -280,6 +307,7 @@ const en: typeof fr = {
     inserted: 'Snippet inserted',
     deleteTitle: 'Delete',
     save: 'Save',
+    deleteConfirm: 'Delete the snippet "{name}"?',
   },
   regression: {
     title: 'Regression',
@@ -293,6 +321,23 @@ const en: typeof fr = {
     needResult: 'Run a query first to capture it',
     delete: 'Delete',
     saved: 'Case saved',
+    deleteConfirm: 'Delete the case "{name}"?',
+    noDrillthrough: 'A drillthrough cannot be a baseline: select a query tab.',
+    baselineOf: 'Baseline saved from tab {tab} (its MDX and its result)',
+  },
+  panels: {
+    menu: 'Panels',
+    menuTitle: 'Show or reopen a panel',
+    closeScriptHeader: 'Close the Script panel?',
+    closeAnyway: 'Close without saving',
+  },
+  completion: {
+    kind: {
+      member: 'member',
+      dimension: 'dimension',
+      hierarchy: 'hierarchy',
+      level: 'level',
+    },
   },
   member: {
     title: 'New calculated member',

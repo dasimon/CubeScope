@@ -64,11 +64,16 @@ onMounted(() => {
   })
 })
 
-// External replacement of the MDX (history) without an edit loop
+// External replacement of the MDX (history, AI "Apply") without an edit loop. An edit,
+// not setValue(): setValue wipes the undo stack, whereas Ctrl+Z must bring the old text back.
 watch(
   () => store.mdxRevision,
   () => {
-    if (editor && editor.getValue() !== store.mdx) editor.setValue(store.mdx)
+    const model = editor?.getModel()
+    if (!editor || !model || editor.getValue() === store.mdx) return
+    editor.pushUndoStop()
+    editor.executeEdits('cubescope', [{ range: model.getFullModelRange(), text: store.mdx }])
+    editor.pushUndoStop()
   },
 )
 

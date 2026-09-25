@@ -23,6 +23,9 @@ export const i18n = createI18n({
   messages: { fr, en },
 })
 
+// <html lang> must match from the start, not only after a language switch.
+document.documentElement.lang = i18n.global.locale.value
+
 export function setLocale(l: Locale): void {
   i18n.global.locale.value = l
   localStorage.setItem(STORAGE_KEY, l)

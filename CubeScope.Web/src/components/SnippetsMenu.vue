@@ -7,12 +7,14 @@ import Popover from 'primevue/popover'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { api, type Snippet } from '../api'
 import { actions, store } from '../store'
 
 const { t } = useI18n()
 const toast = useToast()
+const confirm = useConfirm()
 
 const popover = ref<InstanceType<typeof Popover>>()
 const snippets = ref<Snippet[]>([])
@@ -58,8 +60,21 @@ function insert(snippet: Snippet, event: Event) {
   void event
 }
 
-async function remove(id: number, event: Event) {
+function remove(snippet: Snippet, event: Event) {
   event.stopPropagation()
+  confirm.require({
+    header: t('snippets.deleteTitle'),
+    message: t('snippets.deleteConfirm', { name: snippet.name }),
+    icon: 'pi pi-trash',
+    rejectLabel: t('common.cancel'),
+    rejectProps: { severity: 'secondary', text: true },
+    acceptLabel: t('snippets.deleteTitle'),
+    acceptProps: { severity: 'danger' },
+    accept: () => void doRemove(snippet.id),
+  })
+}
+
+async function doRemove(id: number) {
   try {
     await api.deleteSnippet(id)
     await loadSnippets()
@@ -84,7 +99,14 @@ async function remove(id: number, event: Event) {
       />
       <div v-if="snippets.length === 0" class="snippets-empty">{{ t('snippets.empty') }}</div>
       <ul v-else class="snippets-list">
-        <li v-for="s in snippets" :key="s.id" class="snippets-row" @click="insert(s, $event)">
+        <li
+          v-for="s in snippets"
+          :key="s.id"
+          class="snippets-row"
+          tabindex="0"
+          @click="insert(s, $event)"
+          @keydown.enter.self="insert(s, $event)"
+        >
           <span class="snippets-name">{{ s.name }}</span>
           <Button
             icon="pi pi-trash"
@@ -92,7 +114,7 @@ async function remove(id: number, event: Event) {
             text
             severity="danger"
             :title="t('snippets.deleteTitle')"
-            @click="remove(s.id, $event)"
+            @click="remove(s, $event)"
           />
         </li>
       </ul>

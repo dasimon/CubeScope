@@ -10,6 +10,7 @@ import CompareDialog from './CompareDialog.vue'
 import { actions, store } from '../store'
 import { ref, computed } from 'vue'
 import { toCsv, toTsv, downloadCsv, copyToClipboard } from '../exportResults'
+import { currentLocale } from '../i18n'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -20,7 +21,9 @@ const canCompare = computed(() => store.catalogs.some((c) => c !== store.catalog
 
 function exportCsv() {
   if (!store.result) return
-  downloadCsv('cubescope-resultats.csv', toCsv(store.result.columns, store.result.rows))
+  // French values carry decimal commas: ';' keeps the columns apart (Excel FR default).
+  const sep = currentLocale() === 'fr' ? ';' : ','
+  downloadCsv('cubescope-results.csv', toCsv(store.result.columns, store.result.rows, sep))
 }
 
 async function copyResults() {

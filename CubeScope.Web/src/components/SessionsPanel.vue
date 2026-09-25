@@ -223,7 +223,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
       </template>
       <template #footer>
         <Button :label="t('results.copy')" icon="pi pi-copy" text @click="copyCommand()" />
-        <Button :label="t('common.cancel')" text @click="full = null" />
+        <Button :label="t('common.close')" text @click="full = null" />
       </template>
     </Dialog>
 
@@ -256,7 +256,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
         </dl>
       </template>
       <template #footer>
-        <Button :label="t('common.cancel')" text @click="target = null" />
+        <Button :label="t('common.close')" text @click="target = null" />
         <Button
           :label="t('sessions.cancel')"
           severity="danger"

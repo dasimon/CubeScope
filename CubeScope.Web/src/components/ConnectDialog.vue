@@ -9,10 +9,16 @@ import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
+import { useToast } from 'primevue/usetoast'
 import { actions, store } from '../store'
 import { setLocale, type Locale } from '../i18n'
 
 const { t, locale } = useI18n()
+const toast = useToast()
+
+function errorToast(e: unknown) {
+  toast.add({ severity: 'error', summary: t('toast.error'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
+}
 
 const LANGS: { label: string; value: Locale }[] = [
   { label: 'FR', value: 'fr' },
@@ -30,12 +36,15 @@ const isDevServer = computed({
   get: () =>
     store.devServers.some((s) => s.trim().toLowerCase() === server.value.trim().toLowerCase()),
   set: (v: boolean) => {
-    if (server.value.trim()) void actions.setDevServer(server.value.trim(), v)
+    if (server.value.trim()) actions.setDevServer(server.value.trim(), v).catch(errorToast)
   },
 })
 const catalog = ref<string | null>(null)
 
 onMounted(async () => {
+  // The dev list does not depend on a connection: load it now so the checkbox is right
+  // before connecting, not only after.
+  void actions.loadDevServers()
   await actions.loadRecent()
   if (store.recent.length > 0) {
     server.value = store.recent[0].server
@@ -48,12 +57,16 @@ async function connect() {
   const wanted = catalog.value
   if (await actions.connect(server.value.trim())) {
     // Re-selects the last used catalog if it still exists
-    if (wanted && store.catalogs.includes(wanted)) {
-      await actions.setCatalog(wanted)
-      store.showConnect = false
-    } else if (store.catalogs.length === 1) {
-      await actions.setCatalog(store.catalogs[0])
-      store.showConnect = false
+    try {
+      if (wanted && store.catalogs.includes(wanted)) {
+        await actions.setCatalog(wanted)
+        store.showConnect = false
+      } else if (store.catalogs.length === 1) {
+        await actions.setCatalog(store.catalogs[0])
+        store.showConnect = false
+      }
+    } catch (e) {
+      errorToast(e) // stay in the dialog to choose another catalog
     }
     // Otherwise: stay in the dialog to choose the catalog
     catalog.value = store.catalog
@@ -62,8 +75,12 @@ async function connect() {
 
 async function chooseCatalog() {
   if (!catalog.value) return
-  await actions.setCatalog(catalog.value)
-  store.showConnect = false
+  try {
+    await actions.setCatalog(catalog.value)
+    store.showConnect = false
+  } catch (e) {
+    errorToast(e)
+  }
 }
 
 function pickRecent(r: { server: string; catalog: string | null }) {

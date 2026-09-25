@@ -7,12 +7,14 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { api, type RegressionCase, type RegressionRunResult } from '../api'
 import { store } from '../store'
 
 const { t } = useI18n()
 const toast = useToast()
+const confirm = useConfirm()
 
 const visible = ref(false)
 const cases = ref<RegressionCase[]>([])
@@ -21,6 +23,11 @@ const running = ref(false)
 const newName = ref('')
 
 const passCount = computed(() => runResults.value.filter((r) => r.match).length)
+
+// The baseline is the ACTIVE result tab with the MDX that produced it (not the editor's
+// current text, which may have changed since). A drillthrough is not a baseline.
+const activeTab = computed(() => store.results.find((r) => r.id === store.activeResultId) ?? null)
+const baseline = computed(() => (activeTab.value?.kind === 'query' ? activeTab.value : null))
 
 async function loadCases() {
   try {
@@ -39,9 +46,10 @@ function open() {
 
 async function saveCase() {
   const name = newName.value.trim()
-  if (!name || !store.result) return
+  const tab = baseline.value
+  if (!name || !tab) return
   try {
-    await api.regressionSave(name, store.mdx, store.result)
+    await api.regressionSave(name, tab.mdx, tab.result)
     newName.value = ''
     await loadCases()
     toast.add({ severity: 'success', summary: t('regression.saved'), life: 3000 })
@@ -50,7 +58,20 @@ async function saveCase() {
   }
 }
 
-async function remove(id: number) {
+function remove(c: RegressionCase) {
+  confirm.require({
+    header: t('regression.delete'),
+    message: t('regression.deleteConfirm', { name: c.name }),
+    icon: 'pi pi-trash',
+    rejectLabel: t('common.cancel'),
+    rejectProps: { severity: 'secondary', text: true },
+    acceptLabel: t('regression.delete'),
+    acceptProps: { severity: 'danger' },
+    accept: () => void doRemove(c.id),
+  })
+}
+
+async function doRemove(id: number) {
   try {
     await api.regressionDelete(id)
     await loadCases()
@@ -85,7 +106,7 @@ function firstLine(mdx: string) {
       <InputText
         v-model="newName"
         :placeholder="t('regression.name')"
-        :disabled="!store.result"
+        :disabled="!baseline"
         class="reg-name-input"
         @keydown.enter="saveCase"
       />
@@ -93,11 +114,13 @@ function firstLine(mdx: string) {
         :label="t('regression.saveCase')"
         icon="pi pi-plus"
         size="small"
-        :disabled="!store.result || !newName.trim()"
+        :disabled="!baseline || !newName.trim()"
         @click="saveCase"
       />
     </div>
-    <small v-if="!store.result" class="reg-hint">{{ t('regression.needResult') }}</small>
+    <small v-if="activeTab?.kind === 'drillthrough'" class="reg-hint">{{ t('regression.noDrillthrough') }}</small>
+    <small v-else-if="!baseline" class="reg-hint">{{ t('regression.needResult') }}</small>
+    <small v-else class="reg-hint">{{ t('regression.baselineOf', { tab: baseline.label }) }}</small>
 
     <div class="reg-cases">
       <div v-if="cases.length === 0" class="reg-empty">{{ t('regression.empty') }}</div>
@@ -105,7 +128,7 @@ function firstLine(mdx: string) {
         <li v-for="c in cases" :key="c.id" class="reg-row">
           <span class="reg-name">{{ c.name }}</span>
           <span class="reg-mdx">{{ firstLine(c.mdx) }}</span>
-          <Button icon="pi pi-trash" size="small" text severity="danger" :title="t('regression.delete')" @click="remove(c.id)" />
+          <Button icon="pi pi-trash" size="small" text severity="danger" :title="t('regression.delete')" @click="remove(c)" />
         </li>
       </ul>
     </div>

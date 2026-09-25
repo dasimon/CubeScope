@@ -15,12 +15,14 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import Tree from 'primevue/tree'
 import type { TreeNode } from 'primevue/treenode'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { marked } from 'marked'
+import { renderMarkdown } from '../markdown'
 import { monaco } from '../monaco-mdx'
 import { prefetchMemberCaptions, clearCaptionCache, normalizeRef } from '../mdx-completion'
 import {
   api,
+  ApiError,
   type CalculationProp,
   type CubeScript,
   type DependencyGraph,
@@ -38,6 +40,7 @@ import { actions, store } from '../store'
 
 const { t } = useI18n()
 const toast = useToast()
+const confirm = useConfirm()
 
 const script = ref<CubeScript | null>(null)
 const loading = ref(false)
@@ -181,15 +184,18 @@ async function loadCalcProps(path: string) {
 async function saveCalcProps() {
   if (!project.value || !selected.value) return
   savingProps.value = true
+  const path = project.value.path
   try {
-    await api.saveCalcProp(
-      project.value.path,
+    const r = await api.saveCalcProp(
+      path,
       selected.value.name,
       propFormatString.value.trim() || null,
       propDisplayFolder.value.trim() || null,
       propDescription.value.trim() || null,
     )
-    await loadCalcProps(project.value.path)
+    // The .cube changed on disk: without the new hash, the next script save would be refused (409).
+    if (project.value?.path === path) project.value.contentHash = r.contentHash
+    await loadCalcProps(path)
     toast.add({ severity: 'success', summary: t('calcprops.saved'), life: 3000 })
   } catch (e) {
     toast.add({ severity: 'error', summary: e instanceof Error ? e.message : String(e), life: 6000 })
@@ -217,19 +223,19 @@ const canRename = computed(
 )
 
 // --- AI tracer: explains how a calculated member / named set builds its value
-// (expression + calculated dependencies, transitive). Available in project mode AND live cube. ---
+// (expression + calculated dependencies, transitive). Live cube only: the server reads the
+// deployed cube's script, not the .cube opened in project mode. ---
 const showExplain = ref(false)
 const explainLoading = ref(false)
 const explainText = ref('')
 const explainError = ref('')
 
-const canExplain = computed(
-  () =>
-    !!store.cube &&
-    (selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet'),
+const isMemberOrSet = computed(
+  () => selected.value?.kind === 'CalculatedMember' || selected.value?.kind === 'NamedSet',
 )
+const canExplain = computed(() => !!store.cube && !isProject.value && isMemberOrSet.value)
 
-const explainHtml = computed(() => (explainText.value ? marked.parse(explainText.value) : ''))
+const explainHtml = computed(() => (explainText.value ? renderMarkdown(explainText.value) : ''))
 
 async function explainCalc() {
   if (!store.cube || !selected.value) return
@@ -288,7 +294,14 @@ async function applyRename() {
   try {
     const text = editor?.getValue() ?? project.value?.fullText ?? ''
     const r = await api.renameMember(text, selected.value.name, renameNewName.value.trim())
-    editor?.setValue(r.newScript) // triggers onDidChangeModelContent → dirty = true
+    // An edit rather than setValue(): Ctrl+Z must undo the rename.
+    // Triggers onDidChangeModelContent → dirty = true.
+    const model = editor?.getModel()
+    if (editor && model) {
+      editor.pushUndoStop()
+      editor.executeEdits('cubescope', [{ range: model.getFullModelRange(), text: r.newScript }])
+      editor.pushUndoStop()
+    }
     showRename.value = false
     toast.add({ severity: 'success', summary: t('rename.done', { n: r.occurrences }), life: 4000 })
   } catch (e) {
@@ -323,20 +336,29 @@ const groupedCommands = computed(() => {
 
 const hasSections = computed(() => groupedCommands.value.some((g) => g.section !== ''))
 
+// Latest script / dependency request: an answer that is no longer the latest is dropped
+// (cube or context changed while it was in flight).
+let loadSeq = 0
+let selectSeq = 0
+
 async function load(refresh = false) {
   if (!store.cube) return
+  const seq = ++loadSeq
   loading.value = true
   error.value = ''
   try {
-    script.value = await api.script(store.cube, refresh)
+    const s = await api.script(store.cube, refresh)
+    if (seq !== loadSeq) return
+    script.value = s
     ensureEditor()
-    if (!isProject.value) setEditorText(script.value.fullText, true)
-    runPrefetch(script.value.fullText) // captions in the background (instant hover)
+    if (!isProject.value) setEditorText(s.fullText, true)
+    runPrefetch(s.fullText) // captions in the background (instant hover)
   } catch (e) {
+    if (seq !== loadSeq) return
     error.value = e instanceof Error ? e.message : String(e)
     script.value = null
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -397,14 +419,38 @@ async function browse(path?: string) {
   }
 }
 
-async function openProject(path?: string) {
-  if (dirty.value && !window.confirm(t('project.discardConfirm'))) return
+/** Runs `then` right away, or after confirmation when unsaved edits would be lost.
+ *  (A PrimeVue dialog rather than window.confirm: same look as the rest of the app.) */
+function confirmDiscard(then: () => void) {
+  if (!dirty.value) return then()
+  confirm.require({
+    header: t('project.dirty'),
+    message: t('project.discardConfirm'),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('common.cancel'),
+    rejectProps: { severity: 'secondary', text: true },
+    acceptLabel: t('project.discard'),
+    acceptProps: { severity: 'danger' },
+    accept: then,
+  })
+}
+
+function openProject(path?: string) {
+  confirmDiscard(() => void doOpenProject(path))
+}
+
+async function doOpenProject(path?: string) {
   const p = (path ?? openPath.value).trim()
   if (!p) return
   openError.value = ''
   try {
     const proj = await api.projectOpen(p)
     project.value = proj
+    // A selection / graph read from the server cube does not describe the opened .cube.
+    selectSeq++
+    selected.value = null
+    graph.value = null
+    graphLoading.value = false
     warnings.value = []
     showOpen.value = false
     openPath.value = p
@@ -420,16 +466,20 @@ async function openProject(path?: string) {
 }
 
 function closeProject() {
-  if (dirty.value && !window.confirm(t('project.discardConfirm'))) return
-  project.value = null
-  dirty.value = false
-  warnings.value = []
-  calcProps.value = []
-  setEditorText(script.value?.fullText ?? '', true)
+  confirmDiscard(() => {
+    project.value = null
+    dirty.value = false
+    warnings.value = []
+    calcProps.value = []
+    setEditorText(script.value?.fullText ?? '', true)
+    // The cube script was dropped while the project was open (cube/context change): reload it.
+    if (!script.value) void load()
+  })
 }
 
-/** Actual body of the save (wrapped by saveProject to deduplicate concurrent calls). */
-async function performSaveProject(): Promise<boolean> {
+/** Actual body of the save (wrapped by saveProject to deduplicate concurrent calls).
+ *  overwrite = save without expectedHash: replaces a .cube modified outside CubeScope. */
+async function performSaveProject(overwrite = false): Promise<boolean> {
   saving.value = true
   // Identity of the project targeted by THIS save — captured before any await. If the user
   // opens another project (or closes it) during the awaits below, `project.value` will have
@@ -439,7 +489,8 @@ async function performSaveProject(): Promise<boolean> {
   const savedPath = project.value!.path
   try {
     const text = editor?.getValue() ?? project.value!.fullText
-    const r = await api.projectSave(savedPath, text)
+    const r = await api.projectSave(savedPath, text, overwrite ? undefined : project.value!.contentHash)
+    if (project.value?.path === savedPath) project.value.contentHash = r.contentHash
     // Reloads the command list (up-to-date sections/lines) without touching the editor
     const proj = await api.projectOpen(savedPath)
     if (project.value?.path !== savedPath) return true
@@ -452,6 +503,11 @@ async function performSaveProject(): Promise<boolean> {
     toast.add({ severity: 'success', summary: t('project.saved'), life: 3000 })
     return true
   } catch (e) {
+    if (e instanceof ApiError && e.status === 409) {
+      // Modified outside CubeScope since it was opened: nothing was written, the user decides.
+      askSaveConflict(savedPath, e.message)
+      return false
+    }
     toast.add({
       severity: 'error',
       summary: e instanceof Error ? e.message : String(e),
@@ -460,6 +516,37 @@ async function performSaveProject(): Promise<boolean> {
     return false
   } finally {
     saving.value = false
+  }
+}
+
+function askSaveConflict(path: string, detail: string) {
+  confirm.require({
+    header: t('project.conflictHeader'),
+    message: t('project.conflict', { detail }),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('project.conflictReload'),
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptLabel: t('project.conflictOverwrite'),
+    acceptProps: { severity: 'danger' },
+    // The dialog's own close button (X / Escape) does neither: the edits stay in the editor.
+    accept: () => {
+      if (project.value?.path === path) void forceSaveProject()
+    },
+    reject: () => {
+      if (project.value?.path !== path) return
+      dirty.value = false // dropping the edits is the choice just made in this dialog
+      void doOpenProject(path)
+    },
+  })
+}
+
+async function forceSaveProject(): Promise<void> {
+  if (savePromise) await savePromise
+  savePromise = performSaveProject(true)
+  try {
+    await savePromise
+  } finally {
+    savePromise = null
   }
 }
 
@@ -599,14 +686,27 @@ function showDeployDialog() {
   void loadDeployLog()
 }
 
+// A diff seen for one target must never authorize "Overwrite" on another: any change of
+// server or catalog forgets it (the user deploys again and sees the new target's diff).
+watch([deployServer, deployCatalog], () => {
+  deployDiffers.value = false
+  serverText.value = ''
+  impactReport.value = null
+  impactError.value = ''
+})
+
 async function deploy(force = false) {
   if (!project.value || deployBusy.value) return
   deployBusy.value = true
   deployError.value = ''
+  const server = deployServer.value.trim()
+  const catalog = deployCatalog.value.trim()
   try {
     if (!(await saveProject())) return // the DISK state is deployed: save first
-    const r = await api.projectDeploy(
-      project.value.path, deployServer.value.trim(), deployCatalog.value.trim(), force)
+    if (!project.value) return
+    const r = await api.projectDeploy(project.value.path, server, catalog, force)
+    // Target edited while the call was running: this answer belongs to the old target.
+    if (deployServer.value.trim() !== server || deployCatalog.value.trim() !== catalog) return
     if (r.differs && !r.deployed) {
       deployDiffers.value = true
       serverText.value = r.serverText ?? ''
@@ -634,17 +734,21 @@ async function select(cmd: ScriptCommand) {
     propDisplayFolder.value = cp?.displayFolder ?? ''
     propDescription.value = cp?.description ?? ''
   }
-  if (cmd.kind === 'CalculatedMember' || cmd.kind === 'NamedSet') {
+  const seq = ++selectSeq
+  // Project mode: the graph would describe the SERVER cube, not the opened .cube.
+  if ((cmd.kind === 'CalculatedMember' || cmd.kind === 'NamedSet') && store.cube && !isProject.value) {
     graphLoading.value = true
     graph.value = null
     try {
-      graph.value = await api.dependencies(store.cube!, cmd.name)
+      const g = await api.dependencies(store.cube, cmd.name)
+      if (seq === selectSeq) graph.value = g
     } catch {
-      graph.value = null
+      if (seq === selectSeq) graph.value = null
     } finally {
-      graphLoading.value = false
+      if (seq === selectSeq) graphLoading.value = false
     }
   } else {
+    graphLoading.value = false
     graph.value = null
   }
 }
@@ -670,10 +774,16 @@ const depTree = computed<TreeNode[]>(() =>
   graph.value ? toTreeNodes(graph.value.root).children ?? [] : [],
 )
 
-// (Re)load when the cube changes / on connection
+// (Re)load when the cube changes / on connection. contextRevision too: after a switch
+// from prod to dev the cube NAME is usually the same, the script is not.
 watch(
-  () => store.cube,
-  (c) => {
+  () => [store.cube, store.contextRevision] as const,
+  ([c]) => {
+    loadSeq++ // drop any answer still in flight for the previous context
+    selectSeq++
+    loading.value = false
+    graphLoading.value = false
+    error.value = ''
     script.value = null
     selected.value = null
     graph.value = null
@@ -739,6 +849,8 @@ watch(
 
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => {
+  // Panel closed (after confirmation if dirty): nothing left for the native window to protect.
+  ;(window as Window & { __cubescopeDirty?: boolean }).__cubescopeDirty = false
   window.removeEventListener('beforeunload', handleBeforeUnload)
   editor?.dispose()
   disposeDiff()
@@ -801,7 +913,8 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="!searchHits.length" class="script-hint">{{ t('script.searchNone') }}</div>
           <ul v-else class="script-list script-search-list">
-            <li v-for="h in searchHits" :key="h.line" :title="h.text" @click="goToLine(h.line)">
+            <li v-for="h in searchHits" :key="h.line" :title="h.text" tabindex="0"
+              @click="goToLine(h.line)" @keydown.enter="goToLine(h.line)">
               <span class="search-hit-line">{{ h.line }}</span>
               <span class="search-hit-text">{{ h.text }}</span>
             </li>
@@ -817,7 +930,9 @@ onBeforeUnmount(() => {
               :key="c.kind + c.name + c.startLine"
               :class="{ selected: selected === c }"
               :title="t('script.lineTitle', { kind: t('script.kind.' + c.kind), line: c.startLine })"
+              tabindex="0"
               @click="select(c)"
+              @keydown.enter="select(c)"
             >
               <i
                 :class="c.kind === 'CalculatedMember' ? 'pi pi-percentage' : c.kind === 'NamedSet' ? 'pi pi-list' : 'pi pi-code'"
@@ -827,6 +942,7 @@ onBeforeUnmount(() => {
           </template>
         </ul>
       </template>
+      <div v-if="isProject && isMemberOrSet" class="script-hint">{{ t('script.projectServerOnly') }}</div>
       <div v-if="canExplain" class="script-explain-bar">
         <Button
           icon="pi pi-sparkles"
@@ -918,9 +1034,11 @@ onBeforeUnmount(() => {
         <div v-if="impactReport" class="impact-report">
           <template v-if="impactReport.changes.length">
             <div class="script-deps-title">{{ t('impact.title') }}</div>
-            <div v-for="c in impactReport.changes" :key="c.kind + '|' + c.name" class="impact-row">
+            <div v-for="c in impactReport.changes" :key="c.kind + '|' + c.name + '|' + c.startLine" class="impact-row">
               <Tag :value="impactLabel(c.change)" :severity="impactSeverity(c.change)" />
-              <span class="impact-name">{{ c.name }}</span>
+              <span class="impact-kind">{{ t('script.kind.' + c.kind) }}</span>
+              <span class="impact-name" :title="t('impact.line', { line: c.startLine })">{{ c.name }}</span>
+              <span v-if="c.detail" class="impact-detail">({{ t('impact.detail.' + c.detail) }})</span>
               <span v-if="c.impactedDownstream.length" class="impact-downstream">
                 {{ t('impact.downstream', { n: c.impactedDownstream.length }) }} : {{ c.impactedDownstream.join(', ') }}
               </span>
@@ -1042,7 +1160,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.script-list li:hover {
+.script-list li:hover,
+.script-list li:focus-visible {
   background: var(--p-surface-800);
 }
 .script-list li.selected {
@@ -1312,6 +1431,11 @@ onBeforeUnmount(() => {
 }
 .impact-name {
   font-family: monospace;
+}
+.impact-kind,
+.impact-detail {
+  color: var(--p-text-muted-color);
+  font-size: 0.75rem;
 }
 .impact-downstream {
   color: var(--p-text-muted-color);

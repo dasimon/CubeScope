@@ -1,14 +1,18 @@
 <script setup lang="ts">
 // Application shell: toolbar, dockview layout (editor / results / history),
 // status bar, connection dialog.
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DockviewVue, type DockviewApi, type DockviewReadyEvent, type VueComponent } from 'dockview-vue'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import Dialog from 'primevue/dialog'
+import ConfirmDialog from 'primevue/confirmdialog'
+import Menu from 'primevue/menu'
+import Message from 'primevue/message'
 import Toast from 'primevue/toast'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { api } from './api'
 import { setLocale, type Locale } from './i18n'
@@ -26,10 +30,15 @@ import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
 import RegressionDialog from './components/RegressionDialog.vue'
 import { startStatsHub } from './stats'
-import { actions, store } from './store'
+import { actions, isDevServer, store } from './store'
 
 const { t, locale } = useI18n()
 const toast = useToast()
+const confirm = useConfirm()
+
+function errorToast(e: unknown) {
+  toast.add({ severity: 'error', summary: t('toast.error'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
+}
 
 // Query / AI errors → toast (in addition to the inline display in the panel).
 // Deliberate cancellations by the user are ignored.
@@ -83,61 +92,102 @@ const PANELS = [
 
 const dvApi = shallowRef<DockviewApi>()
 
+type PanelId = (typeof PANELS)[number][0]
+type Anchor = [referencePanel: PanelId, direction: 'left' | 'right' | 'below' | 'within']
+
+// Where each panel goes: the first anchor panel still present wins. Used for the initial
+// layout AND to reopen a closed panel (its usual neighbours may be closed too).
+const BOTTOM_GROUP: PanelId[] = ['results', 'history', 'stats', 'profiler', 'sessions']
+function bottomAnchors(id: PanelId): Anchor[] {
+  return [
+    ...BOTTOM_GROUP.filter((p) => p !== id).map((p): Anchor => [p, 'within']),
+    ['editor', 'below'],
+    ['script', 'below'],
+  ]
+}
+const PLACEMENT: Record<PanelId, { anchors: Anchor[]; initialWidth?: number }> = {
+  editor: { anchors: [['script', 'within']] },
+  explorer: { anchors: [['editor', 'left'], ['script', 'left']], initialWidth: 300 },
+  results: { anchors: bottomAnchors('results') },
+  history: { anchors: bottomAnchors('history') },
+  stats: { anchors: bottomAnchors('stats') },
+  profiler: { anchors: bottomAnchors('profiler') },
+  sessions: { anchors: bottomAnchors('sessions') },
+  ai: { anchors: [['editor', 'right'], ['script', 'right']], initialWidth: 420 },
+  script: { anchors: [['editor', 'within']] },
+}
+
+function addPanel(api: DockviewApi, id: PanelId, title: string) {
+  const anchor = PLACEMENT[id].anchors.find(([ref]) => api.getPanel(ref))
+  api.addPanel({
+    id,
+    component: id,
+    title,
+    ...(anchor ? { position: { referencePanel: anchor[0], direction: anchor[1] } } : {}),
+    initialWidth: PLACEMENT[id].initialWidth,
+  })
+}
+
+// Panels currently in the layout (dockview closes a panel for good: the Panels menu reopens it).
+const openPanels = ref(new Set<string>())
+
+function isScriptDirty(): boolean {
+  return (window as Window & { __cubescopeDirty?: boolean }).__cubescopeDirty === true
+}
+
+/** Closing the Script tab would destroy unsaved project edits: ask first. Wraps the panel
+ *  api's close(), which every close path goes through (tab cross, Delete key on the tab). */
+const guardedPanels = new WeakSet<object>() // a panel moved by drag may be "added" again
+function guardScriptClose(api: DockviewApi) {
+  const panel = api.getPanel('script')
+  if (!panel || guardedPanels.has(panel.api)) return
+  guardedPanels.add(panel.api)
+  const close = panel.api.close.bind(panel.api)
+  panel.api.close = () => {
+    if (!isScriptDirty()) return close()
+    confirm.require({
+      header: t('panels.closeScriptHeader'),
+      message: t('project.discardConfirm'),
+      icon: 'pi pi-exclamation-triangle',
+      rejectLabel: t('common.cancel'),
+      rejectProps: { severity: 'secondary', text: true },
+      acceptLabel: t('panels.closeAnyway'),
+      acceptProps: { severity: 'danger' },
+      accept: close,
+    })
+  }
+}
+
 function onReady(event: DockviewReadyEvent) {
   dvApi.value = event.api
-  event.api.addPanel({ id: 'editor', component: 'editor', title: t('panel.mdx') })
-  event.api.addPanel({
-    id: 'explorer',
-    component: 'explorer',
-    title: t('panel.explorer'),
-    position: { referencePanel: 'editor', direction: 'left' },
-    initialWidth: 300,
+  event.api.onDidAddPanel((p) => {
+    openPanels.value = new Set(openPanels.value).add(p.id)
+    if (p.id === 'script') guardScriptClose(event.api)
   })
-  event.api.addPanel({
-    id: 'results',
-    component: 'results',
-    title: t('panel.results'),
-    position: { referencePanel: 'editor', direction: 'below' },
+  event.api.onDidRemovePanel((p) => {
+    const s = new Set(openPanels.value)
+    s.delete(p.id)
+    openPanels.value = s
   })
-  event.api.addPanel({
-    id: 'history',
-    component: 'history',
-    title: t('panel.history'),
-    position: { referencePanel: 'results', direction: 'within' },
-  })
-  event.api.addPanel({
-    id: 'stats',
-    component: 'stats',
-    title: t('panel.stats'),
-    position: { referencePanel: 'results', direction: 'within' },
-  })
-  event.api.addPanel({
-    id: 'profiler',
-    component: 'profiler',
-    title: t('panel.profiler'),
-    position: { referencePanel: 'results', direction: 'within' },
-  })
-  event.api.addPanel({
-    id: 'sessions',
-    component: 'sessions',
-    title: t('panel.sessions'),
-    position: { referencePanel: 'results', direction: 'within' },
-  })
-  event.api.addPanel({
-    id: 'ai',
-    component: 'ai',
-    title: t('panel.ai'),
-    position: { referencePanel: 'editor', direction: 'right' },
-    initialWidth: 420,
-  })
-  event.api.addPanel({
-    id: 'script',
-    component: 'script',
-    title: t('panel.script'),
-    position: { referencePanel: 'editor', direction: 'within' },
-  })
+  for (const [id, key] of PANELS) addPanel(event.api, id, t(key))
   event.api.getPanel('editor')?.api.setActive()
   event.api.getPanel('results')?.api.setActive()
+}
+
+const panelsMenu = ref<InstanceType<typeof Menu>>()
+const panelMenuItems = computed(() =>
+  PANELS.map(([id, key]) => ({
+    label: t(key),
+    icon: openPanels.value.has(id) ? 'pi pi-check' : 'pi pi-plus',
+    command: () => showPanel(id),
+  })),
+)
+
+function showPanel(id: PanelId) {
+  const api = dvApi.value
+  if (!api) return
+  if (!api.getPanel(id)) addPanel(api, id, t(PANELS.find(([p]) => p === id)![1]))
+  api.getPanel(id)?.api.setActive()
 }
 
 // Re-title the dockview tabs when the language changes (titles are not reactive)
@@ -153,13 +203,18 @@ watch(
 )
 
 async function onCatalogChange(catalog: string) {
-  await actions.setCatalog(catalog)
+  try {
+    await actions.setCatalog(catalog)
+  } catch (e) {
+    errorToast(e)
+  }
 }
 
-// ClearCache: explicit confirmation required (on a prod catalog, this clears the
-// cache for every user of the cube). Success → toast + dialog closes.
+// ClearCache: explicit confirmation required. The server only accepts it on a declared
+// development server (same list as the script deployment): say so before the click.
 const confirmClear = ref(false)
 const clearing = ref(false)
+const clearAllowed = computed(() => isDevServer(store.server))
 async function clearCache() {
   clearing.value = true
   try {
@@ -172,16 +227,17 @@ async function clearCache() {
       life: 4000,
     })
   } catch (e) {
-    toast.add({ severity: 'error', summary: t('toast.error'), detail: e instanceof Error ? e.message : String(e), life: 6000 })
+    errorToast(e)
   } finally {
     clearing.value = false
   }
 }
 
-// Global F5 = execute (no browser reload in a local tool)
+// Global F5 = execute (no browser reload in a local tool) — but not behind a modal dialog.
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'F5') {
     e.preventDefault()
+    if (document.querySelector('.p-dialog-mask')) return
     void actions.run()
   }
 }
@@ -210,6 +266,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         :options="store.catalogs"
         size="small"
         :placeholder="t('toolbar.catalog')"
+        :disabled="store.running"
         @update:model-value="onCatalogChange"
       />
       <Button
@@ -223,6 +280,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <SnippetsMenu />
       <MemberScaffoldDialog />
       <RegressionDialog />
+      <Button
+        icon="pi pi-th-large"
+        size="small"
+        severity="secondary"
+        :label="t('panels.menu')"
+        :title="t('panels.menuTitle')"
+        @click="(e: Event) => panelsMenu?.toggle(e)"
+      />
+      <Menu ref="panelsMenu" :model="panelMenuItems" popup />
       <span class="toolbar-spacer" />
       <Select
         :model-value="locale"
@@ -286,9 +352,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
     <ConnectDialog />
     <Toast position="bottom-right" />
+    <ConfirmDialog :style="{ width: '30rem' }" />
 
     <Dialog v-model:visible="confirmClear" modal :header="t('clearCache.title')" :style="{ width: '26rem' }">
       <p>{{ t('clearCache.body', { catalog: store.catalog, server: store.server }) }}</p>
+      <Message v-if="!clearAllowed" severity="warn">{{ t('clearCache.notDev', { server: store.server }) }}</Message>
       <template #footer>
         <Button :label="t('common.cancel')" severity="secondary" text @click="confirmClear = false" />
         <Button
@@ -296,6 +364,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           icon="pi pi-eraser"
           severity="danger"
           :loading="clearing"
+          :disabled="!clearAllowed"
           @click="clearCache"
         />
       </template>
