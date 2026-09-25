@@ -19,6 +19,13 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Miniature embedded SPA for EmbeddedSpaFileProviderTests: same "spa/" logical prefix
+       as the one the EmbedSpa target gives the real dist in CubeScope.Server. -->
+  <ItemGroup>
+    <EmbeddedResource Include="TestData\spa\index.html" LogicalName="spa/index.html" />
+    <EmbeddedResource Include="TestData\spa\assets\app.js" LogicalName="spa/assets/app.js" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\CubeScope.Core\CubeScope.Core.csproj" />
     <!-- For BrowserLifetime: its delay/cancellation logic decides when the exe stops,

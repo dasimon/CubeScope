@@ -169,6 +169,15 @@ public partial class MainWindow : Window
         _store.SaveWindowState(r.X, r.Y, r.Width, r.Height, maximise);
     }
 
+    private static void OuvrirDansLeNavigateur(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch { /* dead link or no browser: nothing more to try */ }
+    }
+
     private async Task InitialiserVueAsync()
     {
         // PITFALL: by default WebView2 creates its data folder NEXT TO the exe
@@ -198,15 +207,21 @@ public partial class MainWindow : Window
         config.AreDevToolsEnabled = true;
 
         // An external link opens the browser rather than a bare WebView2 window,
-        // with no address bar and no way back.
+        // with no address bar and no way back. http/https only (see NavigationPolicy.IsWebUrl).
         Vue.CoreWebView2.NewWindowRequested += (_, args) =>
         {
             args.Handled = true;
-            try
-            {
-                Process.Start(new ProcessStartInfo(args.Uri) { UseShellExecute = true });
-            }
-            catch { /* dead link or no browser: nothing more to try */ }
+            if (NavigationPolicy.IsWebUrl(args.Uri)) OuvrirDansLeNavigateur(args.Uri);
+        };
+
+        // Same thing for a plain link (no target=_blank), e.g. in an AI answer: the WebView never
+        // leaves the application's origin. Registered BEFORE Source, which it lets through.
+        Vue.CoreWebView2.NavigationStarting += (_, args) =>
+        {
+            var decision = NavigationPolicy.Decide(args.Uri, _url);
+            if (decision == NavigationDecision.Allow) return;
+            args.Cancel = true;
+            if (decision == NavigationDecision.OpenExternally) OuvrirDansLeNavigateur(args.Uri);
         };
 
         Vue.Source = new Uri(_url);

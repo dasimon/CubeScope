@@ -31,7 +31,7 @@ public sealed class EmbeddedSpaFileProvider : IFileProvider
 
     public IFileInfo GetFileInfo(string subpath)
     {
-        var key = subpath.TrimStart('/').Replace('\\', '/');
+        var key = subpath.Replace('\\', '/').TrimStart('/');
         return _files.TryGetValue(key, out var res)
             ? new EmbeddedFile(_asm, res, key)
             : new NotFoundFileInfo(subpath);

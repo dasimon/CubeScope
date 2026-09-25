@@ -78,6 +78,23 @@ builder.Services.AddSignalR();
 
 var app = builder.Build();
 
+// FIRST in the pipeline: no token on this API, so a request from another web page
+// (DNS rebinding, CSRF, cross-origin WebSocket) must be turned away before reaching
+// static files, endpoints or hubs. See LocalRequestGuard.
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Request.Headers;
+    string? refusal = LocalRequestGuard.Check(h.Host, h.Origin, h["Sec-Fetch-Site"]);
+    if (refusal is not null)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await ctx.Response.WriteAsync(refusal);
+        return;
+    }
+    ctx.Response.Headers.ContentSecurityPolicy = LocalRequestGuard.ContentSecurityPolicy;
+    await next(ctx);
+});
+
 // --- SPA ---
 // On publish: the SPA is embedded in the assembly ("spa/" resources) → self-contained exe,
 // served through EmbeddedSpaFileProvider (independent of the exe's folder). In dev: no

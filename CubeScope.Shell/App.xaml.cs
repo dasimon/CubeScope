@@ -92,10 +92,15 @@ public partial class App : Application
     /// Cli path, is what uses it). Subscribing to ApplicationStopped would therefore wait for an
     /// event that never comes. ArreterServeurAsync is what TRIGGERS the host
     /// shutdown, it does not wait for its confirmation.
+    ///
+    /// BeginInvoke, NOT Invoke: this callback runs inside StopApplication(), under the
+    /// lifetime's lock, on BrowserLifetime's timer thread. A blocking Invoke waits for the UI
+    /// thread, which runs ArreterServeurAsync → StopAsync → StopApplication() again → waits
+    /// for that same lock: deadlock, the exe hangs without a window.
     /// </summary>
     private void RelayerArretDeLHote(WebApplication app) =>
         app.Lifetime.ApplicationStopping.Register(
-            () => Dispatcher.Invoke(() => _ = ArreterServeurAsync()));
+            () => Dispatcher.BeginInvoke(() => _ = ArreterServeurAsync()));
 
     /// <summary>
     /// Late fallback: the window was the chosen mode, but WebView2 failed to initialize
