@@ -23,51 +23,98 @@ public sealed class PerfmonService : IDisposable
         ["mdx", "cache", "requête du moteur de stockage", "storage engine query"];
 
     private readonly Lock _lock = new();
+    private readonly Func<string, List<PerformanceCounter>> _discover;
     private List<PerformanceCounter> _counters = [];
     private string? _machine;
+    // Bumped by every Initialize: a discovery that finishes after a newer one has started
+    // (two connections in quick succession) is stale and dropped.
+    private int _generation;
+    private bool _disposed;
 
     public PerfmonStatus Status { get; private set; } = PerfmonStatus.NotInitialized;
     public string? StatusDetail { get; private set; }
 
-    /// <summary>Initializes (or reinitializes) the counters for an SSAS server. Never blocks the caller.</summary>
+    public PerfmonService() : this(Discover) { }
+
+    /// <summary>Discovery injectable for tests (the real one reaches the remote machine's registry).</summary>
+    internal PerfmonService(Func<string, List<PerformanceCounter>> discover) => _discover = discover;
+
+    /// <summary>
+    /// Initializes (or reinitializes) the counters for an SSAS server. Called in the background.
+    /// The remote discovery (~2-4 s) runs OUTSIDE the lock: Snapshot() takes the lock before every
+    /// query, and must not wait for it — a query started meanwhile simply has no stats.
+    /// </summary>
     public void Initialize(string dataSource)
     {
         // "host:port" → machine "host" (the port is only used by ADOMD)
         string machine = dataSource.Split(':')[0].Split('\\')[0];
+        int generation;
         lock (_lock)
         {
+            if (_disposed) return;
             if (Status == PerfmonStatus.Ready && machine.Equals(_machine, StringComparison.OrdinalIgnoreCase)) return;
+            // The previous server's counters must not be read as this server's ones meanwhile.
             DisposeCounters();
             _machine = machine;
-            try
+            generation = ++_generation;
+        }
+
+        List<PerformanceCounter> counters = [];
+        PerfmonStatus status;
+        string detail;
+        try
+        {
+            counters = _discover(machine);
+            status = counters.Count > 0 ? PerfmonStatus.Ready : PerfmonStatus.Unavailable;
+            detail = counters.Count > 0
+                ? $"{counters.Count} compteurs suivis sur {machine} ({counters.Select(c => c.CategoryName).Distinct().Count()} catégories)"
+                : $"aucune catégorie MSAS* pertinente trouvée sur {machine}";
+        }
+        catch (Exception ex)
+        {
+            status = PerfmonStatus.Unavailable;
+            detail = $"[{ex.GetType().Name}] {ex.GetBaseException().Message} — " +
+                "vérifier l'appartenance au groupe 'Performance Monitor Users' (SID S-1-5-32-558) " +
+                "et le service Remote Registry sur le serveur SSAS.";
+        }
+
+        lock (_lock)
+        {
+            if (_disposed || generation != _generation)
             {
-                var cats = PerformanceCounterCategory.GetCategories(machine)
-                    .Where(c => c.CategoryName.StartsWith("MSAS", StringComparison.OrdinalIgnoreCase)
-                             && IsWantedCategory(c.CategoryName))
-                    .ToList();
-                var counters = new List<PerformanceCounter>();
-                foreach (var cat in cats)
+                foreach (var pc in counters) pc.Dispose();
+                return;
+            }
+            _counters = counters;
+            Status = status;
+            StatusDetail = detail;
+        }
+    }
+
+    /// <summary>Delta-able counters (cumulative CounterType) of the wanted MSAS* categories of a machine.</summary>
+    private static List<PerformanceCounter> Discover(string machine)
+    {
+        var counters = new List<PerformanceCounter>();
+        try
+        {
+            var cats = PerformanceCounterCategory.GetCategories(machine)
+                .Where(c => c.CategoryName.StartsWith("MSAS", StringComparison.OrdinalIgnoreCase)
+                         && IsWantedCategory(c.CategoryName));
+            foreach (var cat in cats)
+            {
+                foreach (var pc in cat.GetCounters())
                 {
-                    foreach (var pc in cat.GetCounters())
-                    {
-                        if (pc.CounterType is PerformanceCounterType.NumberOfItems32 or PerformanceCounterType.NumberOfItems64)
-                            counters.Add(new PerformanceCounter(cat.CategoryName, pc.CounterName, "", machine));
-                        pc.Dispose();
-                    }
+                    if (pc.CounterType is PerformanceCounterType.NumberOfItems32 or PerformanceCounterType.NumberOfItems64)
+                        counters.Add(new PerformanceCounter(cat.CategoryName, pc.CounterName, "", machine));
+                    pc.Dispose();
                 }
-                _counters = counters;
-                Status = counters.Count > 0 ? PerfmonStatus.Ready : PerfmonStatus.Unavailable;
-                StatusDetail = counters.Count > 0
-                    ? $"{counters.Count} compteurs suivis sur {machine} ({cats.Count} catégories)"
-                    : $"aucune catégorie MSAS* pertinente trouvée sur {machine}";
             }
-            catch (Exception ex)
-            {
-                Status = PerfmonStatus.Unavailable;
-                StatusDetail = $"[{ex.GetType().Name}] {ex.GetBaseException().Message} — " +
-                    "vérifier l'appartenance au groupe 'Performance Monitor Users' (SID S-1-5-32-558) " +
-                    "et le service Remote Registry sur le serveur SSAS.";
-            }
+            return counters;
+        }
+        catch
+        {
+            foreach (var pc in counters) pc.Dispose();
+            throw;
         }
     }
 
@@ -136,7 +183,11 @@ public sealed class PerfmonService : IDisposable
 
     public void Dispose()
     {
-        lock (_lock) DisposeCounters();
+        lock (_lock)
+        {
+            _disposed = true;
+            DisposeCounters();
+        }
     }
 }
 

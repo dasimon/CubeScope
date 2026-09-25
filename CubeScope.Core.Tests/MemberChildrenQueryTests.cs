@@ -85,4 +85,33 @@ public class MemberChildrenQueryTests
         Assert.Contains("ON 0", mdx);
         Assert.DoesNotContain("ON 1", mdx);
     }
+
+    // Autocompletion list: capped by the server, not after reading the whole dimension.
+    [Fact]
+    public void Members_AreCappedServerSideByHead()
+    {
+        string mdx = MemberChildrenQuery.BuildMembers("CubeDemo", "[Devise].[Devise]", limit: 1000);
+
+        Assert.Contains("HEAD(StrToSet('[Devise].[Devise].Members'), 1000)", mdx);
+        Assert.DoesNotContain("MDSCHEMA", mdx);
+    }
+
+    [Fact]
+    public void Members_ComputeNoCell()
+    {
+        // Empty axis 0: the members come back on axis 1 and the default measure is never evaluated.
+        string mdx = MemberChildrenQuery.BuildMembers("CubeDemo", "[Devise].[Devise]", limit: 1000);
+
+        Assert.StartsWith("SELECT {} ON 0, ", mdx);
+        Assert.Contains("DIMENSION PROPERTIES MEMBER_CAPTION ON 1", mdx);
+    }
+
+    [Fact]
+    public void Members_EscapeQuoteInHierarchyAndBracketInCube()
+    {
+        string mdx = MemberChildrenQuery.BuildMembers("Cube]odd", "[Produit].[L'Oréal]", limit: 10);
+
+        Assert.Contains("StrToSet('[Produit].[L''Oréal].Members')", mdx);
+        Assert.EndsWith("FROM [Cube]]odd]", mdx);
+    }
 }

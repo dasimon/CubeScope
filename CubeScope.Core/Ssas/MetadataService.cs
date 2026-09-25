@@ -24,59 +24,77 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         return t.Rows.Cast<DataRow>().Select(r => (string)r["CUBE_NAME"]).ToList();
     }
 
+    /// <summary>
+    /// Cache key of a cube on the session's current server and catalog. Read it INSIDE the
+    /// piece of work run under the session lock: Connect/SetCatalog take the same lock, so
+    /// the key then matches the connection the data was read from. Computed before and
+    /// outside, a concurrent catalog change would file one catalog's data under the other's key.
+    /// </summary>
+    private string CubeKey(string cube) => $"{session.Server}|{session.Catalog}|{cube}";
+
     public async Task<CubeMeta> GetCubeMetaAsync(string cube, bool refresh = false, CancellationToken ct = default)
     {
-        string key = $"{session.Server}|{session.Catalog}|{cube}";
-        if (!refresh && _cache.TryGetValue(key, out var cached)) return cached;
+        if (!refresh && _cache.TryGetValue(CubeKey(cube), out var cached)) return cached;
 
         string quoted = cube.Replace("'", "''");
 
-        var measures = await session.ExecuteDmvAsync($"""
-            SELECT [MEASURE_NAME], [MEASURE_UNIQUE_NAME], [MEASURE_DISPLAY_FOLDER], [DESCRIPTION]
-            FROM $SYSTEM.MDSCHEMA_MEASURES
-            WHERE [CUBE_NAME] = '{quoted}' AND [MEASURE_IS_VISIBLE]
-            """, ct);
-        var dimensions = await session.ExecuteDmvAsync($"""
-            SELECT [DIMENSION_NAME], [DIMENSION_UNIQUE_NAME], [DESCRIPTION]
-            FROM $SYSTEM.MDSCHEMA_DIMENSIONS
-            WHERE [CUBE_NAME] = '{quoted}' AND [DIMENSION_IS_VISIBLE] AND [DIMENSION_UNIQUE_NAME] <> '[Measures]'
-            """, ct);
-        var hierarchies = await session.ExecuteDmvAsync($"""
-            SELECT [DIMENSION_UNIQUE_NAME], [HIERARCHY_NAME], [HIERARCHY_UNIQUE_NAME], [DESCRIPTION]
-            FROM $SYSTEM.MDSCHEMA_HIERARCHIES
-            WHERE [CUBE_NAME] = '{quoted}' AND [HIERARCHY_IS_VISIBLE]
-            """, ct);
-        var levels = await session.ExecuteDmvAsync($"""
-            SELECT [HIERARCHY_UNIQUE_NAME], [LEVEL_NAME], [LEVEL_UNIQUE_NAME], [LEVEL_NUMBER]
-            FROM $SYSTEM.MDSCHEMA_LEVELS
-            WHERE [CUBE_NAME] = '{quoted}' AND [LEVEL_IS_VISIBLE]
-            """, ct);
+        // The four rowsets and the key under a single lock acquisition (see CubeKey).
+        var (key, meta) = await session.WithConnectionAsync(conn =>
+        {
+            var measures = SsasSession.ExecuteDmv(conn, $"""
+                SELECT [MEASURE_NAME], [MEASURE_UNIQUE_NAME], [MEASURE_DISPLAY_FOLDER], [DESCRIPTION]
+                FROM $SYSTEM.MDSCHEMA_MEASURES
+                WHERE [CUBE_NAME] = '{quoted}' AND [MEASURE_IS_VISIBLE]
+                """, ct);
+            var dimensions = SsasSession.ExecuteDmv(conn, $"""
+                SELECT [DIMENSION_NAME], [DIMENSION_UNIQUE_NAME], [DESCRIPTION]
+                FROM $SYSTEM.MDSCHEMA_DIMENSIONS
+                WHERE [CUBE_NAME] = '{quoted}' AND [DIMENSION_IS_VISIBLE] AND [DIMENSION_UNIQUE_NAME] <> '[Measures]'
+                """, ct);
+            var hierarchies = SsasSession.ExecuteDmv(conn, $"""
+                SELECT [DIMENSION_UNIQUE_NAME], [HIERARCHY_NAME], [HIERARCHY_UNIQUE_NAME], [DESCRIPTION]
+                FROM $SYSTEM.MDSCHEMA_HIERARCHIES
+                WHERE [CUBE_NAME] = '{quoted}' AND [HIERARCHY_IS_VISIBLE]
+                """, ct);
+            var levels = SsasSession.ExecuteDmv(conn, $"""
+                SELECT [HIERARCHY_UNIQUE_NAME], [LEVEL_NAME], [LEVEL_UNIQUE_NAME], [LEVEL_NUMBER]
+                FROM $SYSTEM.MDSCHEMA_LEVELS
+                WHERE [CUBE_NAME] = '{quoted}' AND [LEVEL_IS_VISIBLE]
+                """, ct);
+            return (CubeKey(cube), Build(cube, measures, dimensions, hierarchies, levels));
+        }, ct);
 
-        var meta = Build(cube, measures, dimensions, hierarchies, levels);
+        // An explicit refresh (redeployed cube) also drops the member lists derived from it.
+        if (refresh) EvictMembers(key);
         _cache[key] = meta;
         return meta;
     }
 
     /// <summary>
     /// Members of a hierarchy for autocompletion — lazy + in-memory cache (settled decision).
-    /// Capped: large hierarchies (securities…) must not flood either the UI or the server.
+    /// Capped server-side (see <see cref="MemberChildrenQuery.BuildMembers"/>): large hierarchies
+    /// (securities…) must flood neither the UI nor the server.
     /// </summary>
     public async Task<IReadOnlyList<MemberMeta>> GetMembersAsync(string cube, string hierarchyUniqueName,
         int limit = 1000, CancellationToken ct = default)
     {
-        string key = $"m|{session.Server}|{session.Catalog}|{cube}|{hierarchyUniqueName}";
-        if (_memberCache.TryGetValue(key, out var cached)) return cached;
+        if (_memberCache.TryGetValue($"m|{CubeKey(cube)}|{hierarchyUniqueName}", out var cached)) return cached;
 
-        var t = await session.ExecuteDmvAsync($"""
-            SELECT [MEMBER_CAPTION], [MEMBER_UNIQUE_NAME]
-            FROM $SYSTEM.MDSCHEMA_MEMBERS
-            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}'
-              AND [HIERARCHY_UNIQUE_NAME] = '{hierarchyUniqueName.Replace("'", "''")}'
-            """, ct);
-        var members = t.Rows.Cast<DataRow>()
-            .Take(limit)
-            .Select(r => new MemberMeta((string)r["MEMBER_CAPTION"], (string)r["MEMBER_UNIQUE_NAME"]))
-            .ToList();
+        string mdx = MemberChildrenQuery.BuildMembers(cube, hierarchyUniqueName, limit);
+        var (key, members) = await session.WithConnectionAsync(conn =>
+        {
+            using var cmd = new AdomdCommand(mdx, conn);
+            var cs = SsasSession.Run(cmd, cmd.ExecuteCellSet, ct);
+            var list = new List<MemberMeta>();
+            // Members are on axis 1 (axis 0 is empty); test Axes.Count rather than assume it.
+            if (cs.Axes.Count > 1)
+                foreach (Position pos in cs.Axes[1].Positions)
+                {
+                    var m = pos.Members[0];
+                    list.Add(new MemberMeta(m.Caption, m.UniqueName));
+                }
+            return ($"m|{CubeKey(cube)}|{hierarchyUniqueName}", (IReadOnlyList<MemberMeta>)list);
+        }, ct);
         _memberCache[key] = members;
         return members;
     }
@@ -95,15 +113,14 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     public async Task<MemberChildren> GetChildrenAsync(
         string cube, string parent, bool isHierarchy, int limit = 500, CancellationToken ct = default)
     {
-        string key = $"c|{session.Server}|{session.Catalog}|{cube}|{isHierarchy}|{parent}|{limit}";
-        if (_childrenCache.TryGetValue(key, out var cached)) return cached;
+        string ChildrenKey() => $"c|{CubeKey(cube)}|{isHierarchy}|{parent}|{limit}";
+        if (_childrenCache.TryGetValue(ChildrenKey(), out var cached)) return cached;
 
         string mdx = MemberChildrenQuery.Build(cube, parent, isHierarchy, limit + 1);
-        var result = await session.WithConnectionAsync(conn =>
+        var (key, result) = await session.WithConnectionAsync(conn =>
         {
             using var cmd = new AdomdCommand(mdx, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { } });
-            var cs = cmd.ExecuteCellSet();
+            var cs = SsasSession.Run(cmd, cmd.ExecuteCellSet, ct);
 
             // A single-axis query has no Axes[1] — and a member with no children returns an
             // axis with zero positions rather than an error.
@@ -124,7 +141,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
             bool hasMore = nodes.Count > limit;
             if (hasMore) nodes.RemoveAt(nodes.Count - 1);
-            return new MemberChildren(nodes, hasMore);
+            return (ChildrenKey(), new MemberChildren(nodes, hasMore));
         }, ct);
 
         _childrenCache[key] = result;
@@ -133,6 +150,29 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
     private readonly ConcurrentDictionary<string, MemberChildren> _childrenCache = new();
 
+    /// <summary>Drops the member lists and explorer levels of a cube (key from <see cref="CubeKey"/>).</summary>
+    private void EvictMembers(string cubeKey)
+    {
+        foreach (var k in _memberCache.Keys.Where(k => k.StartsWith($"m|{cubeKey}|", StringComparison.Ordinal)))
+            _memberCache.TryRemove(k, out _);
+        foreach (var k in _childrenCache.Keys.Where(k => k.StartsWith($"c|{cubeKey}|", StringComparison.Ordinal)))
+            _childrenCache.TryRemove(k, out _);
+    }
+
+    /// <summary>
+    /// Thrown under the session lock when the server or catalog is no longer the one a batch of
+    /// caption lookups started on: its results would be persisted under the wrong key.
+    /// </summary>
+    private sealed class ContextChangedException()
+        : InvalidOperationException("La connexion a changé de serveur ou de catalogue pendant la requête.");
+
+    /// <summary>Call under the session lock (inside a WithConnectionAsync piece of work).</summary>
+    private void EnsureContext(string server, string catalog)
+    {
+        if ((session.Server ?? "") != server || (session.Catalog ?? "") != catalog)
+            throw new ContextChangedException();
+    }
+
     // Cubes whose stamp has already been validated this session (a single DMV round-trip per
     // (server, catalog, cube): on first access we compare the stamp with the SQLite cache and,
     // if it differs, we invalidate the persistent cache).
@@ -140,13 +180,17 @@ public sealed class MetadataService(SsasSession session, StateStore store)
 
     /// <summary>Version fingerprint of the cube (LAST_SCHEMA_UPDATE|LAST_DATA_UPDATE): changes
     /// when the cube is reprocessed → used to invalidate the caption cache. "" if no row.</summary>
-    private async Task<string> GetCubeStampAsync(string cube, CancellationToken ct)
+    private async Task<string> GetCubeStampAsync(string cube, string server, string catalog, CancellationToken ct)
     {
-        var t = await session.ExecuteDmvAsync($"""
-            SELECT [LAST_SCHEMA_UPDATE], [LAST_DATA_UPDATE]
-            FROM $SYSTEM.MDSCHEMA_CUBES
-            WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}' AND [CUBE_SOURCE] = 1
-            """, ct);
+        var t = await session.WithConnectionAsync(conn =>
+        {
+            EnsureContext(server, catalog);
+            return SsasSession.ExecuteDmv(conn, $"""
+                SELECT [LAST_SCHEMA_UPDATE], [LAST_DATA_UPDATE]
+                FROM $SYSTEM.MDSCHEMA_CUBES
+                WHERE [CUBE_NAME] = '{cube.Replace("'", "''")}' AND [CUBE_SOURCE] = 1
+                """, ct);
+        }, ct);
         var row = t.Rows.Cast<DataRow>().FirstOrDefault();
         if (row is null) return "";
         string schema = row["LAST_SCHEMA_UPDATE"] is DBNull ? "" : Convert.ToString(row["LAST_SCHEMA_UPDATE"]) ?? "";
@@ -163,11 +207,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     /// Resolves member captions through MDX (`member.Properties("MEMBER_CAPTION")`): each
     /// member is resolved directly by its key, with no dimension scan. One query for the whole
     /// batch. Throws if a member is invalid (the caller then falls back to member-by-member).
+    /// A cell in error (ADOMD throws on Cell.Value) only skips that member.
     /// </summary>
     private Task<IReadOnlyDictionary<string, string>> ResolveCaptionsViaMdxAsync(
-        string cube, IReadOnlyList<string> members, CancellationToken ct)
+        string cube, string server, string catalog, IReadOnlyList<string> members, CancellationToken ct)
         => session.WithConnectionAsync<IReadOnlyDictionary<string, string>>(conn =>
         {
+            EnsureContext(server, catalog);
             var sb = new StringBuilder("WITH ");
             for (int i = 0; i < members.Count; i++)
                 sb.Append($"MEMBER [Measures].[__cap{i}] AS StrToMember('{members[i].Replace("'", "''")}').Properties(\"MEMBER_CAPTION\") ");
@@ -176,12 +222,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
               .Append(" } ON 0 FROM [").Append(cube.Replace("]", "]]")).Append(']');
 
             using var cmd = new AdomdCommand(sb.ToString(), conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { } });
-            var cs = cmd.ExecuteCellSet();
+            var cs = SsasSession.Run(cmd, cmd.ExecuteCellSet, ct);
             var result = new Dictionary<string, string>();
             for (int i = 0; i < members.Count; i++)
             {
-                var val = cs.Cells[i].Value;
+                object? val;
+                try { val = cs.Cells[i].Value; }
+                catch (AdomdException) { continue; } // cell in error: this member only stays unresolved
                 if (val is not null and not DBNull && val.ToString() is { Length: > 0 } s)
                     result[members[i]] = s;
             }
@@ -195,9 +242,12 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         string key = $"{server}|{catalog}|{cube}";
 
         // Stamp validation only once per (server, catalog, cube) this session.
+        // Every server round-trip below checks, under the session lock, that the server and
+        // catalog are still these ones (EnsureContext): what gets persisted under this key was
+        // really read from it, even if the user switches catalog meanwhile.
         if (!_validatedCubes.ContainsKey(key))
         {
-            var stamp = await GetCubeStampAsync(cube, ct);
+            var stamp = await GetCubeStampAsync(cube, server, catalog, ct);
             if (store.GetCaptionStamp(server, catalog, cube) != stamp)
             {
                 store.InvalidateCubeCaptions(server, catalog, cube);
@@ -215,19 +265,24 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         // the whole hierarchy (thousands of securities) → freeze. And the DMV does not support `IN`.
         // A single MDX query resolves a whole batch; fallback to member-by-member if a member
         // of the batch is invalid (stale reference) and makes the whole query fail.
+        // Only a failure of the query itself triggers the fallback: never a cancellation, nor a
+        // change of catalog, which must reach the caller.
+        bool Recoverable(Exception ex)
+            => ex is not (OperationCanceledException or ContextChangedException) && !ct.IsCancellationRequested;
+
         const int mdxChunk = 50;
         for (int off = 0; off < misses.Count; off += mdxChunk)
         {
             var slice = misses.Skip(off).Take(mdxChunk).ToList();
             try
             {
-                foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, slice, ct)) found[kv.Key] = kv.Value;
+                foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, server, catalog, slice, ct)) found[kv.Key] = kv.Value;
             }
-            catch
+            catch (Exception ex) when (Recoverable(ex))
             {
                 foreach (var name in slice)
-                    try { foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, new[] { name }, ct)) found[kv.Key] = kv.Value; }
-                    catch { /* invalid member (stale reference): ignored */ }
+                    try { foreach (var kv in await ResolveCaptionsViaMdxAsync(cube, server, catalog, [name], ct)) found[kv.Key] = kv.Value; }
+                    catch (Exception ex2) when (Recoverable(ex2)) { /* invalid member (stale reference): ignored */ }
             }
         }
         if (found.Count > 0) store.PutCachedCaptions(server, catalog, cube, found);
@@ -248,12 +303,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         return d.TryGetValue(memberUniqueName, out var c) ? c : null;
     }
 
-    /// <summary>Clears the cube's persistent caption cache (manual refresh).</summary>
+    /// <summary>Clears the cube's persistent caption cache and its in-memory member lists (manual refresh).</summary>
     public void InvalidateCube(string cube)
     {
         string server = session.Server ?? "", catalog = session.Catalog ?? "";
         store.InvalidateCubeCaptions(server, catalog, cube);
         _validatedCubes.TryRemove($"{server}|{catalog}|{cube}", out _);
+        EvictMembers(CubeKey(cube));
     }
 
     /// <summary>Pure construction of the DTO from the rowsets (testable without a server).</summary>

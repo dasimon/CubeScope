@@ -141,7 +141,8 @@ api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService
             _ = Task.Run(async () =>
             {
                 await Task.Delay(1000); // trace events arrive asynchronously (XMLA push)
-                var events = profiler.DrainSince(profileSession, profileStart);
+                // Only this query's events: later queries on the same session (hover, explorer) are cut off
+                var events = ProfileAggregator.QueryWindow(profiler.DrainSince(profileSession, profileStart), req.Mdx);
                 var profile = ProfileAggregator.Aggregate(events, result.DurationMs);
                 store.AddProfileRun(session.Server ?? "?", session.Catalog, req.Mdx, profile.TotalMs,
                     profile.StorageEngineMs, profile.FormulaEngineMs, profile.SubcubeCount,

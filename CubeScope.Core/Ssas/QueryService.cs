@@ -12,11 +12,9 @@ public sealed class QueryService(SsasSession session)
         => session.WithConnectionAsync(conn =>
         {
             using var cmd = new AdomdCommand(mdx, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* already finished */ } });
             var sw = Stopwatch.StartNew();
-            var cs = cmd.ExecuteCellSet();
+            var cs = SsasSession.Run(cmd, cmd.ExecuteCellSet, ct);
             sw.Stop();
-            ct.ThrowIfCancellationRequested();
             return CellSetMapper.Map(cs, sw.ElapsedMilliseconds);
         }, ct);
 
@@ -32,15 +30,17 @@ public sealed class QueryService(SsasSession session)
         return session.WithConnectionAsync(conn =>
         {
             using var cmd = new AdomdCommand(stmt, conn);
-            using var reg = ct.Register(() => { try { cmd.Cancel(); } catch { /* already finished */ } });
             var sw = Stopwatch.StartNew();
-            using var reader = cmd.ExecuteReader();
-            var table = new DataTable();
-            using var ds = new DataSet { EnforceConstraints = false };
-            ds.Tables.Add(table);
-            table.Load(reader);
+            var table = SsasSession.Run(cmd, () =>
+            {
+                using var reader = cmd.ExecuteReader();
+                var t = new DataTable();
+                using var ds = new DataSet { EnforceConstraints = false };
+                ds.Tables.Add(t);
+                t.Load(reader);
+                return t;
+            }, ct);
             sw.Stop();
-            ct.ThrowIfCancellationRequested();
             return MapTable(table, sw.ElapsedMilliseconds);
         }, ct);
     }

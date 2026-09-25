@@ -45,6 +45,57 @@ public class PerfmonServiceUnitTests
         Assert.NotNull(svc.StatusDetail);
         Assert.Empty(svc.Snapshot()); // still no exception
     }
+
+    [Fact]
+    public async Task Snapshot_DoesNotWaitForAnOngoingDiscovery()
+    {
+        using var release = new ManualResetEventSlim();
+        using var svc = new PerfmonService(_ => { release.Wait(); return []; });
+
+        var init = Task.Run(() => svc.Initialize("SLOW"));
+        await Task.Delay(100); // let Initialize enter the discovery
+
+        // The first query after connecting used to wait for the whole remote discovery.
+        var snap = Task.Run(svc.Snapshot);
+        Assert.Same(snap, await Task.WhenAny(snap, Task.Delay(2000)));
+        Assert.Empty(await snap);
+
+        release.Set();
+        await init;
+    }
+
+    [Fact]
+    public async Task Initialize_StaleDiscoveryFinishingLast_IsDropped()
+    {
+        // Two connections in quick succession: A's slow discovery ends after B's.
+        using var releaseA = new ManualResetEventSlim();
+        using var svc = new PerfmonService(machine =>
+        {
+            if (machine == "A") releaseA.Wait();
+            return [];
+        });
+
+        var initA = Task.Run(() => svc.Initialize("A"));
+        await Task.Delay(100);
+        svc.Initialize("B:2383");
+        releaseA.Set();
+        await initA;
+
+        Assert.EndsWith("sur B", svc.StatusDetail); // B's outcome, not overwritten by stale A
+    }
+
+    [Fact]
+    public void Initialize_AfterDispose_DoesNothing()
+    {
+        int calls = 0;
+        var svc = new PerfmonService(_ => { calls++; return []; });
+        svc.Dispose();
+
+        svc.Initialize("X");
+
+        Assert.Equal(0, calls);
+        Assert.Equal(PerfmonStatus.NotInitialized, svc.Status);
+    }
 }
 
 [Trait("Category", "Integration")]

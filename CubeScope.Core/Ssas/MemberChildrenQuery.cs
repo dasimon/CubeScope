@@ -33,4 +33,18 @@ public static class MemberChildrenQuery
              + "DIMENSION PROPERTIES MEMBER_CAPTION, CHILDREN_CARDINALITY ON 0 "
              + $"FROM [{cube.Replace("]", "]]")}]";
     }
+
+    /// <summary>
+    /// First <paramref name="limit"/> members of a hierarchy, all levels (autocompletion list).
+    /// Capped server-side by HEAD: reading MDSCHEMA_MEMBERS then truncating in memory transferred
+    /// the whole dimension first. An empty axis 0 means no cell is computed: the members come
+    /// back on axis 1 with their caption, and the default measure is never evaluated.
+    /// </summary>
+    public static string BuildMembers(string cube, string hierarchy, int limit)
+    {
+        string h = hierarchy.Replace("'", "''");
+        return $"SELECT {{}} ON 0, HEAD(StrToSet('{h}.Members'), {limit}) "
+             + "DIMENSION PROPERTIES MEMBER_CAPTION ON 1 "
+             + $"FROM [{cube.Replace("]", "]]")}]";
+    }
 }

@@ -39,24 +39,41 @@ public sealed record SsasSessionInfo(
 /// </summary>
 public sealed class SessionsService(SsasSession session)
 {
+    /// <remarks>
+    /// Listing and cancelling go through a transient connection, NOT the session's working
+    /// connection: this panel exists precisely to deal with a long-running query, which holds the
+    /// working connection's lock until it ends — going through it would wait for that query.
+    /// </remarks>
     public async Task<IReadOnlyList<SsasSessionInfo>> ListAsync(CancellationToken ct = default)
     {
-        var sessions = await session.ExecuteDmvAsync("SELECT * FROM $SYSTEM.DISCOVER_SESSIONS", ct);
-        var commands = await session.ExecuteDmvAsync("SELECT * FROM $SYSTEM.DISCOVER_COMMANDS", ct);
+        var (sessions, commands, reader) = await session.WithTransientConnectionAsync(null, conn => (
+            SsasSession.ExecuteDmv(conn, "SELECT * FROM $SYSTEM.DISCOVER_SESSIONS", ct),
+            SsasSession.ExecuteDmv(conn, "SELECT * FROM $SYSTEM.DISCOVER_COMMANDS", ct),
+            conn.SessionID), ct);
+        return Merge(sessions, commands, session.SessionId, reader);
+    }
 
+    /// <summary>
+    /// Pure matching of the two rowsets (testable without a server). <paramref name="mine"/> is
+    /// the SessionID of CubeScope's working connection; <paramref name="reader"/> the one of the
+    /// transient connection that read the list — left out, it is gone as soon as the list is returned.
+    /// </summary>
+    internal static IReadOnlyList<SsasSessionInfo> Merge(DataTable sessions, DataTable commands,
+        string? mine, string? reader = null)
+    {
         // In-memory matching (the DMV cannot join): the longest-running command
         // per SPID, which is the one of interest when looking for what keeps the server busy.
         var bySpid = commands.Rows.Cast<DataRow>()
             .GroupBy(r => Int32(r, "SESSION_SPID"))
             .ToDictionary(g => g.Key, g => g.OrderByDescending(r => Int64(r, "COMMAND_ELAPSED_TIME_MS")).First());
 
-        string? mine = session.SessionId;
         var list = new List<SsasSessionInfo>(sessions.Rows.Count);
         foreach (DataRow r in sessions.Rows)
         {
             int spid = Int32(r, "SESSION_SPID");
             bySpid.TryGetValue(spid, out var cmd);
             string sessionId = Text(r, "SESSION_ID") ?? "";
+            if (reader is not null && string.Equals(sessionId, reader, StringComparison.OrdinalIgnoreCase)) continue;
             list.Add(new SsasSessionInfo(
                 Spid: spid,
                 SessionId: sessionId,
@@ -95,15 +112,9 @@ public sealed class SessionsService(SsasSession session)
         if (target is null) return false;
         bool wasMine = target.IsMine;
 
-        await session.WithConnectionAsync(conn =>
+        await session.WithTransientConnectionAsync(null, conn =>
         {
-            string xmla = $"""
-                <Cancel xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
-                  <SPID>{spid}</SPID>
-                  <CancelAssociated>1</CancelAssociated>
-                </Cancel>
-                """;
-            using var cmd = new AdomdCommand(xmla, conn);
+            using var cmd = new AdomdCommand(BuildCancelXmla(spid), conn);
             cmd.ExecuteNonQuery();
             return 0;
         }, ct);
@@ -111,6 +122,14 @@ public sealed class SessionsService(SsasSession session)
         if (wasMine) await session.ResetAsync(ct);
         return true;
     }
+
+    /// <summary>XMLA &lt;Cancel&gt; of a SPID and of its active commands (form documented by Microsoft).</summary>
+    internal static string BuildCancelXmla(int spid) => $"""
+        <Cancel xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
+          <SPID>{spid}</SPID>
+          <CancelAssociated>1</CancelAssociated>
+        </Cancel>
+        """;
 
     // Rowsets mix Int32/Int64/UInt64 depending on the column: we convert instead of casting.
     private static string? Text(DataRow r, string col)

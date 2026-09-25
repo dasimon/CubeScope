@@ -9,6 +9,34 @@ namespace CubeScope.Core.Profiler;
 /// </summary>
 public static class ProfileAggregator
 {
+    /// <summary>
+    /// The events of ONE query among those captured on its session since it started. The session
+    /// is shared: hover captions, explorer expansions… run right after on the same SessionID, and
+    /// the previous query's last events can still arrive after this one started (asynchronous
+    /// push). So the window ends at the QueryEnd whose text is this query's, and what precedes
+    /// another QueryEnd belongs to that other query. Without a matching QueryEnd (text column
+    /// missing, reformatted text), falls back to the events up to the first QueryEnd.
+    /// </summary>
+    public static IReadOnlyList<ProfileEvent> QueryWindow(IReadOnlyList<ProfileEvent> events, string? queryText)
+    {
+        string? wanted = queryText is null ? null : Normalize(queryText);
+        var window = new List<ProfileEvent>();
+        List<ProfileEvent>? firstWindow = null;
+        foreach (var e in events.OrderBy(e => e.CapturedUtc))
+        {
+            window.Add(e);
+            if (e.EventClass != "QueryEnd") continue;
+            if (wanted is not null && e.TextData is not null && Normalize(e.TextData) == wanted) return window;
+            firstWindow ??= [.. window];
+            window.Clear();
+        }
+        return firstWindow ?? window;
+    }
+
+    // Whitespace-insensitive: line endings and indentation may not come back as submitted.
+    private static string Normalize(string text)
+        => string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     public static QueryProfile Aggregate(IReadOnlyList<ProfileEvent> events, long fallbackTotalMs)
     {
         long total = events.Where(e => e.EventClass == "QueryEnd").Sum(e => e.DurationMs);

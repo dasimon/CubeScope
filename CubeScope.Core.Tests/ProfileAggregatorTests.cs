@@ -84,6 +84,101 @@ public class ProfileAggregatorTests
         Assert.Equal(0, p.StorageEngineMs);
         Assert.Empty(p.Subcubes);
     }
+
+    [Fact]
+    public void QueryWindow_StopsAtItsQueryEnd_IgnoringFollowingQueriesOnTheSession()
+    {
+        // A hover caption query runs right after on the same session: before the window,
+        // its QueryEnd and subcubes were added to the profile of the query being measured.
+        _clock = 0;
+        var events = new[]
+        {
+            Ev("QuerySubcube", 30),
+            Ev("QueryEnd", 100, "SELECT 1 ON 0 FROM [C]"),
+            Ev("QuerySubcube", 70),
+            Ev("QueryEnd", 900, "WITH MEMBER [Measures].[__cap0] AS 1 SELECT ..."),
+        };
+
+        var window = ProfileAggregator.QueryWindow(events, "SELECT 1 ON 0 FROM [C]");
+        var p = ProfileAggregator.Aggregate(window, 0);
+
+        Assert.Equal(2, window.Count);
+        Assert.Equal(100, p.TotalMs);
+        Assert.Equal(30, p.StorageEngineMs);
+        Assert.Equal(1, p.SubcubeCount);
+    }
+
+    [Fact]
+    public void QueryWindow_DropsTheTailOfThePreviousQuery()
+    {
+        // The previous query's last events arrive after this one started (asynchronous push).
+        _clock = 0;
+        var events = new[]
+        {
+            Ev("QuerySubcube", 500),
+            Ev("QueryEnd", 800, "previous"),
+            Ev("QuerySubcube", 20),
+            Ev("QueryEnd", 60, "SELECT\r\n  1 ON 0\r\nFROM [C]"),
+        };
+
+        var window = ProfileAggregator.QueryWindow(events, "SELECT 1 ON 0\nFROM [C]");
+
+        Assert.Equal([20L, 60L], window.Select(e => e.DurationMs)); // whitespace-insensitive match
+    }
+
+    [Fact]
+    public void QueryWindow_NoMatchingText_FallsBackToTheFirstQueryEnd()
+    {
+        _clock = 0;
+        var events = new[] { Ev("QuerySubcube", 10), Ev("QueryEnd", 40), Ev("QuerySubcube", 99), Ev("QueryEnd", 99) };
+
+        var window = ProfileAggregator.QueryWindow(events, "SELECT 1 ON 0 FROM [C]");
+
+        Assert.Equal([10L, 40L], window.Select(e => e.DurationMs));
+    }
+
+    [Fact]
+    public void QueryWindow_NoQueryEndYet_KeepsEverything()
+    {
+        _clock = 0;
+        var events = new[] { Ev("QuerySubcube", 10), Ev("GetDataFromCache", 0) };
+
+        Assert.Equal(2, ProfileAggregator.QueryWindow(events, "x").Count);
+    }
+}
+
+public class ProfilerServiceBufferTests
+{
+    private static ProfileEvent At(DateTime utc) => new("QuerySubcube", 0, 1, null, utc);
+
+    [Fact]
+    public void IdleSessions_ArePurged_ActiveOnesKept()
+    {
+        // The trace is server-wide: on a shared server, every session of every user and job gets
+        // a buffer. Idle ones must go, or the dictionary grows all day long.
+        using var svc = new ProfilerService();
+        var t0 = new DateTime(2026, 9, 24, 9, 0, 0, DateTimeKind.Utc);
+
+        svc.Record("job-1", At(t0));
+        svc.Record("job-2", At(t0));
+        Assert.Equal(2, svc.BufferedSessionCount);
+
+        svc.Record("mine", At(t0.AddMinutes(3)));
+
+        Assert.Equal(1, svc.BufferedSessionCount);
+    }
+
+    [Fact]
+    public void RecentSessions_AreNotPurged()
+    {
+        using var svc = new ProfilerService();
+        var t0 = new DateTime(2026, 9, 24, 9, 0, 0, DateTimeKind.Utc);
+
+        svc.Record("a", At(t0));
+        svc.Record("b", At(t0.AddSeconds(30)));
+
+        Assert.Equal(2, svc.BufferedSessionCount);
+    }
 }
 
 [Trait("Category", "Integration")]
