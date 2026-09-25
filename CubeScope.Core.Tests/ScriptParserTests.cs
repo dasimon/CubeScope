@@ -95,6 +95,39 @@ public class ScriptParserTests
         Assert.Equal("NamedSet", cmd.Kind);
         Assert.Equal("[Ensemble géré]", cmd.Name);
     }
+
+    [Fact]
+    public void Parse_ScopeIsolationProperty_IsNotCountedAsScope()
+    {
+        // SCOPE_ISOLATION = CUBE is a CREATE MEMBER property: '_' is an identifier
+        // character, so "SCOPE" inside it must not open a SCOPE block.
+        const string mdx = """
+            CREATE MEMBER CURRENTCUBE.[Measures].[A] AS 1,
+            FORMAT_STRING = "#,##0", SCOPE_ISOLATION = CUBE;
+            CREATE MEMBER CURRENTCUBE.[Measures].[B] AS 2;
+            SCOPE([Measures].[A]);
+                THIS = 3;
+            END SCOPE;
+            CREATE MEMBER CURRENTCUBE.[Measures].[C] AS 4;
+            """;
+
+        var cmds = ScriptParser.Parse(mdx);
+
+        Assert.Equal(["[Measures].[A]", "[Measures].[B]", "SCOPE([Measures].[A]);", "[Measures].[C]"],
+            cmds.Select(c => c.Name));
+        Assert.Equal("1", cmds[0].Expression);
+    }
+
+    [Fact]
+    public void Parse_IdentifierEndingWithScope_IsNotCountedAsScope()
+    {
+        const string mdx = """
+            CREATE MEMBER CURRENTCUBE.[Measures].[A] AS MY_SCOPE + 1;
+            CREATE MEMBER CURRENTCUBE.[Measures].[B] AS 2;
+            """;
+
+        Assert.Equal(2, ScriptParser.Parse(mdx).Count);
+    }
 }
 
 public class DependencyServiceTests
@@ -160,5 +193,58 @@ public class DependencyServiceTests
         Assert.Equal("[Measures].[B]", b.Name);
         var backToA = Assert.Single(b.Dependencies);
         Assert.Empty(backToA.Dependencies); // the cycle is broken
+    }
+
+    [Fact]
+    public void Resolve_DeepDiamond_TerminatesQuickly_AndExpandsEachNodeOnce()
+    {
+        // Layered diamond: every member of layer i references BOTH members of layer i+1.
+        // Without memoization the tree doubles at every layer (2^depth expansions).
+        const int layers = 30;
+        var commands = new List<ScriptCommand>();
+        for (int i = 0; i < layers; i++)
+            foreach (var side in new[] { "L", "R" })
+            {
+                string expr = i + 1 < layers ? $"[Measures].[L{i + 1}] + [Measures].[R{i + 1}]" : "1";
+                commands.Add(new ScriptCommand("CalculatedMember", $"[Measures].[{side}{i}]", expr, i + 1));
+            }
+        var script = new CubeScript("C", "", commands);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var g = DependencyService.Resolve(script, new CubeMeta("C", [], []), "[Measures].[L0]");
+        sw.Stop();
+
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"took {sw.ElapsedMilliseconds} ms");
+        // Each member is expanded (has children) at most once in the whole tree.
+        var expanded = new List<string>();
+        void Walk(DependencyNode n)
+        {
+            if (n.Dependencies.Count > 0) expanded.Add(n.Name);
+            foreach (var d in n.Dependencies) Walk(d);
+        }
+        Walk(g.Root);
+        Assert.Equal(expanded.Count, expanded.Distinct().Count());
+    }
+
+    [Fact]
+    public void Resolve_SharedDependency_IsExpandedAtItsShallowestOccurrence()
+    {
+        // Root → A → Shared, and Root → Shared directly: the direct (shallower) occurrence is expanded.
+        var script = new CubeScript("C", "",
+        [
+            new ScriptCommand("CalculatedMember", "[Measures].[Root]", "[Measures].[A] + [Measures].[Shared]", 1),
+            new ScriptCommand("CalculatedMember", "[Measures].[A]", "[Measures].[Shared] * 2", 2),
+            new ScriptCommand("CalculatedMember", "[Measures].[Shared]", "[Measures].[Leaf] + 1", 3),
+            new ScriptCommand("CalculatedMember", "[Measures].[Leaf]", "1", 4),
+        ]);
+
+        var g = DependencyService.Resolve(script, new CubeMeta("C", [], []), "[Measures].[Root]");
+
+        var direct = Assert.Single(g.Root.Dependencies, d => d.Name == "[Measures].[Shared]");
+        Assert.Contains(direct.Dependencies, d => d.Name == "[Measures].[Leaf]");
+        var a = Assert.Single(g.Root.Dependencies, d => d.Name == "[Measures].[A]");
+        var viaA = Assert.Single(a.Dependencies);
+        Assert.Equal("[Measures].[Shared]", viaA.Name);
+        Assert.Empty(viaA.Dependencies);
     }
 }

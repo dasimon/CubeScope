@@ -11,7 +11,7 @@ namespace CubeScope.Core.Script;
 /// </summary>
 public static class DependencyService
 {
-    private const int MaxDepth = 8; // safeguard against cycles/depth (the real graph is small)
+    private const int MaxDepth = 8; // safeguard against depth (the real graph is small)
 
     public static DependencyGraph Resolve(CubeScript script, CubeMeta meta, string name)
     {
@@ -19,7 +19,7 @@ public static class DependencyService
         if (!byName.TryGetValue(name, out var root))
             throw new InvalidOperationException($"Élément introuvable dans le script : {name}");
 
-        var rootNode = BuildNode(root.Name, root.Kind, root.Expression, byName, meta, [], 0);
+        var rootNode = BuildTree(root, byName, meta);
 
         // Reverse dependents: any script item whose expression references `name`
         string lastSegment = LastSegment(name);
@@ -34,38 +34,67 @@ public static class DependencyService
         return new DependencyGraph(rootNode, usedBy);
     }
 
-    private static DependencyNode BuildNode(string name, string kind, string expression,
-        Dictionary<string, ScriptCommand> byName, CubeMeta meta, HashSet<string> path, int depth)
+    /// <summary>Node under construction (children filled breadth-first).</summary>
+    private sealed class Builder(string name, string kind)
     {
-        if (depth >= MaxDepth || !path.Add(name.ToUpperInvariant()))
-            return new DependencyNode(name, kind, []);
+        public string Name { get; } = name;
+        public string Kind { get; } = kind;
+        public List<Builder> Children { get; } = [];
 
-        var refs = MdxContextBuilder.ExtractReferences(expression);
-        var children = new List<DependencyNode>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public DependencyNode ToNode() => new(Name, Kind,
+            Children.Select(c => c.ToNode()).OrderBy(c => c.Kind).ThenBy(c => c.Name).ToList());
+    }
 
-        // 1. Other script items (recursive)
-        foreach (var cmd in byName.Values.Where(c => !NamesEqual(c.Name, name)))
+    /// <summary>
+    /// Builds the tree breadth-first, expanding each script item ONCE, at its shallowest
+    /// occurrence: any later occurrence (shared dependency of a "diamond", or cycle) is a leaf.
+    /// Without this, a diamond-shaped graph doubles the tree at every level. References are
+    /// extracted once per command.
+    /// </summary>
+    private static DependencyNode BuildTree(ScriptCommand root, Dictionary<string, ScriptCommand> byName, CubeMeta meta)
+    {
+        var refsByName = byName.Values.ToDictionary(
+            c => c.Name, c => MdxContextBuilder.ExtractReferences(c.Expression), StringComparer.OrdinalIgnoreCase);
+        var items = byName.Values.Select(c => (Cmd: c, Segment: LastSegment(c.Name))).ToList();
+        var scriptSegments = new HashSet<string>(items.Select(x => x.Segment), StringComparer.OrdinalIgnoreCase);
+        var measures = meta.MeasureFolders.SelectMany(f => f.Measures).ToList();
+
+        var rootBuilder = new Builder(root.Name, root.Kind);
+        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { root.Name };
+        var queue = new Queue<(Builder Node, int Depth)>();
+        queue.Enqueue((rootBuilder, 0));
+
+        while (queue.Count > 0)
         {
-            if (!ReferencesName(refs, cmd.Name, LastSegment(cmd.Name)) || !seen.Add(cmd.Name)) continue;
-            children.Add(BuildNode(cmd.Name, cmd.Kind, cmd.Expression, byName, meta,
-                [.. path], depth + 1));
+            var (node, depth) = queue.Dequeue();
+            var refs = refsByName[node.Name];
+            string nodeSegment = LastSegment(node.Name);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 1. Other script items (expanded once, breadth-first)
+            foreach (var (cmd, segment) in items)
+            {
+                if (segment.Equals(nodeSegment, StringComparison.OrdinalIgnoreCase)) continue; // itself
+                if (!ReferencesName(refs, cmd.Name, segment) || !seen.Add(cmd.Name)) continue;
+                var child = new Builder(cmd.Name, cmd.Kind);
+                node.Children.Add(child);
+                if (depth + 1 < MaxDepth && expanded.Add(cmd.Name))
+                    queue.Enqueue((child, depth + 1));
+            }
+
+            // 2. Physical measures (leaves)
+            foreach (var m in measures)
+                if (refs.Contains(m.Name) && !scriptSegments.Contains(m.Name) && seen.Add(m.UniqueName))
+                    node.Children.Add(new Builder(m.UniqueName, "Measure"));
+
+            // 3. Referenced hierarchies (leaves)
+            foreach (var d in meta.Dimensions)
+                foreach (var h in d.Hierarchies)
+                    if (refs.Contains(d.Name) && refs.Contains(h.Name) && seen.Add(h.UniqueName))
+                        node.Children.Add(new Builder(h.UniqueName, "Hierarchy"));
         }
 
-        // 2. Physical measures (leaves)
-        foreach (var m in meta.MeasureFolders.SelectMany(f => f.Measures))
-            if (refs.Contains(m.Name) && !seen.Contains(m.UniqueName) &&
-                !byName.Keys.Any(k => LastSegment(k).Equals(m.Name, StringComparison.OrdinalIgnoreCase)))
-                if (seen.Add(m.UniqueName))
-                    children.Add(new DependencyNode(m.UniqueName, "Measure", []));
-
-        // 3. Referenced hierarchies (leaves)
-        foreach (var d in meta.Dimensions)
-            foreach (var h in d.Hierarchies)
-                if (refs.Contains(d.Name) && refs.Contains(h.Name) && seen.Add(h.UniqueName))
-                    children.Add(new DependencyNode(h.UniqueName, "Hierarchy", []));
-
-        return new DependencyNode(name, kind, children.OrderBy(c => c.Kind).ThenBy(c => c.Name).ToList());
+        return rootBuilder.ToNode();
     }
 
     private static Dictionary<string, ScriptCommand> IndexCommands(CubeScript script)

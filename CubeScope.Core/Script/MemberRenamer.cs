@@ -17,7 +17,8 @@ public sealed record RenameResult(string NewScript, int Occurrences);
 /// allowed around the dot, as in <see cref="ScriptParser"/>.Normalize) — comparison
 /// and replacement apply to the WHOLE chain, never a single segment: so
 /// [Measures].[Marge] never matches inside [Measures].[Marge Ratio] or
-/// [Measures].[MargeBis].
+/// [Measures].[MargeBis]. The comparison ignores case (MDX identifiers are case-insensitive)
+/// and accepts an unbracketed first segment (Measures.[Marge]).
 /// </summary>
 public static class MemberRenamer
 {
@@ -71,12 +72,42 @@ public static class MemberRenamer
                 continue;
             }
 
+            // Unbracketed first segment ("Measures.[Marge]"): the chain is compared with that
+            // segment bracketed. If it does not match, only the identifier and its dot are copied
+            // and scanning resumes at the '[' (e.g. CURRENTCUBE.[Measures].[Marge]).
+            if ((char.IsLetter(c) || c == '_') && (i == 0 || !IsIdentifierChar(script[i - 1])))
+            {
+                int wordEnd = i;
+                while (wordEnd < n && IsIdentifierChar(script[wordEnd])) wordEnd++;
+                int bracket = BracketAfterDot(script, wordEnd);
+                if (bracket < 0)
+                {
+                    sb.Append(script, i, wordEnd - i);
+                    i = wordEnd;
+                    continue;
+                }
+                int chainEnd = ReadChain(script, bracket);
+                string candidate = $"[{script[i..wordEnd]}]." + Normalize(script[bracket..chainEnd]);
+                if (string.Equals(candidate, normalizedOld, StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append(newUniqueName);
+                    count++;
+                    i = chainEnd;
+                }
+                else
+                {
+                    sb.Append(script, i, bracket - i);
+                    i = bracket;
+                }
+                continue;
+            }
+
             if (c == '[')
             {
                 int chainStart = i;
                 int chainEnd = ReadChain(script, i);
                 string rawChain = script[chainStart..chainEnd];
-                if (Normalize(rawChain) == normalizedOld)
+                if (string.Equals(Normalize(rawChain), normalizedOld, StringComparison.OrdinalIgnoreCase))
                 {
                     sb.Append(newUniqueName);
                     count++;
@@ -99,6 +130,22 @@ public static class MemberRenamer
     /// <summary>"[Measures] . [X]" → "[Measures].[X]" (whitespace around the dots).</summary>
     private static string Normalize(string name) =>
         Regex.Replace(name, @"\]\s*\.\s*\[", "].[");
+
+    private static bool IsIdentifierChar(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    /// <summary>
+    /// Index of the '[' when <paramref name="from"/> is followed by a dot then a '[' (whitespace
+    /// allowed around the dot), -1 otherwise.
+    /// </summary>
+    private static int BracketAfterDot(string s, int from)
+    {
+        int j = from;
+        while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
+        if (j >= s.Length || s[j] != '.') return -1;
+        j++;
+        while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
+        return j < s.Length && s[j] == '[' ? j : -1;
+    }
 
     /// <summary>
     /// Reads the longest chain of `[...]` segments joined by dots (whitespace allowed

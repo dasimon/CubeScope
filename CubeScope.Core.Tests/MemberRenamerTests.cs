@@ -85,4 +85,49 @@ public class MemberRenamerTests
         Assert.Contains("[Measures].[A]]C]", result.NewScript);
         Assert.DoesNotContain("[A]]B]", result.NewScript);
     }
+
+    [Fact]
+    public void Rename_IsCaseInsensitive()
+    {
+        const string script = """
+            CREATE MEMBER CURRENTCUBE.[Measures].[Marge] AS 1;
+            CREATE MEMBER CURRENTCUBE.[Measures].[Taux] AS [measures].[MARGE] / 2;
+            """;
+
+        var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[MargeBrute]");
+
+        Assert.Equal(2, result.Occurrences);
+        Assert.Contains("AS [Measures].[MargeBrute] / 2", result.NewScript);
+    }
+
+    [Theory]
+    [InlineData("Measures.[Marge]")]
+    [InlineData("measures . [Marge]")]
+    [InlineData("MEASURES.[marge]")]
+    public void Rename_HandlesUnbracketedPrefix(string reference)
+    {
+        string script = $"""
+            CREATE MEMBER CURRENTCUBE.[Measures].[Marge] AS 1;
+            CREATE MEMBER CURRENTCUBE.[Measures].[Taux] AS {reference} / 2;
+            """;
+
+        var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[MargeBrute]");
+
+        Assert.Equal(2, result.Occurrences);
+        Assert.Contains("AS [Measures].[MargeBrute] / 2", result.NewScript);
+        Assert.DoesNotContain(reference, result.NewScript);
+    }
+
+    [Fact]
+    public void Rename_UnbracketedPrefix_DoesNotMatchOtherMembers()
+    {
+        const string script = """
+            CREATE MEMBER CURRENTCUBE.[Measures].[Taux] AS Measures.[Marge Ratio] + MyMeasures.[Marge];
+            """;
+
+        var result = MemberRenamer.Rename(script, "[Measures].[Marge]", "[Measures].[MargeBrute]");
+
+        Assert.Equal(0, result.Occurrences);
+        Assert.Equal(script, result.NewScript);
+    }
 }

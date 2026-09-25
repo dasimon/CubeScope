@@ -1,5 +1,6 @@
 using System.Globalization;
 using CubeScope.Core.Models;
+using CubeScope.Core.Ssas;
 
 namespace CubeScope.Core.Regression;
 
@@ -39,10 +40,8 @@ public static class ResultComparer
             var ar = actual.Rows[i];
             foreach (var col in expected.Columns)
             {
-                er.TryGetValue(col.Field, out var ev);
-                ar.TryGetValue(col.Field, out var av);
-                var es = Norm(ev);
-                var as_ = Norm(av);
+                var es = CellText(er, col.Field);
+                var as_ = CellText(ar, col.Field);
                 if (!string.Equals(es, as_, StringComparison.Ordinal))
                 {
                     diffs.Add(new CellDiff(i, col.Header, es, as_));
@@ -67,6 +66,19 @@ public static class ResultComparer
         }
 
         return new ComparisonResult(match, summary2, diffs);
+    }
+
+    /// <summary>
+    /// Compared form of a cell: its value, or "#Erreur : message" when the row carries the twin
+    /// error key (<see cref="CellSetMapper.ErrorSuffix"/>) — two cells in error with different
+    /// messages, or an error vs a value, are therefore a difference.
+    /// </summary>
+    private static string? CellText(IReadOnlyDictionary<string, object?> row, string field)
+    {
+        row.TryGetValue(field, out var value);
+        return row.TryGetValue(field + CellSetMapper.ErrorSuffix, out var error) && Norm(error) is { } message
+            ? $"#Erreur : {message}"
+            : Norm(value);
     }
 
     /// <summary>Normalized string form of a cell. JsonElement → raw JSON text (stable);

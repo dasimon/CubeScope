@@ -110,4 +110,40 @@ public class ResultComparerTests
         Assert.Equal("1234", d.Expected);
         Assert.Equal("1235", d.Actual);
     }
+
+    [Fact]
+    public void CellsInError_WithDifferentMessages_AreReportedAsDiff()
+    {
+        var a = Make(Cols, Row(("c0", "EUR"), ("m", null), ("m__err", "Division by zero")));
+        var b = Make(Cols, Row(("c0", "EUR"), ("m", null), ("m__err", "Member not found")));
+
+        var r = ResultComparer.Compare(a, b);
+
+        Assert.False(r.Match);
+        var d = Assert.Single(r.Diffs);
+        Assert.Equal("VL", d.Column);
+        Assert.Contains("Division by zero", d.Expected);
+        Assert.Contains("Member not found", d.Actual);
+    }
+
+    [Fact]
+    public void CellInError_VersusValue_IsReportedAsDiff()
+    {
+        var a = Make(Cols, Row(("c0", "EUR"), ("m", null), ("m__err", "Division by zero")));
+        var b = Make(Cols, Row(("c0", "EUR"), ("m", null)));
+
+        var r = ResultComparer.Compare(a, b);
+
+        Assert.False(r.Match);
+        Assert.Single(r.Diffs);
+    }
+
+    [Fact]
+    public void CellsInError_WithSameMessage_Match()
+    {
+        var a = Make(Cols, Row(("c0", "EUR"), ("m", null), ("m__err", "Division by zero")));
+        var b = Make(Cols, Row(("c0", "EUR"), ("m", null), ("m__err", "Division by zero")));
+
+        Assert.True(ResultComparer.Compare(a, b).Match);
+    }
 }

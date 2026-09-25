@@ -29,13 +29,23 @@ public static partial class ScriptParser
     [
         "FORMAT_STRING", "VISIBLE", "DISPLAY_FOLDER", "ASSOCIATED_MEASURE_GROUP",
         "NON_EMPTY_BEHAVIOR", "SOLVE_ORDER", "FORE_COLOR", "BACK_COLOR", "FONT_FLAGS",
-        "FONT_NAME", "FONT_SIZE", "LANGUAGE", "CAPTION",
+        "FONT_NAME", "FONT_SIZE", "LANGUAGE", "CAPTION", "SCOPE_ISOLATION",
     ];
 
-    public static IReadOnlyList<ScriptCommand> Parse(string script)
+    public static IReadOnlyList<ScriptCommand> Parse(string script) =>
+        ParseDetailed(script).Select(p => p.Command).ToList();
+
+    /// <summary>
+    /// A parsed command with its full statement text (leading comments removed) and its
+    /// "definition" = the statement minus the expression (CREATE header + property list
+    /// for a member, header for a set, the whole text otherwise). Used by the impact analysis.
+    /// </summary>
+    internal sealed record ParsedCommand(ScriptCommand Command, string Text, string Definition);
+
+    internal static IReadOnlyList<ParsedCommand> ParseDetailed(string script)
     {
         var sections = SectionsPerLine(script);
-        var commands = new List<ScriptCommand>();
+        var commands = new List<ParsedCommand>();
         foreach (var (text, startLine) in SplitStatements(script))
         {
             string afterComments = StripLeadingComments(text);
@@ -49,25 +59,32 @@ public static partial class ScriptParser
             var m = CreateMember().Match(trimmed);
             if (m.Success)
             {
-                commands.Add(new ScriptCommand("CalculatedMember", Normalize(m.Groups["name"].Value),
-                    ExtractMemberExpression(trimmed[(m.Index + m.Length)..]), startLine, section));
+                int headerEnd = m.Index + m.Length;
+                var (expression, properties) = SplitMemberBody(trimmed[headerEnd..]);
+                commands.Add(new ParsedCommand(
+                    new ScriptCommand("CalculatedMember", Normalize(m.Groups["name"].Value), expression, startLine, section),
+                    trimmed, trimmed[..headerEnd] + " " + properties));
                 continue;
             }
             var s = CreateSet().Match(trimmed);
             if (s.Success)
             {
-                commands.Add(new ScriptCommand("NamedSet", Normalize(s.Groups["name"].Value),
-                    trimmed[(s.Index + s.Length)..].Trim(), startLine, section));
+                commands.Add(new ParsedCommand(
+                    new ScriptCommand("NamedSet", Normalize(s.Groups["name"].Value),
+                        trimmed[(s.Index + s.Length)..].Trim(), startLine, section),
+                    trimmed, trimmed[..(s.Index + s.Length)]));
                 continue;
             }
             if (trimmed.StartsWith("SCOPE", StringComparison.OrdinalIgnoreCase))
             {
                 string firstLine = trimmed.Split('\n')[0].Trim();
-                commands.Add(new ScriptCommand("Scope", firstLine, trimmed, startLine, section));
+                commands.Add(new ParsedCommand(
+                    new ScriptCommand("Scope", firstLine, trimmed, startLine, section), trimmed, trimmed));
                 continue;
             }
             if (trimmed.StartsWith("CALCULATE", StringComparison.OrdinalIgnoreCase)) continue; // the root CALCULATE;
-            commands.Add(new ScriptCommand("Autre", trimmed.Split('\n')[0].Trim(), trimmed, startLine, section));
+            commands.Add(new ParsedCommand(
+                new ScriptCommand("Autre", trimmed.Split('\n')[0].Trim(), trimmed, startLine, section), trimmed, trimmed));
         }
         return commands;
     }
@@ -106,7 +123,13 @@ public static partial class ScriptParser
     /// The expression of a CREATE MEMBER runs up to the first level-0 comma
     /// followed by a known property (FORMAT_STRING = …), otherwise all the rest.
     /// </summary>
-    internal static string ExtractMemberExpression(string afterAs)
+    internal static string ExtractMemberExpression(string afterAs) => SplitMemberBody(afterAs).Expression;
+
+    /// <summary>
+    /// Same split as <see cref="ExtractMemberExpression"/>, also returning the property list
+    /// (from the level-0 comma included, empty when there is none).
+    /// </summary>
+    private static (string Expression, string Properties) SplitMemberBody(string afterAs)
     {
         int depth = 0;
         bool inString = false, inBracket = false;
@@ -123,13 +146,13 @@ public static partial class ScriptParser
                 case '(' or '{': depth++; break;
                 case ')' or '}': depth--; break;
                 case ',' when depth == 0:
-                    string rest = afterAs[(i + 1)..].TrimStart();
+                    string rest = StripLeadingComments(afterAs[(i + 1)..]).TrimStart();
                     if (MemberProperties.Any(p => rest.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
-                        return afterAs[..i].Trim();
+                        return (afterAs[..i].Trim(), afterAs[i..]);
                     break;
             }
         }
-        return afterAs.Trim();
+        return (afterAs.Trim(), "");
     }
 
     /// <summary>
@@ -172,8 +195,9 @@ public static partial class ScriptParser
                 case '[': inBracket = true; continue;
             }
 
-            // Tracking of SCOPE / END SCOPE (whole words, outside strings/comments)
-            if (char.IsLetter(c) && (i == 0 || !char.IsLetterOrDigit(script[i - 1])))
+            // Tracking of SCOPE / END SCOPE (whole words, outside strings/comments;
+            // '_' is an identifier character: SCOPE_ISOLATION or MY_SCOPE are not SCOPE)
+            if (char.IsLetter(c) && (i == 0 || !IsIdentifierChar(script[i - 1])))
             {
                 if (IsWordAt(script, i, "SCOPE") && !IsWordAt(script, PrevWordStart(script, i), "END"))
                     scopeDepth++;
@@ -201,8 +225,10 @@ public static partial class ScriptParser
         if (i < 0 || i + word.Length > s.Length) return false;
         if (!s.AsSpan(i, word.Length).Equals(word, StringComparison.OrdinalIgnoreCase)) return false;
         int end = i + word.Length;
-        return end >= s.Length || !char.IsLetterOrDigit(s[end]);
+        return end >= s.Length || !IsIdentifierChar(s[end]);
     }
+
+    private static bool IsIdentifierChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     private static bool IsNextWord(string s, int from, string word)
     {
@@ -215,7 +241,7 @@ public static partial class ScriptParser
     {
         int j = i - 1;
         while (j >= 0 && char.IsWhiteSpace(s[j])) j--;
-        while (j >= 0 && char.IsLetterOrDigit(s[j])) j--;
+        while (j >= 0 && IsIdentifierChar(s[j])) j--;
         return j + 1;
     }
 
