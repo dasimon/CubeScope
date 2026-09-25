@@ -25,6 +25,7 @@ import AiPanel from './components/AiPanel.vue'
 import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
+import AboutDialog from './components/AboutDialog.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
@@ -289,6 +290,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @click="(e: Event) => panelsMenu?.toggle(e)"
       />
       <Menu ref="panelsMenu" :model="panelMenuItems" popup />
+      <AboutDialog />
       <span class="toolbar-spacer" />
       <Select
         :model-value="locale"

@@ -17,6 +17,9 @@ public sealed class SsasSession : IDisposable
     public string? Server { get; private set; }
     public string? Catalog { get; private set; }
 
+    /// <summary>Version reported by the server at connection time (About dialog).</summary>
+    public string? ServerVersion { get; private set; }
+
     /// <summary>SSAS SessionID of the current connection (correlation with the profiler trace).</summary>
     public string? SessionId => _conn?.SessionID;
 
@@ -58,6 +61,7 @@ public sealed class SsasSession : IDisposable
                 _connectionString = connectionString;
                 Server = server;
                 Catalog = null;
+                ServerVersion = conn.ServerVersion;
                 previous?.Dispose();
                 return catalogs;
             }, ct);

@@ -57,6 +57,16 @@ export interface DimensionMeta {
   uniqueName: string
   hierarchies: HierarchyMeta[]
 }
+export interface AboutInfo {
+  version: string
+  commit: string | null
+  runtime: string
+  dataFolder: string
+  databasePath: string
+  ssasServer: string | null
+  ssasVersion: string | null
+}
+
 export interface CubeMeta {
   cubeName: string
   measureFolders: MeasureFolder[]
@@ -172,6 +182,7 @@ export const api = {
     request<{ server: string; catalogs: string[] }>('POST', '/api/connection', { server, lang: currentLocale() }),
   setCatalog: (catalog: string) => request<void>('PUT', '/api/connection/catalog', { catalog }),
   recent: () => request<RecentConnection[]>('GET', '/api/connection/recent'),
+  about: () => request<AboutInfo>('GET', '/api/about'),
   query: (mdx: string, signal: AbortSignal) => request<QueryResult>('POST', '/api/query', { mdx }, signal),
   drillthrough: (mdx: string, maxRows: number, signal: AbortSignal) =>
     request<QueryResult>('POST', '/api/drillthrough', { mdx, maxRows }, signal),

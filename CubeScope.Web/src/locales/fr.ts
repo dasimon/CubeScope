@@ -329,6 +329,20 @@ export default {
     closeScriptHeader: 'Fermer le panneau Script ?',
     closeAnyway: 'Fermer sans enregistrer',
   },
+  about: {
+    title: 'À propos',
+    tagline: 'Atelier MDX pour SSAS Multidimensional',
+    runtime: 'Runtime',
+    engine: 'Moteur web',
+    ssas: 'Serveur SSAS',
+    notConnected: 'non connecté',
+    data: 'Données locales',
+    license: 'Licence',
+    releases: 'Versions',
+    issues: 'Signaler un problème',
+    copy: 'Copier les infos',
+    copied: 'Informations copiées',
+  },
   completion: {
     kind: {
       member: 'membre',

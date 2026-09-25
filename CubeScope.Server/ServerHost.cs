@@ -141,6 +141,10 @@ api.MapPut("/connection/catalog", async (CatalogRequest req, SsasSession session
 // Recent connections (to prefill the dialog)
 api.MapGet("/connection/recent", (StateStore store) => Results.Ok(store.GetRecentConnections()));
 
+// About dialog: application version (from the assembly) and the connected SSAS server
+api.MapGet("/about", (SsasSession session) =>
+    Results.Ok(AboutInfo.Build(session.Server, session.ServerVersion)));
+
 // MDX execution — cancellation goes through aborting the HTTP request (fetch abort on the SPA side)
 api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService queries, StateStore store,
     PerfmonService perfmon, ProfilerService profiler, IHubContext<StatsHub> statsHub, CancellationToken ct) =>

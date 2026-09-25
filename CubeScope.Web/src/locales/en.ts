@@ -331,6 +331,20 @@ const en: typeof fr = {
     closeScriptHeader: 'Close the Script panel?',
     closeAnyway: 'Close without saving',
   },
+  about: {
+    title: 'About',
+    tagline: 'MDX workbench for SSAS Multidimensional',
+    runtime: 'Runtime',
+    engine: 'Web engine',
+    ssas: 'SSAS server',
+    notConnected: 'not connected',
+    data: 'Local data',
+    license: 'License',
+    releases: 'Releases',
+    issues: 'Report an issue',
+    copy: 'Copy details',
+    copied: 'Details copied',
+  },
   completion: {
     kind: {
       member: 'member',
