@@ -68,7 +68,9 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   port — the `host\instance` syntax does not work if SQL Browser (UDP 2382) is
   closed, use `Data Source=host:port`). For anything that clears the cache:
   target a **dev** catalog (ClearCache is scoped to the `DatabaseID`, prod
-  is not touched), never a prod catalog.
+  is not touched), never a prod catalog. Enforced since 2026-09-24:
+  `CacheService.ClearCacheAsync` applies the same `DevServerGuard` as script
+  deployment (explicit list, fail-closed), server side.
 - Windows integrated security for all SSAS connections. No plain-text credential
   anywhere.
 - .NET 10 SDK, Node LTS, Vue 3 + strict TypeScript.
@@ -264,6 +266,25 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   freed for the application (`AreBrowserAcceleratorKeysEnabled = false`
   stops the Edge devtools from grabbing it — see the "WPF/WebView2
   shell" block below), so it can be bound in Monaco again if needed.
+- **Local API hardening (2026-09-24)**: any page open in the browser can reach
+  `http://127.0.0.1:<port>` (CSRF, DNS rebinding), and an AI answer rendered with
+  `v-html` can carry script. Hence: (a) `LocalRequestGuard` (first middleware)
+  refuses a non-loopback `Host`, a non-loopback `Origin` and `Sec-Fetch-Site:
+  cross-site|same-site` with a plain-text 403 — the Vite proxy (`localhost:5173`)
+  passes, opening Vite from a LAN IP does not; (b) a CSP on every response
+  (`LocalRequestGuard.ContentSecurityPolicy`: no inline script, no eval) — adjust
+  it there if a new library needs more; (c) AI Markdown goes through
+  `src/markdown.ts` (DOMPurify, links forced to `_blank`), never `marked` +
+  `v-html` directly; (d) `LocalPathGuard` refuses UNC/device paths and URIs
+  (`\\host\share` would leak the NTLM hash) and requires `.cube` for project
+  files; (e) the Shell only hands http/https to the OS and cancels any WebView
+  navigation away from the local origin (`NavigationPolicy`). No launch token:
+  deliberate, the checks above cover the threats without plumbing.
+- `.cube` save: atomic (`.tmp` + `File.Replace`) and guarded by a content hash —
+  `/project/open` returns `contentHash`, `/project/save` takes `expectedHash` and
+  answers **409** if the file changed outside CubeScope; `/project/calcprops`
+  returns the new hash, which the client MUST keep, otherwise its next save is a
+  false 409.
 - The name "MDX" is polluted by Markdown+JSX in the npm/GitHub ecosystem: do not
   name front-end packages `mdx-*`.
 - `.cube` round-trip (SSDT project mode): `XDocument.Load` must use
@@ -370,10 +391,10 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
 ## Status
 
 **Roadmap complete, product in daily use.** Published on
-`github.com/dasimon/CubeScope`, tagged versions up to **v0.14.0** (each tag
+`github.com/dasimon/CubeScope`, tagged versions up to **v0.15.0** (each tag
 triggers the GitHub Actions Release). Detailed, dated history of every
-change: `docs/PROJET.md` (source of truth — this section is only its
-summary).
+change: kept in the author's private notes (not published) — this section
+is only its summary.
 
 MVP delivered (Phases 1–5): connection + Monaco editor + execution + grid;
 metadata explorer, autocompletion, perfmon stats, ClearCache,
@@ -437,4 +458,5 @@ Roadmap (US): Phase 1 = connection + editor + execution + grid (US 1-4);
 Phase 2 = explorer, autocompletion, stats, cache, history (US 5-12);
 Phase 3 = AI panel (US 13-15); Phase 4 = script, dependencies, doc (US 16-20);
 Phase 5 = GitHub publication. The `CubeScope.Spike` project stays in the solution
-as a read-only server regression harness (`--discover`).
+as a server regression harness: read-only (`--discover`) by default; clearing the
+cache needs `--clear-cache` AND the server listed in `CUBESCOPE_SPIKE_DEV_SERVERS`.
