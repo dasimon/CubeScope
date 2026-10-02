@@ -14,8 +14,8 @@
     "dockview-vue": "^7.0.4",
     "dompurify": "^3.4.16",
     "marked": "^18.0.14",
-    "monaco-editor": "^0.56.0",
-    "primeicons": "^8.0.1",
+    "monaco-editor": "^0.57.0",
+    "primeicons": "^8.0.2",
     "primevue": "^4.5.5",
     "vue": "^3.5.39",
     "vue-i18n": "^11.4.12"
