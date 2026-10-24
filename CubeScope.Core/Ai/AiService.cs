@@ -229,7 +229,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
             },
             Messages =
             [
-                new() { Role = Role.User, Content = userContent },
+                new UserMessageParam(userContent),
             ],
         }, cancellationToken: ct);
 
