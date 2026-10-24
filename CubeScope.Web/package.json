@@ -21,7 +21,7 @@
     "vue-i18n": "^11.4.16"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
