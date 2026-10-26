@@ -112,6 +112,10 @@ function onDragOver(e: DragEvent) {
 }
 
 function onDrop(e: DragEvent) {
+  // Monaco's own drop-into-editor contribution already inserted the text where it was released
+  // (observed once the explorer drag finally worked: the name came in twice). Ours only covers a
+  // drop it did not take.
+  if (e.defaultPrevented) return
   const texte = e.dataTransfer?.getData('text/plain')
   if (!editor || !texte) return
   e.preventDefault()

@@ -187,11 +187,22 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   `…:mddataset` cellset; a `<Statement>` runs on the connection's `Initial Catalog`.
 - SQLite migrations must stay **re-runnable**: tests rewind `user_version` to replay a step,
   and SQLite has no `ADD COLUMN IF NOT EXISTS` — check `pragma_table_info` first (v13).
-- **E2E drag and drop**: Playwright's `dragTo` fires `dragstart` but **no** `dragover`/`drop`
-  in this harness (not even on the editor, which works by hand). Test HTML5 drops by
-  dispatching `DragEvent`s that share one `new DataTransfer()` (dragstart on the source,
-  dragover + drop on the target): the app's own handlers fill and read it. During `dragover`
-  only `dataTransfer.types` is readable, never `getData`.
+- **Drag from the explorer (PrimeVue 4.5 `Tree`)**: each node's content div handles `dragstart`
+  and, when the tree has no node drag-drop of its own (`draggableNodes` off), calls
+  `preventDefault()` — which **cancels any drag starting inside a node**, ours included
+  (symptom: `dragstart` then nothing — no `drag`, `dragover` nor `dragend`). Its `dragend`
+  handler also throws (`stopDrag` of an absent service). Hence `e.stopPropagation()` in our
+  `dragstart` and `@dragend.stop` on the draggable span. The explorer → editor drag had never
+  worked in the real app since it was added (2026-09-11) — found by the owner on 2026-10-26.
+- **Drop into Monaco**: Monaco's `dropIntoEditor` contribution (imported in `monaco-core.ts`)
+  already inserts dropped `text/plain` at the release point and marks the event handled; a
+  host-level `drop` handler must skip `e.defaultPrevented`, otherwise the text comes in twice.
+- **E2E drag and drop**: Playwright's real `dragTo` DOES drive HTML5 drag-and-drop in Chromium.
+  ⚠️ Lesson (2026-10-26): when it fired `dragstart` and nothing else, that was this app's bug
+  (the drag was cancelled), NOT a harness limitation — synthetic `DragEvent`s dispatched on the
+  target bypass the source and hid it for three lots. Test drags with the real `dragTo` first,
+  and log `defaultPrevented` on `dragstart`. During `dragover` only `dataTransfer.types` is
+  readable, never `getData`.
 - ADOMD rowsets → `DataTable.Load`: rowsets (DMVs as well as schema rowsets)
   declare uniqueness constraints that their own data violate
   (`ConstraintException "Failed to enable constraints"`). Always load the

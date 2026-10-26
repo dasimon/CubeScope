@@ -193,6 +193,11 @@ function onNodeDblClick(node: TreeNode) {
  */
 function onDragStart(e: DragEvent, node: TreeNode) {
   if (typeof node.data !== 'string' || !e.dataTransfer) return
+  // PrimeVue 4.5 Tree: each node's content div handles dragstart and, when the tree has no
+  // node drag-drop of its own (draggableNodes off), calls preventDefault — which CANCELS any
+  // drag starting inside a node, ours included (observed: dragstart then nothing, no dragend).
+  // Stop it here, before it bubbles up to that handler.
+  e.stopPropagation()
   e.dataTransfer.setData('text/plain', node.data)
   if (node.dragItem) e.dataTransfer.setData(ITEM_MIME, JSON.stringify(node.dragItem))
   e.dataTransfer.effectAllowed = 'copy'
@@ -236,6 +241,7 @@ function onDragStart(e: DragEvent, node: TreeNode) {
           :draggable="typeof node.data === 'string'"
           @dblclick="onNodeDblClick(node)"
           @dragstart="onDragStart($event, node)"
+          @dragend.stop
         >
           {{ node.label }}
         </span>
