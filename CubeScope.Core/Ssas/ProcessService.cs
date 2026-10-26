@@ -187,7 +187,6 @@ public sealed class ProcessService(SsasSession session, StateStore store)
         ProcessMode.Full => ProcessType.ProcessFull,
         ProcessMode.Data => ProcessType.ProcessData,
         ProcessMode.Update => ProcessType.ProcessUpdate,
-        ProcessMode.Clear => ProcessType.ProcessClear,
         _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 

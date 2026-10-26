@@ -9,9 +9,10 @@ namespace CubeScope.Core.Project;
 /// - declared dev server: allowed (the UI asks for a simple confirmation);
 /// - any other server counts as production: the request must carry <c>confirmServer</c> equal to
 ///   the session's server (trimmed, case-insensitive) — the user types the name again;
-/// - in production, Full, Data or Clear on a DIMENSION is refused whatever the confirmation:
+/// - in production, Full or Data on a DIMENSION is refused whatever the confirmation:
 ///   it leaves the dependent partitions unprocessed and the cube unqueryable until they are
-///   reprocessed. Full and Clear: documented; Data: presumed, not observed (owner's decision).
+///   reprocessed. Full: documented; Data: presumed, not observed (owner's decision). Clear is
+///   not offered at all (owner's decision).
 /// Checked in Core, BEFORE any connection to the target server — a guard that touches the
 /// target first guards nothing, and the API may be called without the UI.
 /// </summary>
@@ -23,7 +24,7 @@ public static class ProductionActionGuard
 
     /// <summary>Leaves the measure groups using the dimension unprocessed.</summary>
     public static bool UnprocessesDependents(ProcessObjectKind kind, ProcessMode mode)
-        => kind == ProcessObjectKind.Dimension && mode is ProcessMode.Full or ProcessMode.Data or ProcessMode.Clear;
+        => kind == ProcessObjectKind.Dimension && mode is ProcessMode.Full or ProcessMode.Data;
 
     /// <summary>
     /// Refusal that no confirmation can lift (invalid mode, destructive dimension mode in

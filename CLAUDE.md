@@ -61,12 +61,14 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   ClearCache stays dev-only). A server declared dev → allowed after a simple confirmation in the
   UI. Any other server counts as **production**: the request must carry `confirmServer` equal to
   the session's server (trimmed, case-insensitive), typed again by the user, otherwise refused.
-  In production, **Full, Data or Clear on a dimension is refused** whatever the confirmation
+  In production, **Full or Data on a dimension is refused** whatever the confirmation
   (it leaves the dependent measure groups unprocessed and the cube unqueryable; Data: presumed,
   not observed — owner's decision). Checked in the Core service **before any connection** to the
   target server; every attempt, refused or not, goes to the SQLite processing log.
   **ProcessAdd is not offered**: without an out-of-line source query it re-reads the partition
-  source and doubles the data (owner's decision — the XMLA console covers the real need).
+  source and doubles the data. **ProcessClear is not offered either**: it empties the object and
+  leaves it unqueryable, with no daily use (owner's decisions, 2026-10-26 — the XMLA console
+  covers the rare real need, and refuses a Clear in production).
 
 ## Deferred / forbidden for the MVP
 
@@ -550,9 +552,9 @@ caption, and members with an empty caption exist (see Known pitfalls).
 
 **Admin tools, lot 4 — processing from the State panel: DONE (2026-10-26)**, branch
 `feat/traitement` (on top of `feat/listes`). Right-click (or the row's cog) → "Process…":
-mode (Default, Full, Data, Update for a dimension, Clear — no Add, see settled decisions),
+mode (Default, Full, Data, Update for a dimension — no Add nor Clear, see settled decisions),
 XMLA preview captured by AMO (copyable), production banner and server name to retype on a
-non-dev server, warning listing the measure groups a dimension Full/Data/Clear leaves
+non-dev server, warning listing the measure groups a dimension Full/Data leaves
 unprocessed (Update: flexible aggregations and indexes dropped, warned without refusal),
 elapsed time while running (dialog non-modal then, so the Sessions panel stays reachable to
 cancel), result with server messages, state read again afterwards. `ProcessService` (short AMO

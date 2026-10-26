@@ -372,8 +372,8 @@ export interface BuilderModel {
 }
 
 export type ProcessObjectKind = 'Cube' | 'MeasureGroup' | 'Partition' | 'Dimension'
-/** No ProcessAdd: without a dedicated source query it doubles the partition data. */
-export type ProcessMode = 'Default' | 'Full' | 'Data' | 'Update' | 'Clear'
+/** No ProcessAdd (doubles the data without a source query), no ProcessClear (owner's decisions). */
+export type ProcessMode = 'Default' | 'Full' | 'Data' | 'Update'
 
 /** Addressed by IDs, which differ from names after a rename. */
 export interface ProcessTarget {

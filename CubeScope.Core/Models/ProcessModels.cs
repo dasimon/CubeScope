@@ -12,9 +12,10 @@ public enum ProcessObjectKind
 }
 
 /// <summary>
-/// Processing modes offered by the State panel. No ProcessAdd: without an out-of-line source
-/// query it re-reads the whole partition source and doubles the data — it goes through the
-/// XMLA console instead (owner's decision, 2026-10-26).
+/// Processing modes offered by the State panel (owner's decisions, 2026-10-26):
+/// no ProcessAdd — without an out-of-line source query it re-reads the whole partition source
+/// and doubles the data; no ProcessClear — it empties the object and leaves it unqueryable,
+/// with no use in daily work. Both remain possible through the XMLA console (dev only for Clear).
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ProcessMode>))]
 public enum ProcessMode
@@ -23,7 +24,6 @@ public enum ProcessMode
     Full,
     Data,
     Update,
-    Clear,
 }
 
 /// <summary>The object to process, addressed by its IDs (an ID differs from the name after a rename).</summary>

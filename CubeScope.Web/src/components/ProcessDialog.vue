@@ -2,7 +2,8 @@
 // "Process…" from the State panel: mode, the XMLA AMO will send (copyable — what is shown is
 // exactly what runs), the measure groups a dimension process leaves unprocessed, then the run.
 // Production rule (server-side, ProductionActionGuard): on a server not declared dev, the server
-// name must be typed again, and Full/Data/Clear on a dimension is refused whatever is typed.
+// name must be typed again, and Full/Data on a dimension is refused whatever is typed.
+// No ProcessAdd nor ProcessClear (owner's decisions): the XMLA console covers them.
 // No progress streaming: elapsed time only; a long process is cancelled from the Sessions panel.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -20,7 +21,7 @@ const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const toast = useToast()
 
-const MODES: ProcessMode[] = ['Default', 'Full', 'Data', 'Update', 'Clear']
+const MODES: ProcessMode[] = ['Default', 'Full', 'Data', 'Update']
 const modes = computed(() =>
   MODES.filter((m) => m !== 'Update' || props.target?.kind === 'Dimension').map((m) => ({
     value: m,
@@ -73,7 +74,7 @@ watch(
   },
 )
 watch(mode, () => {
-  // A confirmation typed for one mode is not one for another (Default → Clear).
+  // A confirmation typed for one mode is not one for another (Default → Full).
   confirmText.value = ''
   if (!running.value) {
     result.value = null
@@ -170,7 +171,7 @@ function close() {
       <Message v-if="preview?.refusal" severity="error" :closable="false">{{ preview.refusal }}</Message>
       <Message v-if="previewError" severity="error" :closable="false">{{ previewError }}</Message>
 
-      <Message v-if="preview && !preview.refusal && target?.kind === 'Dimension' && ['Full', 'Data', 'Clear'].includes(mode)"
+      <Message v-if="preview && !preview.refusal && target?.kind === 'Dimension' && ['Full', 'Data'].includes(mode)"
         severity="warn" :closable="false">
         <div>{{ t('process.dimensionWarning') }}</div>
         <ul v-if="preview.affectedMeasureGroups.length" class="process-affected">

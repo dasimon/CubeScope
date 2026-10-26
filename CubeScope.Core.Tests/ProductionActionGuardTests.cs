@@ -32,7 +32,7 @@ public class ProductionActionGuardTests
 
         bool modeValid = mode != ProcessMode.Update || kind == ProcessObjectKind.Dimension;
         bool destructiveDimension = kind == ProcessObjectKind.Dimension
-            && mode is ProcessMode.Full or ProcessMode.Data or ProcessMode.Clear;
+            && mode is ProcessMode.Full or ProcessMode.Data;
         bool production = server == Prod;
         bool confirmed = confirm is not null && confirm.Trim().Equals(server, StringComparison.OrdinalIgnoreCase);
 
@@ -43,7 +43,6 @@ public class ProductionActionGuardTests
     [Theory]
     [InlineData(ProcessMode.Full)]
     [InlineData(ProcessMode.Data)]
-    [InlineData(ProcessMode.Clear)]
     public void Dimension_destructrice_refusee_en_prod_meme_confirmee(ProcessMode mode)
     {
         var refusal = ProductionActionGuard.Check(Prod, DevServers, Prod, ProcessObjectKind.Dimension, mode);
@@ -53,7 +52,7 @@ public class ProductionActionGuardTests
 
     [Theory]
     [InlineData(ProcessMode.Full)]
-    [InlineData(ProcessMode.Clear)]
+    [InlineData(ProcessMode.Data)]
     public void Dimension_destructrice_autorisee_en_dev_sans_confirmation(ProcessMode mode)
     {
         Assert.Null(ProductionActionGuard.Check(Dev, DevServers, null, ProcessObjectKind.Dimension, mode));
@@ -105,7 +104,6 @@ public class ProductionActionGuardTests
     [InlineData(ProcessMode.Full, Microsoft.AnalysisServices.ProcessType.ProcessFull)]
     [InlineData(ProcessMode.Data, Microsoft.AnalysisServices.ProcessType.ProcessData)]
     [InlineData(ProcessMode.Update, Microsoft.AnalysisServices.ProcessType.ProcessUpdate)]
-    [InlineData(ProcessMode.Clear, Microsoft.AnalysisServices.ProcessType.ProcessClear)]
     public void Correspondance_des_modes_amo(ProcessMode mode, Microsoft.AnalysisServices.ProcessType expected)
         => Assert.Equal(expected, ProcessService.ToProcessType(mode));
 }
