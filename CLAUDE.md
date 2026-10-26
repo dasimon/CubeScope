@@ -131,6 +131,15 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   levels come back as 20/68/132/516 (`TimeYears`…). Exposed as `LevelMeta.IsAll`; the builder's
   default level is the first non-All one (a non-aggregatable hierarchy has no All — none on the
   test cube, so that case rests on the docs only).
+- **Member lookup by key** (`StrToMember('{level}.&[key]')` in a calculated measure, observed
+  on 17.0.25.218, dev cube): an **unknown key gives a NULL cell**, not an error nor a failed query;
+  real members can have an **empty caption and Name** (`[Entreprises].[Entreprise]`) → judge
+  existence by `.UniqueName`, never by the caption; `.UniqueName` returns the canonical name
+  (`[Dim].[Hier].&[k]`) even when asked with the level-qualified form; **numeric keys are
+  converted** by the server (`0066249961`, ` 66249961` and `08` find the member); **date keys are
+  not**: only the stored form `1900-04-11T00:00:00` is found — `11/04/1900`, `1900-04-11`,
+  `19000411` give null. Behaviour under another `MdxMissingMemberMode` or dimension security: not
+  observed (a failed batch is logged and falls back member by member).
 - **E2E drag and drop**: Playwright's `dragTo` fires `dragstart` but **no** `dragover`/`drop`
   in this harness (not even on the editor, which works by hand). Test HTML5 drops by
   dispatching `DragEvent`s that share one `new DataTransfer()` (dragstart on the source,
@@ -499,7 +508,21 @@ are passed verbatim after a strict check (bracketed segments only), the cube nam
 bracketed (`]`→`]]`); no string literal, so `'` needs no doubling. State persisted in
 `localStorage` (versioned), dropped when server|catalog|cube differs from the saved one;
 the last cube chosen per server+catalog is remembered so a restart reopens it.
-Next lots (pasted lists, processing, XMLA console) are planned but not started.
+
+**Admin tools, lot 3 — pasted key lists and named lists: DONE (2026-10-26)**, branch
+`feat/listes` (on top of `feat/constructeur`). "Paste a list" on the builder's Rows and
+Filters zones: choose a target level, paste keys (line breaks, commas, semicolons, tabs;
+trimmed, CSV quotes and zero-width spaces removed, duplicates dropped — `KeyList.Parse`, Core),
+check, then add. `POST /api/metadata/resolve-keys` (raw `text` or `keys`) builds
+`{level}.&[key]` (`]` doubled; `&[a]&[b]` composite passed as is) and resolves by MDX by key,
+50 per query, member-by-member fallback (`MetadataService.ResolveKeysAsync`), never
+MDSCHEMA_MEMBERS. Result = found (canonical unique name + caption) / missing (no such member) /
+failed (lookup in error — a server problem never reads as "unknown keys"; a batch failing key by
+key is rethrown); only found keys enter the query. Named lists in SQLite (`NamedList`, schema
+**v11**, keys in pasted order, found or not), reloaded with a fresh check. Cap: 5000 keys.
+Deliberate deviation from "reuse `ResolveCaptionsViaMdxAsync`": it judges existence by the
+caption, and members with an empty caption exist (see Known pitfalls).
+Next lots (processing, XMLA console) are planned but not started.
 
 **SSDT project mode: DONE (2026-07-24)** — opening/editing the
 `.cube` file of an SSDT Multidimensional project (`CubeProjectService`,

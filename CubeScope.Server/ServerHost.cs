@@ -750,6 +750,29 @@ api.MapPost("/builder/mdx", (BuilderModel model) =>
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Pasted list of keys → members of a level (batched MDX lookup by key, never MDSCHEMA_MEMBERS).
+// Missing keys come back apart: the UI shows them, only found ones enter the query.
+api.MapPost("/metadata/resolve-keys", async (ResolveKeysRequest req, MetadataService meta, CancellationToken ct) =>
+{
+    // Pasted text is split in Core (KeyList.Parse); a reloaded named list sends its keys.
+    try { return Results.Ok(await meta.ResolveKeysAsync(req.Cube, req.Level, req.Keys ?? KeyList.Parse(req.Text), ct)); }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
+// Named key lists (SQLite). Reloading one resolves it again on the client side.
+api.MapGet("/lists", (StateStore store) => Results.Ok(store.GetNamedLists()));
+api.MapPost("/lists", (NamedListRequest req, StateStore store) =>
+{
+    try { return Results.Ok(new { id = store.AddNamedList(req.Name, req.Level, req.Keys ?? []) }); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+api.MapDelete("/lists/{id:long}", (long id, StateStore store) =>
+{
+    store.DeleteNamedList(id);
+    return Results.Ok();
+});
+
 // Staleness threshold of the State panel, in hours (stored in SQLite).
 api.MapPut("/processing/threshold", (ThresholdRequest req, StateStore store) =>
 {
@@ -831,6 +854,8 @@ internal sealed record CalcPropRequest(
 internal sealed record RenameRequest(string Script, string OldName, string NewName);
 internal sealed record ImpactRequest(string OldScript, string NewScript);
 internal sealed record ThresholdRequest(int Hours);
+internal sealed record ResolveKeysRequest(string Cube, string Level, string[]? Keys, string? Text);
+internal sealed record NamedListRequest(string Name, string Level, string[]? Keys);
 
 /// <summary>
 /// Hub with no client→server method: server push only ("queryStats").

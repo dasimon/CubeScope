@@ -33,6 +33,7 @@ import {
   type Picked,
 } from '../builder'
 import MemberPickerDialog from './MemberPickerDialog.vue'
+import PasteListDialog from './PasteListDialog.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -102,6 +103,9 @@ function onDrop(e: DragEvent, zone: Zone) {
   const incomplete = dropItem(zone, item)
   if (incomplete) openFilterPicker(incomplete)
 }
+
+// --- Pasted list of keys (Rows, Filters) -------------------------------------------------
+const pasteZone = ref<AxisZone | 'filters' | null>(null)
 
 // --- Member picker (axis entries in "members" mode, filters) ------------------------------
 const picker = ref<{ hierarchy: string; initial: Picked[]; apply: (m: Picked[]) => void } | null>(null)
@@ -208,8 +212,12 @@ function describe(e: AxisEntry): string {
     : `${what} · ${t('builder.orderSummary', { measure })}`
 }
 
+// Bounded: a pasted list can hold thousands of members.
+const TITLE_LINES = 20
 function membersTitle(members: Picked[]): string {
-  return members.map((m) => m.caption).join('\n')
+  const shown = members.slice(0, TITLE_LINES).map((m) => m.caption)
+  if (members.length > TITLE_LINES) shown.push(t('builder.moreInTitle', { n: members.length - TITLE_LINES }))
+  return shown.join('\n')
 }
 
 function remove(zone: Zone, index: number) {
@@ -248,6 +256,17 @@ function remove(zone: Zone, index: number) {
       >
         <header class="zone-head">
           <span class="zone-title">{{ t(`builder.zone.${zone}`) }}</span>
+          <Button
+            v-if="zone === 'rows' || zone === 'filters'"
+            icon="pi pi-clipboard"
+            text
+            size="small"
+            class="zone-paste"
+            :title="t('pasteList.button')"
+            :aria-label="t('pasteList.button')"
+            :disabled="!store.cubeMeta"
+            @click="pasteZone = zone"
+          />
           <label v-if="zone === 'columns' || zone === 'rows'" class="zone-nonempty">
             <Checkbox
               v-model="builder[zone === 'columns' ? 'nonEmptyColumns' : 'nonEmptyRows']"
@@ -380,6 +399,8 @@ function remove(zone: Zone, index: number) {
       </template>
     </Dialog>
 
+    <PasteListDialog :zone="pasteZone" @close="pasteZone = null" />
+
     <MemberPickerDialog
       :hierarchy="picker?.hierarchy ?? null"
       :title="picker ? hierarchyCaption(picker.hierarchy) : ''"
@@ -446,6 +467,9 @@ function remove(zone: Zone, index: number) {
   font-size: 0.8rem;
   text-transform: uppercase;
   color: var(--p-text-muted-color);
+}
+.zone-paste {
+  margin-left: auto;
 }
 .zone-nonempty {
   display: flex;

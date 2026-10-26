@@ -182,7 +182,74 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 10;
                 """);
         }
+
+        if (version < 11)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS NamedList (
+                    Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name       TEXT NOT NULL,
+                    Level      TEXT NOT NULL,
+                    KeysJson   TEXT NOT NULL,
+                    CreatedUtc TEXT NOT NULL
+                );
+                PRAGMA user_version = 11;
+                """);
+        }
     }
+
+    // --- Named key lists (v11): pasted lists of keys (ISIN, fund codes…) kept for the builder.
+    // Stored as keys, not members: a reloaded list is resolved again, the cube may have changed.
+
+    public long AddNamedList(string name, string level, IReadOnlyList<string> keys)
+    {
+        string nom = (name ?? "").Trim();
+        if (nom.Length == 0) throw new ArgumentException("Nom de liste vide.");
+        if (keys.Count == 0) throw new ArgumentException("Liste sans clé.");
+        if (keys.Count > Ssas.KeyList.MaxKeys)
+            throw new ArgumentException($"Liste trop longue : {keys.Count} clés (maximum {Ssas.KeyList.MaxKeys}).");
+        if (!Ssas.MdxQueryBuilder.IsUniqueName(level)) throw new ArgumentException($"Niveau invalide : {level}");
+        lock (_lock)
+        {
+            using (var insert = _db.CreateCommand())
+            {
+                insert.CommandText = "INSERT INTO NamedList (Name, Level, KeysJson, CreatedUtc) VALUES ($n, $l, $k, $t)";
+                insert.Parameters.AddWithValue("$n", nom);
+                insert.Parameters.AddWithValue("$l", level);
+                insert.Parameters.AddWithValue("$k", System.Text.Json.JsonSerializer.Serialize(keys));
+                insert.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                insert.ExecuteNonQuery();
+            }
+            using var scalar = _db.CreateCommand();
+            scalar.CommandText = "SELECT last_insert_rowid()";
+            return (long)scalar.ExecuteScalar()!;
+        }
+    }
+
+    public IReadOnlyList<NamedList> GetNamedLists()
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT Id, Name, Level, KeysJson, CreatedUtc FROM NamedList ORDER BY Name COLLATE NOCASE, Id";
+            using var r = cmd.ExecuteReader();
+            var list = new List<NamedList>();
+            while (r.Read())
+                list.Add(new NamedList(r.GetInt64(0), r.GetString(1), r.GetString(2), ReadKeys(r.GetString(3)),
+                    DateTime.Parse(r.GetString(4), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime()));
+            return list;
+        }
+    }
+
+    /// <summary>One unreadable row must not hide every other list: it comes back empty.</summary>
+    private static IReadOnlyList<string> ReadKeys(string json)
+    {
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? []; }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
+
+    public void DeleteNamedList(long id) => Exec("DELETE FROM NamedList WHERE Id = $id", ("$id", id));
 
     // --- Settings (v10): single values, key → text.
 

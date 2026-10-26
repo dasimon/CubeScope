@@ -294,6 +294,126 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     }
 
     /// <summary>
+    /// Pasted keys → members of <paramref name="level"/>. Each key becomes
+    /// <c>{level}.&amp;[{key}]</c>, resolved by MDX by key (50 per query, member-by-member
+    /// fallback) — never MDSCHEMA_MEMBERS, which scans the whole dimension.
+    ///
+    /// Existence is read from <c>.UniqueName</c>, NOT from the caption: real members with an
+    /// EMPTY caption exist (observed on the dev cube: companies without a name), and an unknown key
+    /// does not fail, it yields null (observed). The canonical unique name comes back too, so a
+    /// pasted member and the same member picked in the tree are one.
+    /// </summary>
+    public async Task<KeyResolution> ResolveKeysAsync(
+        string cube, string level, IReadOnlyList<string> keys, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(cube)) throw new MdxBuilderException("Aucun cube sélectionné.");
+        var distinct = keys.Select(k => k.Trim()).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count > KeyList.MaxKeys)
+            throw new MdxBuilderException($"Liste trop longue : {distinct.Count} clés (maximum {KeyList.MaxKeys}).");
+
+        var names = distinct.Select(k => (Key: k, Name: KeyList.MemberUniqueName(level, k))).ToList();
+        string server = session.Server ?? "", catalog = session.Catalog ?? "";
+        bool Recoverable(Exception ex)
+            => ex is not (OperationCanceledException or ContextChangedException) && !ct.IsCancellationRequested;
+
+        var resolved = new Dictionary<string, MemberLookup>(StringComparer.Ordinal);
+        const int mdxChunk = 50;
+        for (int off = 0; off < names.Count; off += mdxChunk)
+        {
+            var slice = names.Skip(off).Take(mdxChunk).Select(n => n.Name).ToList();
+            try
+            {
+                foreach (var kv in await ResolveMembersViaMdxAsync(cube, server, catalog, slice, ct)) resolved[kv.Key] = kv.Value;
+            }
+            catch (Exception ex) when (Recoverable(ex))
+            {
+                // On the dev server an unknown key gives a null cell, not a failed query: a fallback
+                // here means another cause (or another missing-member mode) — worth a trace.
+                Console.WriteLine($"[CubeScope] Key batch failed, member-by-member fallback: {ex.GetBaseException().Message}");
+                Exception? last = null;
+                int failures = 0;
+                foreach (var name in slice)
+                {
+                    try { foreach (var kv in await ResolveMembersViaMdxAsync(cube, server, catalog, [name], ct)) resolved[kv.Key] = kv.Value; }
+                    catch (Exception ex2) when (Recoverable(ex2))
+                    {
+                        resolved[name] = new MemberLookup(null, "", Failed: true);
+                        last = ex2;
+                        failures++;
+                    }
+                }
+                // Every key failing on its own is a server problem, not a list of unknown keys.
+                if (failures == slice.Count && last is not null) throw last;
+            }
+        }
+
+        var found = new List<ResolvedKey>();
+        var missing = new List<string>();
+        var failed = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, name) in names)
+        {
+            var m = resolved.GetValueOrDefault(name);
+            if (m is { Failed: true }) failed.Add(key);
+            else if (m?.UniqueName is not { } unique) missing.Add(key);
+            // Two pasted forms of one member (0042 and 42, case on a case-insensitive collation): once.
+            else if (seen.Add(unique)) found.Add(new ResolvedKey(key, unique, m.Caption));
+        }
+        return new KeyResolution(distinct, found, missing, failed);
+    }
+
+    /// <summary>One looked-up member: canonical name (null = no such member), caption, or a lookup in error.</summary>
+    private sealed record MemberLookup(string? UniqueName, string Caption, bool Failed = false);
+
+    /// <summary>
+    /// Canonical unique name and caption of members, one MDX query per batch. Null UniqueName =
+    /// no such member (an unknown key yields a null cell, observed); a cell in error = lookup
+    /// failed for that key. The caption is read apart: one in error or empty does not lose the
+    /// member (empty captions exist, observed) — the UI shows the key instead.
+    /// </summary>
+    private Task<IReadOnlyDictionary<string, MemberLookup>> ResolveMembersViaMdxAsync(
+        string cube, string server, string catalog, IReadOnlyList<string> members, CancellationToken ct)
+        => session.WithConnectionAsync<IReadOnlyDictionary<string, MemberLookup>>(conn =>
+        {
+            EnsureContext(server, catalog);
+            var sb = new StringBuilder("WITH ");
+            for (int i = 0; i < members.Count; i++)
+            {
+                string m = members[i].Replace("'", "''");
+                sb.Append($"MEMBER [Measures].[__u{i}] AS StrToMember('{m}').UniqueName ")
+                  .Append($"MEMBER [Measures].[__c{i}] AS StrToMember('{m}').Properties(\"MEMBER_CAPTION\") ");
+            }
+            sb.Append("SELECT { ")
+              .Append(string.Join(", ", Enumerable.Range(0, members.Count)
+                  .Select(i => $"[Measures].[__u{i}], [Measures].[__c{i}]")))
+              .Append(" } ON 0 FROM [").Append(cube.Replace("]", "]]")).Append(']');
+
+            using var cmd = new AdomdCommand(sb.ToString(), conn);
+            var cs = SsasSession.Run(cmd, cmd.ExecuteCellSet, ct);
+            var result = new Dictionary<string, MemberLookup>(StringComparer.Ordinal);
+            for (int i = 0; i < members.Count; i++)
+            {
+                object? unique;
+                try { unique = cs.Cells[2 * i].Value; }
+                catch (AdomdException)
+                {
+                    result[members[i]] = new MemberLookup(null, "", Failed: true);
+                    continue;
+                }
+                if (unique is null or DBNull || unique.ToString() is not { Length: > 0 } u)
+                {
+                    result[members[i]] = new MemberLookup(null, "");
+                    continue;
+                }
+                string caption;
+                try { caption = cs.Cells[2 * i + 1].Value is { } c and not DBNull ? c.ToString() ?? "" : ""; }
+                catch (AdomdException) { caption = ""; }
+                result[members[i]] = new MemberLookup(u, caption);
+            }
+            return result;
+        }, ct);
+
+    /// <summary>
     /// Caption of ONE member by its unique name. Delegates to the batched lookup (persistent SQLite cache).
     /// Works for any member regardless of the size of the dimension. Null if not found.
     /// </summary>
@@ -312,13 +432,13 @@ public sealed class MetadataService(SsasSession session, StateStore store)
         EvictMembers(CubeKey(cube));
     }
 
-    /// <summary>Pure construction of the DTO from the rowsets (testable without a server).</summary>
     /// <summary>LEVEL_TYPE = 1 is the (All) level (checked on SSAS 17.0.25.218: level 0 of every
     /// aggregatable hierarchy, never below). Missing column (older rowsets, tests) = not All.</summary>
     private static bool IsAllLevel(DataRow r)
         => r.Table.Columns.Contains("LEVEL_TYPE") && r["LEVEL_TYPE"] is not DBNull
            && Convert.ToInt32(r["LEVEL_TYPE"]) == 1;
 
+    /// <summary>Pure construction of the DTO from the rowsets (testable without a server).</summary>
     internal static CubeMeta Build(string cube, DataTable measures, DataTable dimensions,
         DataTable hierarchies, DataTable levels)
     {

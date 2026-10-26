@@ -199,8 +199,32 @@ export function dropItem(zone: 'measures' | AxisZone | 'filters', item: DragItem
   return null
 }
 
+/** Members of one hierarchy added in bulk (pasted list) to Rows or Filters. */
+export function addMembersTo(zone: AxisZone | 'filters', hierarchy: string, members: Picked[]) {
+  if (zone === 'filters') {
+    let f = builder.filters.find((x) => x.hierarchy === hierarchy)
+    if (!f) {
+      builder.filters.push({ hierarchy, members: [] })
+      f = builder.filters[builder.filters.length - 1]
+    }
+    addMembers(f.members, members)
+    return
+  }
+  const otherZone: AxisZone = zone === 'columns' ? 'rows' : 'columns'
+  const otherIndex = builder[otherZone].findIndex((x) => x.hierarchy === hierarchy)
+  if (otherIndex >= 0) builder[zone].push(...builder[otherZone].splice(otherIndex, 1))
+  const existing = builder[zone].find((x) => x.hierarchy === hierarchy)
+  if (existing) addMembers(existing.members, members)
+  else builder[zone].push({ hierarchy, level: defaultLevel(hierarchy), members: [...members], rank: null })
+}
+
 function addMembers(target: Picked[], add: Picked[]) {
-  for (const m of add) if (!target.some((x) => x.uniqueName === m.uniqueName)) target.push(m)
+  // A Set, not target.some() per member: pasted lists reach thousands of members.
+  const present = new Set(target.map((x) => x.uniqueName))
+  for (const m of add) if (!present.has(m.uniqueName)) {
+    present.add(m.uniqueName)
+    target.push(m)
+  }
 }
 
 // --- Request model: names only, no MDX. Incomplete filters are left out (shown as such).

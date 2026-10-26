@@ -307,10 +307,38 @@ export const api = {
   // Graphical builder: model → MDX, generated server-side (the front never assembles MDX)
   builderMdx: (model: BuilderModel) => request<{ mdx: string }>('POST', '/api/builder/mdx', model),
 
+  // Pasted keys → members of a level (missing keys come back apart)
+  // Either the raw pasted text (split server-side) or the keys of a saved list
+  resolveKeys: (cube: string, level: string, input: { text: string } | { keys: string[] }, signal?: AbortSignal) =>
+    request<KeyResolution>('POST', '/api/metadata/resolve-keys', { cube, level, ...input }, signal),
+  namedLists: () => request<NamedList[]>('GET', '/api/lists'),
+  saveNamedList: (name: string, level: string, keys: string[]) =>
+    request<{ id: number }>('POST', '/api/lists', { name, level, keys }),
+  deleteNamedList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
+
   // Processing state of the current database (AMO, read-only)
   processingState: () => request<ProcessingStateResponse>('GET', '/api/processing/state'),
   setProcessingThreshold: (hours: number) =>
     request<{ hours: number }>('PUT', '/api/processing/threshold', { hours }),
+}
+
+export interface KeyResolution {
+  /** Parsed keys, in pasted order (what a saved list keeps). */
+  keys: string[]
+  /** uniqueName = canonical name from the server; caption may be empty (real members without a name). */
+  found: { key: string; uniqueName: string; caption: string }[]
+  /** The server answered "no such member". */
+  missing: string[]
+  /** The lookup itself failed for these keys: not the same as missing. */
+  failed: string[]
+}
+
+export interface NamedList {
+  id: number
+  name: string
+  level: string
+  keys: string[]
+  createdUtc: string
 }
 
 export interface BuilderRank {
