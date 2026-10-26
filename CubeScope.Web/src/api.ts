@@ -316,6 +316,11 @@ export const api = {
     request<{ id: number }>('POST', '/api/lists', { name, level, keys }),
   deleteNamedList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
 
+  // Processing: XMLA preview (+ production verdict), run (production rule enforced server-side), log
+  processPreview: (req: ProcessRequest) => request<ProcessPreview>('POST', '/api/processing/preview', req),
+  processRun: (req: ProcessRequest) => request<ProcessResult>('POST', '/api/processing/run', req),
+  processLog: () => request<ProcessLogEntry[]>('GET', '/api/processing/log'),
+
   // Processing state of the current database (AMO, read-only)
   processingState: () => request<ProcessingStateResponse>('GET', '/api/processing/state'),
   setProcessingThreshold: (hours: number) =>
@@ -364,6 +369,55 @@ export interface BuilderModel {
   filters: { hierarchy: string; members: string[] }[]
   nonEmptyColumns: boolean
   nonEmptyRows: boolean
+}
+
+export type ProcessObjectKind = 'Cube' | 'MeasureGroup' | 'Partition' | 'Dimension'
+/** No ProcessAdd: without a dedicated source query it doubles the partition data. */
+export type ProcessMode = 'Default' | 'Full' | 'Data' | 'Update' | 'Clear'
+
+/** Addressed by IDs, which differ from names after a rename. */
+export interface ProcessTarget {
+  kind: ProcessObjectKind
+  cubeId?: string
+  measureGroupId?: string
+  partitionId?: string
+  dimensionId?: string
+}
+
+export interface ProcessRequest {
+  target: ProcessTarget
+  mode: ProcessMode
+  /** Production only: the server name typed again. */
+  confirmServer?: string
+}
+
+export interface ProcessPreview {
+  objectLabel: string
+  /** Exactly what a run sends (captured from AMO). Empty when refused. */
+  xmla: string
+  isProduction: boolean
+  affectedMeasureGroups: string[]
+  /** Refusal no confirmation can lift, or null. */
+  refusal: string | null
+}
+
+export interface ProcessResult {
+  success: boolean
+  durationMs: number
+  messages: { severity: 'Error' | 'Warning' | 'Info'; text: string }[]
+}
+
+export interface ProcessLogEntry {
+  id: number
+  server: string
+  catalog: string
+  objectLabel: string
+  mode: string
+  isProduction: boolean
+  durationMs: number
+  success: boolean
+  error: string | null
+  executedUtc: string
 }
 
 export type ObjectState = 'Processed' | 'PartiallyProcessed' | 'Unprocessed'

@@ -79,6 +79,9 @@ export const store = reactive({
   // definition twice in a row (otherwise the watch would not fire again).
   gotoDefinition: '' as string,
   gotoDefinitionRevision: 0,
+  // A panel asks the shell to show another panel (e.g. the processing dialog → Sessions, to cancel).
+  panelRequest: '' as string,
+  panelRequestRevision: 0,
   running: false,
   result: null as QueryResult | null,
   queryError: '',
@@ -177,6 +180,12 @@ export const actions = {
   requestDefinition(name: string): void {
     store.gotoDefinition = name
     store.gotoDefinitionRevision++
+  },
+
+  /** Asks the shell (App.vue, which owns the layout) to show a panel. */
+  requestPanel(id: string): void {
+    store.panelRequest = id
+    store.panelRequestRevision++
   },
 
   async loadRecent(): Promise<void> {

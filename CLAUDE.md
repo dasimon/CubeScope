@@ -55,6 +55,19 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   into the context. MDX formatting goes through the AI: **do not write a
   deterministic formatter** (identified effort trap).
 
+- **Production rule for actions that modify a server** (2026-10-26, lot 4 — processing; the
+  XMLA console follows the same rule): `ProductionActionGuard` (Core), distinct from
+  `DevServerGuard`, which keeps its meaning (where deployment and ClearCache are allowed at all —
+  ClearCache stays dev-only). A server declared dev → allowed after a simple confirmation in the
+  UI. Any other server counts as **production**: the request must carry `confirmServer` equal to
+  the session's server (trimmed, case-insensitive), typed again by the user, otherwise refused.
+  In production, **Full, Data or Clear on a dimension is refused** whatever the confirmation
+  (it leaves the dependent measure groups unprocessed and the cube unqueryable; Data: presumed,
+  not observed — owner's decision). Checked in the Core service **before any connection** to the
+  target server; every attempt, refused or not, goes to the SQLite processing log.
+  **ProcessAdd is not offered**: without an out-of-line source query it re-reads the partition
+  source and doubles the data (owner's decision — the XMLA console covers the real need).
+
 ## Deferred / forbidden for the MVP
 
 Deterministic formatter, interactive graphical map (the tree view
@@ -107,16 +120,28 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
     May, its cubes at last night) → never show it as "last processing".
   - A measure group's `LastProcessed` = its newest partition (or a few seconds
     later), a cube's = its newest measure group, after a cube-level process
-    (0 partition out of 118 newer than its measure group). What a **partition-only**
-    process does to the parents is NOT observed yet → freshness is computed from
-    the partitions (oldest/newest), never from the parent's own date.
+    (0 partition out of 118 newer than its measure group). A **partition-only**
+    ProcessFull does **NOT** move the `LastProcessed` of its measure group nor of its
+    cube (observed 2026-10-26, integration test) → freshness is computed from the
+    partitions (oldest/newest), never from the parent's own date.
   - An **Unprocessed object keeps a non-null `LastProcessed`** (the date of its
     last state change) → the state wins over the date.
   - `LastProcessed` comes back as `DateTimeKind.Local` → `ToUniversalTime()` in Core.
     Client and server share a time zone here: a different one is untested.
   - `EstimatedSize`: measure group = Σ of its partitions, values differ between
     dev and prod → reported by the server. Whether a process refreshes it is
-    not proven yet (needs two reads around a process).
+    not proven yet (a ProcessFull of an unchanged small partition kept 1233 bytes —
+    consistent, not conclusive).
+- **Processing through AMO** (`ProcessService`, observed on 17.0.25.218 dev):
+  `Server.CaptureXml = true` + `obj.Process(type)` **records without executing** (the object
+  kept its date) and `ConcatenateCaptureLog(true, false)` gives a `<Batch Transaction='true'>`
+  that addresses objects by **ID** (`MeasureGroupID` "Fait Flux" for the group named "Flux") —
+  the preview shows that text and the run captures it again from the same object and mode,
+  then executes it (`Server.Execute`). `Execute` **does not throw** for a server-side error: an
+  unknown ID or a malformed command comes back as an `XmlaError` in the results
+  (`ContainsErrors = true`); a success is one result without messages. 10 of the
+  51 database dimensions of the dev base are used by no measure group: an empty "affected
+  measure groups" list is normal there.
   - `EstimatedRows` is the **design-time** estimate (SSDT): identical in dev and prod,
     measure group ≠ Σ partitions, many zeros → shown only as a tooltip, flagged as such.
   - Without Read Definition, the database is assumed to be absent from
@@ -522,7 +547,21 @@ key is rethrown); only found keys enter the query. Named lists in SQLite (`Named
 **v11**, keys in pasted order, found or not), reloaded with a fresh check. Cap: 5000 keys.
 Deliberate deviation from "reuse `ResolveCaptionsViaMdxAsync`": it judges existence by the
 caption, and members with an empty caption exist (see Known pitfalls).
-Next lots (processing, XMLA console) are planned but not started.
+
+**Admin tools, lot 4 — processing from the State panel: DONE (2026-10-26)**, branch
+`feat/traitement` (on top of `feat/listes`). Right-click (or the row's cog) → "Process…":
+mode (Default, Full, Data, Update for a dimension, Clear — no Add, see settled decisions),
+XMLA preview captured by AMO (copyable), production banner and server name to retype on a
+non-dev server, warning listing the measure groups a dimension Full/Data/Clear leaves
+unprocessed (Update: flexible aggregations and indexes dropped, warned without refusal),
+elapsed time while running (dialog non-modal then, so the Sessions panel stays reachable to
+cancel), result with server messages, state read again afterwards. `ProcessService` (short AMO
+connection, one run at a time, the XMLA re-captured server-side — never taken from the
+client), `ProductionActionGuard` (see settled decisions), `POST /api/processing/preview`,
+`/run` (403 `productionRefused`), `GET /log`; SQLite `ProcessLog` (schema **v12**, every
+attempt including refusals, with the targeted IDs). Verified on the dev server: preview
+without execution, ProcessFull of one small partition from the UI and from the tests.
+Next lot (XMLA console) is planned but not started.
 
 **SSDT project mode: DONE (2026-07-24)** — opening/editing the
 `.cube` file of an SSDT Multidimensional project (`CubeProjectService`,

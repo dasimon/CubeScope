@@ -237,6 +237,15 @@ watch(
   () => dvApi.value?.getPanel('script')?.api.setActive(),
 )
 
+// A panel asked for another one (processing dialog → Sessions to cancel a long process).
+watch(
+  () => store.panelRequestRevision,
+  () => {
+    const id = PANELS.find(([p]) => p === store.panelRequest)?.[0]
+    if (id) showPanel(id)
+  },
+)
+
 async function onCatalogChange(catalog: string) {
   try {
     await actions.setCatalog(catalog)

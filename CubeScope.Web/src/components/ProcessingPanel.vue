@@ -11,16 +11,48 @@ import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
+import ContextMenu from 'primevue/contextmenu'
+import DataTable from 'primevue/datatable'
+import Dialog from 'primevue/dialog'
 import type { TreeNode } from 'primevue/treenode'
 import { useToast } from 'primevue/usetoast'
-import { api, type FreshnessStatus, type ObjectState } from '../api'
+import { api, type FreshnessStatus, type ObjectState, type ProcessLogEntry, type ProcessTarget } from '../api'
 import { actions, store } from '../store'
 import { age, bytes, dateTime, severity, stateLabel } from '../processing'
+import ProcessDialog from './ProcessDialog.vue'
 
 const { t } = useI18n()
 const toast = useToast()
 
+type Target = ProcessTarget & { label: string }
+
+// --- Processing: right-click on a name (or its cog) → "Process…" dialog ------------------
+const processTarget = ref<Target | null>(null)
+const menu = ref<InstanceType<typeof ContextMenu>>()
+const menuRow = ref<Target | null>(null)
+const menuItems = computed(() => [
+  { label: t('process.menu'), icon: 'pi pi-cog', command: () => (processTarget.value = menuRow.value) },
+])
+
+function openMenu(event: MouseEvent, row: Row) {
+  if (!row.target) return
+  menuRow.value = row.target
+  menu.value?.show(event)
+}
+
+const showLog = ref(false)
+const log = ref<ProcessLogEntry[]>([])
+async function openLog() {
+  try {
+    log.value = await api.processLog()
+    showLog.value = true
+  } catch (e) {
+    toast.add({ severity: 'error', summary: e instanceof Error ? e.message : String(e), life: 6000 })
+  }
+}
+
 interface Row {
+  target?: Target
   kind: 'folder' | 'cube' | 'measureGroup' | 'partition' | 'dimension'
   name: string
   state?: ObjectState
@@ -43,6 +75,7 @@ const nodes = computed<TreeNode[]>(() => {
   const cubes: TreeNode[] = s.cubes.map((c) => ({
     key: `c:${c.id}`,
     data: {
+      target: { kind: 'Cube', cubeId: c.id, label: c.name },
       kind: 'cube', name: c.name, state: c.state, status: c.status, lastProcessedUtc: c.lastProcessedUtc,
       oldestUtc: c.oldestPartitionUtc, newestUtc: c.newestPartitionUtc,
       staleCount: c.staleCount, unprocessedCount: c.unprocessedCount,
@@ -50,6 +83,7 @@ const nodes = computed<TreeNode[]>(() => {
     children: c.measureGroups.map((g) => ({
       key: `g:${c.id}:${g.id}`,
       data: {
+        target: { kind: 'MeasureGroup', cubeId: c.id, measureGroupId: g.id, label: `${c.name} › ${g.name}` },
         kind: 'measureGroup', name: g.name, state: g.state, status: g.status, lastProcessedUtc: g.lastProcessedUtc,
         oldestUtc: g.oldestPartitionUtc, newestUtc: g.newestPartitionUtc,
         staleCount: g.staleCount, unprocessedCount: g.unprocessedCount, size: g.estimatedSize,
@@ -57,6 +91,10 @@ const nodes = computed<TreeNode[]>(() => {
       children: g.partitions.map((p) => ({
         key: `p:${c.id}:${g.id}:${p.id}`,
         data: {
+          target: {
+            kind: 'Partition', cubeId: c.id, measureGroupId: g.id, partitionId: p.id,
+            label: `${c.name} › ${g.name} › ${p.name}`,
+          },
           kind: 'partition', name: p.name, state: p.state, status: p.status, lastProcessedUtc: p.lastProcessedUtc,
           storage: p.storageMode, size: p.estimatedSize, slice: p.slice, aggregations: p.aggregationDesign,
           rows: p.estimatedRows,
@@ -67,6 +105,7 @@ const nodes = computed<TreeNode[]>(() => {
   const dimensions: TreeNode[] = s.dimensions.map((d) => ({
     key: `d:${d.id}`,
     data: {
+      target: { kind: 'Dimension', dimensionId: d.id, label: d.name },
       kind: 'dimension', name: d.name, state: d.state, status: d.status, lastProcessedUtc: d.lastProcessedUtc,
     } satisfies Row,
   }))
@@ -197,6 +236,7 @@ function lastProcessedOf(r: Row): string | null | undefined {
         :disabled="threshold == null || threshold === store.processing?.thresholdHours"
         @click="saveThreshold"
       />
+      <Button :label="t('process.log')" icon="pi pi-history" size="small" text @click="openLog" />
       <span v-if="readAt" class="processing-meta">{{ t('processing.readAt', { time: readAt }) }}</span>
     </div>
 
@@ -219,7 +259,21 @@ function lastProcessedOf(r: Row): string | null | undefined {
     >
       <Column field="name" :header="t('processing.name')" expander style="min-width: 18rem">
         <template #body="{ node }">
-          <span :class="{ folder: node.data.kind === 'folder' }">{{ node.data.name }}</span>
+          <span
+            :class="{ folder: node.data.kind === 'folder', processable: !!node.data.target }"
+            :title="node.data.target ? t('process.hint') : undefined"
+            @contextmenu="openMenu($event, node.data)"
+          >{{ node.data.name }}</span>
+          <Button
+            v-if="node.data.target"
+            icon="pi pi-cog"
+            text
+            size="small"
+            class="row-process"
+            :aria-label="t('process.menu')"
+            :title="t('process.menu')"
+            @click="processTarget = node.data.target"
+          />
         </template>
       </Column>
       <Column :header="t('processing.state')" style="min-width: 11rem">
@@ -280,6 +334,33 @@ function lastProcessedOf(r: Row): string | null | undefined {
         <template #body="{ node }">{{ node.data.aggregations ?? '' }}</template>
       </Column>
     </TreeTable>
+
+    <ContextMenu ref="menu" :model="menuItems" />
+    <ProcessDialog :target="processTarget" @close="processTarget = null" />
+
+    <Dialog v-model:visible="showLog" modal :header="t('process.logTitle')" :style="{ width: '56rem' }">
+      <DataTable :value="log" size="small" scrollable scroll-height="24rem">
+        <Column :header="t('process.logWhen')">
+          <template #body="{ data }">{{ dateTime(data.executedUtc) }}</template>
+        </Column>
+        <Column field="server" :header="t('process.logServer')" />
+        <Column field="objectLabel" :header="t('process.logObject')" />
+        <Column field="mode" :header="t('process.mode')" />
+        <Column :header="t('process.logEnv')">
+          <template #body="{ data }">
+            <Tag :value="data.isProduction ? t('process.production') : t('process.development')"
+              :severity="data.isProduction ? 'danger' : 'success'" />
+          </template>
+        </Column>
+        <Column :header="t('process.logResult')">
+          <template #body="{ data }">
+            <span :class="data.success ? 'log-ok' : 'log-ko'" :title="data.error ?? ''">
+              {{ data.success ? `${data.durationMs} ms` : (data.error ?? t('process.failedShort')) }}
+            </span>
+          </template>
+        </Column>
+      </DataTable>
+    </Dialog>
   </div>
 </template>
 
@@ -327,6 +408,23 @@ function lastProcessedOf(r: Row): string | null | undefined {
 .num {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.processable {
+  cursor: context-menu;
+}
+/* The cog shows on the hovered row only: 170 rows of cogs would drown the tree. */
+.row-process {
+  margin-left: 0.25rem;
+  visibility: hidden;
+}
+:deep(tr:hover) .row-process {
+  visibility: visible;
+}
+.log-ok {
+  color: var(--p-green-400);
+}
+.log-ko {
+  color: var(--p-red-400);
 }
 .folder {
   font-weight: 600;

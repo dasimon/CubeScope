@@ -67,6 +67,7 @@ builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<SessionsService>();
 builder.Services.AddSingleton<ProcessingStateService>();
+builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<CatalogComparisonService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 // Automatic shutdown when the browser closes — inactive in dev/tests (--no-browser),
@@ -771,6 +772,31 @@ api.MapDelete("/lists/{id:long}", (long id, StateStore store) =>
 {
     store.DeleteNamedList(id);
     return Results.Ok();
+});
+
+// Processing (State panel): preview = the XMLA AMO would send + the production verdict;
+// run = the same XMLA, after ProductionActionGuard (Core, before any connection). A refusal is a
+// 403 with its own code, distinct from a failed process.
+api.MapPost("/processing/preview", async (ProcessRequest req, ProcessService processing, CancellationToken ct) =>
+{
+    try { return Results.Ok(await processing.PreviewAsync(req, ct)); }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+api.MapPost("/processing/run", async (ProcessRequest req, ProcessService processing, CancellationToken ct) =>
+{
+    try { return Results.Ok(await processing.RunAsync(req, ct)); }
+    catch (ProductionActionRefusedException ex)
+    {
+        return Results.Json(new { error = ex.Message, code = "productionRefused" }, statusCode: 403);
+    }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+api.MapGet("/processing/log", (StateStore store) =>
+{
+    try { return Results.Ok(store.GetProcessLog()); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
 // Staleness threshold of the State panel, in hours (stored in SQLite).

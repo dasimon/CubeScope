@@ -196,6 +196,56 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 11;
                 """);
         }
+
+        if (version < 12)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS ProcessLog (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Server TEXT NOT NULL, Catalog TEXT NOT NULL, ObjectLabel TEXT NOT NULL, Mode TEXT NOT NULL,
+                    IsProduction INTEGER NOT NULL, DurationMs INTEGER NOT NULL, Success INTEGER NOT NULL,
+                    Error TEXT NULL, ExecutedUtc TEXT NOT NULL
+                );
+                PRAGMA user_version = 12;
+                """);
+        }
+    }
+
+    // --- Processing log (v12): every processing attempt from the State panel, refused or not.
+
+    public void AddProcessLog(string server, string catalog, string objectLabel, string mode, bool isProduction,
+        long durationMs, bool success, string? error)
+    {
+        Exec("""
+            INSERT INTO ProcessLog (Server, Catalog, ObjectLabel, Mode, IsProduction, DurationMs, Success, Error, ExecutedUtc)
+            VALUES ($s, $c, $o, $m, $p, $d, $ok, $e, $t)
+            """,
+            ("$s", server), ("$c", catalog), ("$o", objectLabel), ("$m", mode), ("$p", isProduction ? 1 : 0),
+            ("$d", durationMs), ("$ok", success ? 1 : 0), ("$e", (object?)error ?? DBNull.Value),
+            ("$t", DateTime.UtcNow.ToString("O")));
+        Prune("ProcessLog", _keepDeployLog);
+    }
+
+    public IReadOnlyList<ProcessLogEntry> GetProcessLog(int limit = 100)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Server, Catalog, ObjectLabel, Mode, IsProduction, DurationMs, Success, Error, ExecutedUtc
+                FROM ProcessLog ORDER BY Id DESC LIMIT $n
+                """;
+            cmd.Parameters.AddWithValue("$n", limit);
+            using var r = cmd.ExecuteReader();
+            var list = new List<ProcessLogEntry>();
+            while (r.Read())
+                list.Add(new ProcessLogEntry(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3),
+                    r.GetString(4), r.GetInt64(5) != 0, r.GetInt64(6), r.GetInt64(7) != 0,
+                    r.IsDBNull(8) ? null : r.GetString(8),
+                    DateTime.Parse(r.GetString(9), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime()));
+            return list;
+        }
     }
 
     // --- Named key lists (v11): pasted lists of keys (ISIN, fund codes…) kept for the builder.
