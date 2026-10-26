@@ -53,6 +53,17 @@ public sealed record ProcessMessage(string Severity, string Text);
 
 public sealed record ProcessResult(bool Success, long DurationMs, IReadOnlyList<ProcessMessage> Messages);
 
+public sealed record XmlaLogEntry(
+    long Id,
+    string Server,
+    string? Catalog,
+    string Script,
+    bool IsProduction,
+    long DurationMs,
+    bool Success,
+    string? Error,
+    DateTime ExecutedUtc);
+
 public sealed record ProcessLogEntry(
     long Id,
     string Server,

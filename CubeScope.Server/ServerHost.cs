@@ -68,6 +68,7 @@ builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<SessionsService>();
 builder.Services.AddSingleton<ProcessingStateService>();
 builder.Services.AddSingleton<ProcessService>();
+builder.Services.AddSingleton<XmlaConsoleService>();
 builder.Services.AddSingleton<CatalogComparisonService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 // Automatic shutdown when the browser closes — inactive in dev/tests (--no-browser),
@@ -463,7 +464,7 @@ api.MapPost("/snippets", (SnippetRequest req, StateStore store) =>
 {
     try
     {
-        return Results.Ok(new { id = store.AddSnippet(req.Name, req.Mdx) });
+        return Results.Ok(new { id = store.AddSnippet(req.Name, req.Mdx, req.Language ?? "mdx") });
     }
     catch (Exception ex)
     {
@@ -799,6 +800,27 @@ api.MapGet("/processing/log", (StateStore store) =>
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// XMLA console: the script is parsed in Core before anything is sent (invalid XML, Discover,
+// production rule); refusals are 403 with their own code, script errors a 400.
+api.MapPost("/xmla/execute", async (XmlaRequest req, XmlaConsoleService console, CancellationToken ct) =>
+{
+    try { return Results.Ok(await console.ExecuteAsync(req.Script, req.ConfirmServer, ct)); }
+    catch (ProductionActionRefusedException ex)
+    {
+        return Results.Json(new { error = ex.Message, code = "productionRefused" }, statusCode: 403);
+    }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+api.MapGet("/xmla/log", (StateStore store) =>
+{
+    try { return Results.Ok(store.GetXmlaLog()); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+// Whole script of one log entry (the list only carries a preview).
+api.MapGet("/xmla/log/{id:long}", (long id, StateStore store) =>
+    store.GetXmlaScript(id) is { } script ? Results.Ok(new { script }) : Results.NotFound(new { error = "Entrée introuvable." }));
+
 // Staleness threshold of the State panel, in hours (stored in SQLite).
 api.MapPut("/processing/threshold", (ThresholdRequest req, StateStore store) =>
 {
@@ -873,7 +895,8 @@ internal sealed record ProjectDeployRequest(string Path, string Server, string C
 internal sealed record DevServerRequest(string Server, bool IsDev);
 internal sealed record CaptionsRequest(string Cube, string[] Names);
 internal sealed record CaptionRefreshRequest(string Cube);
-internal sealed record SnippetRequest(string Name, string Mdx);
+internal sealed record SnippetRequest(string Name, string Mdx, string? Language);
+internal sealed record XmlaRequest(string Script, string? ConfirmServer);
 internal sealed record RegressionSaveRequest(string Name, string Mdx, QueryResult Expected);
 internal sealed record CalcPropRequest(
     string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);

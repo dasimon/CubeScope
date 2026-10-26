@@ -98,8 +98,35 @@ export interface CalculationProp {
 export interface Snippet {
   id: number
   name: string
+  /** The snippet text: MDX or XMLA according to `language` (field name kept from the first version). */
   mdx: string
   createdUtc: string
+  language: 'mdx' | 'xmla'
+}
+
+export interface XmlaExecutionResult {
+  success: boolean
+  durationMs: number
+  messages: { severity: 'Error' | 'Warning' | 'Info'; text: string }[]
+  /** A DMV statement's rowset, shown in the results grid. */
+  rowset: QueryResult | null
+  /** The rowset was capped (10,000 rows server-side). */
+  rowsetTruncated: boolean
+  /** An MDX statement's cellset: the MDX editor is the place for queries. */
+  multidimensionalResult: boolean
+  commands: string[]
+}
+
+export interface XmlaLogEntry {
+  id: number
+  server: string
+  catalog: string | null
+  script: string
+  isProduction: boolean
+  durationMs: number
+  success: boolean
+  error: string | null
+  executedUtc: string
 }
 
 export interface RegressionCase {
@@ -274,7 +301,15 @@ export const api = {
   fsList: (path?: string) =>
     request<DirectoryListing>('GET', `/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   snippets: () => request<Snippet[]>('GET', '/api/snippets'),
-  addSnippet: (name: string, mdx: string) => request<{ id: number }>('POST', '/api/snippets', { name, mdx }),
+  addSnippet: (name: string, mdx: string, language: 'mdx' | 'xmla' = 'mdx') =>
+    request<{ id: number }>('POST', '/api/snippets', { name, mdx, language }),
+
+  // XMLA console: parsed and checked server-side (production rule) before anything is sent
+  xmlaExecute: (script: string, confirmServer?: string) =>
+    request<XmlaExecutionResult>('POST', '/api/xmla/execute', { script, confirmServer }),
+  xmlaLog: () => request<XmlaLogEntry[]>('GET', '/api/xmla/log'),
+  /** Whole script of a log entry (the list carries a 500-character preview). */
+  xmlaLogScript: (id: number) => request<{ script: string }>('GET', `/api/xmla/log/${id}`),
   deleteSnippet: (id: number) => request<void>('DELETE', `/api/snippets/${id}`),
   regressionSave: (name: string, mdx: string, expected: QueryResult) =>
     request<{ id: number }>('POST', '/api/regression', { name, mdx, expected }),

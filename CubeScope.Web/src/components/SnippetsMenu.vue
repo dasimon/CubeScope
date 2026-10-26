@@ -21,7 +21,8 @@ const snippets = ref<Snippet[]>([])
 
 async function loadSnippets() {
   try {
-    snippets.value = await api.snippets()
+    // MDX ones only: the XMLA console lists its own.
+    snippets.value = (await api.snippets()).filter((s) => s.language !== 'xmla')
   } catch {
     snippets.value = []
   }

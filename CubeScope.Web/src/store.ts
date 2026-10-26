@@ -24,6 +24,15 @@ FROM [ ]
 
 // The editor content survives a restart (per-machine convenience, not a document store).
 const MDX_STORAGE_KEY = 'cubescope.mdx'
+const XMLA_STORAGE_KEY = 'cubescope.xmla'
+
+function loadSavedXmla(): string {
+  try {
+    return localStorage.getItem(XMLA_STORAGE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 function loadSavedMdx(): string | null {
   try {
@@ -79,6 +88,10 @@ export const store = reactive({
   // definition twice in a row (otherwise the watch would not fire again).
   gotoDefinition: '' as string,
   gotoDefinitionRevision: 0,
+  // XMLA console: script kept like the editor content; the revision signals a replacement
+  // from outside ("Open in the console" from the processing dialog).
+  xmlaScript: loadSavedXmla(),
+  xmlaRevision: 0,
   // A panel asks the shell to show another panel (e.g. the processing dialog → Sessions, to cancel).
   panelRequest: '' as string,
   panelRequestRevision: 0,
@@ -175,11 +188,39 @@ watch(
   },
 )
 
+let saveXmlaTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => store.xmlaScript,
+  (xmla) => {
+    clearTimeout(saveXmlaTimer)
+    saveXmlaTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(XMLA_STORAGE_KEY, xmla)
+      } catch {
+        // Too big (a whole Create script) or storage unavailable: drop the saved copy rather
+        // than let an OLDER script come back at the next launch and be run by mistake.
+        try {
+          localStorage.removeItem(XMLA_STORAGE_KEY)
+        } catch {
+          /* storage unavailable: nothing saved anyway */
+        }
+      }
+    }, 500)
+  },
+)
+
 export const actions = {
   /** Asks the Script panel to move to the definition of a calculated member/set. */
   requestDefinition(name: string): void {
     store.gotoDefinition = name
     store.gotoDefinitionRevision++
+  },
+
+  /** Puts a script in the XMLA console and shows it. */
+  openInXmlaConsole(script: string): void {
+    store.xmlaScript = script
+    store.xmlaRevision++
+    actions.requestPanel('xmla')
   },
 
   /** Asks the shell (App.vue, which owns the layout) to show a panel. */

@@ -27,6 +27,7 @@ import ProfilerPanel from './components/ProfilerPanel.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
 import ProcessingPanel from './components/ProcessingPanel.vue'
 import BuilderPanel from './components/BuilderPanel.vue'
+import XmlaConsolePanel from './components/XmlaConsolePanel.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
@@ -81,6 +82,7 @@ const panelComponents: Record<string, VueComponent> = {
   sessions: SessionsPanel as VueComponent,
   processing: ProcessingPanel as VueComponent,
   builder: BuilderPanel as VueComponent,
+  xmla: XmlaConsolePanel as VueComponent,
 }
 
 // (panel id, title translation key) — to re-title panels when the language changes.
@@ -94,6 +96,7 @@ const PANELS = [
   ['profiler', 'panel.profiler'],
   ['ai', 'panel.ai'],
   ['script', 'panel.script'],
+  ['xmla', 'panel.xmla'],
   ['sessions', 'panel.sessions'],
   ['processing', 'panel.processing'],
 ] as const
@@ -126,6 +129,7 @@ const PLACEMENT: Record<PanelId, { anchors: Anchor[]; initialWidth?: number }> =
   processing: { anchors: bottomAnchors('processing') },
   ai: { anchors: [['editor', 'right'], ['script', 'right']], initialWidth: 420 },
   script: { anchors: [['editor', 'within']] },
+  xmla: { anchors: [['editor', 'within'], ['script', 'within']] },
 }
 
 function addPanel(api: DockviewApi, id: PanelId, title: string) {
@@ -282,6 +286,9 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'F5') {
     e.preventDefault()
     if (document.querySelector('.p-dialog-mask')) return
+    // Inside the XMLA console, F5 belongs to the console (its editor action); in its fields
+    // (server name, snippet name) it must not run the MDX query.
+    if (e.target instanceof Element && e.target.closest('.xmla')) return
     void actions.run()
   }
 }

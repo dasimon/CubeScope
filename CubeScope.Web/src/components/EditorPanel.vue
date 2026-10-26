@@ -34,9 +34,16 @@ onMounted(() => {
     const sel = editor!.getSelection()
     store.selectedMdx = m && sel && !sel.isEmpty() ? m.getValueInRange(sel) : ''
   })
-  // Execution: Ctrl+Enter and F5 (the browser F5 is intercepted at app level)
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void actions.run())
-  editor.addCommand(monaco.KeyCode.F5, () => void actions.run())
+  // Execution: Ctrl+Enter and F5 (the browser F5 is intercepted at app level).
+  // addAction, NOT addCommand: in Monaco 0.57 addCommand registers a GLOBAL keybinding (one
+  // keybinding service for every editor, last one wins, never removed on dispose) — with the
+  // XMLA console mounted, F5 here ran the XMLA script. An action is scoped to its editor.
+  editor.addAction({
+    id: 'mdx.run',
+    label: t('toolbar.execute'),
+    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, monaco.KeyCode.F5],
+    run: () => void actions.run(),
+  })
 
   // Go to definition: jumps to the CREATE MEMBER / SET in the MDX Script. This is not a
   // Monaco DefinitionProvider (native F12), because the target is ANOTHER editor, in another

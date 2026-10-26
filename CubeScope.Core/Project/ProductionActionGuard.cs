@@ -46,7 +46,16 @@ public static class ProductionActionGuard
     {
         bool production = !DevServerGuard.IsDev(devServers, server);
         if (HardRefusal(production, kind, mode) is { } refusal) return refusal;
-        if (!production) return null;
+        return ConfirmationRefusal(server, devServers, confirmServer);
+    }
+
+    /// <summary>
+    /// The confirmation part alone, shared with the XMLA console: null on a dev server, otherwise
+    /// null only if the server name was typed again (trimmed, case-insensitive).
+    /// </summary>
+    public static string? ConfirmationRefusal(string server, IReadOnlyList<string> devServers, string? confirmServer)
+    {
+        if (DevServerGuard.IsDev(devServers, server)) return null;
         string expected = (server ?? "").Trim();
         string typed = (confirmServer ?? "").Trim();
         return expected.Length > 0 && string.Equals(expected, typed, StringComparison.OrdinalIgnoreCase)

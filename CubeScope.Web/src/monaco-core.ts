@@ -74,5 +74,7 @@ import 'monaco-editor/editor/contrib/gotoError/browser/markerSelectionStatus'
 import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens'
 import 'monaco-editor/editor/contrib/suggest/browser/suggestController'
 import 'monaco-editor/editor/common/standaloneStrings'
+// XML only (XMLA console): registration here, the grammar itself is loaded on demand.
+import 'monaco-editor/languages/definitions/xml/register'
 
 export * from 'monaco-editor/editor/editor.api'

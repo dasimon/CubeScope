@@ -46,7 +46,8 @@ public sealed record DirectoryListing(
     IReadOnlyList<FileEntry> CubeFiles);
 
 /// <summary>A reusable MDX snippet, persisted in SQLite (local library).</summary>
-public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc);
+/// <param name="Mdx">The snippet text — MDX or XMLA according to <paramref name="Language"/> (name kept from v3).</param>
+public sealed record Snippet(long Id, string Name, string Mdx, DateTime CreatedUtc, string Language = "mdx");
 
 /// <summary>An MDX regression case: a query + its reference result (baseline)
 /// serialized as JSON (ExpectedJson = a QueryResult). Re-run after a script change to

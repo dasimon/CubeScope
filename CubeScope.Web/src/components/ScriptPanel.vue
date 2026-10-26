@@ -373,7 +373,13 @@ function ensureEditor() {
     minimap: { enabled: true },
     fontSize: 13,
   })
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveProject())
+  // addAction, not addCommand: addCommand is global to every Monaco editor (see EditorPanel.vue).
+  editor.addAction({
+    id: 'script.save',
+    label: 'Save',
+    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+    run: () => void saveProject(),
+  })
   editor.onDidChangeModelContent(() => {
     if (!suppressDirty && isProject.value && project.value?.canEdit) dirty.value = true
   })

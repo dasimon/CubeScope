@@ -188,8 +188,13 @@ function close() {
 
       <div class="process-xmla-head">
         <span>{{ t('process.xmla') }}</span>
-        <Button icon="pi pi-copy" size="small" text :disabled="!preview?.xmla" :aria-label="t('process.copyXmla')"
-          :title="t('process.copyXmla')" @click="copyXmla" />
+        <span>
+          <Button icon="pi pi-copy" size="small" text :disabled="!preview?.xmla" :aria-label="t('process.copyXmla')"
+            :title="t('process.copyXmla')" @click="copyXmla" />
+          <Button icon="pi pi-external-link" size="small" text :disabled="!preview?.xmla"
+            :aria-label="t('process.openInConsole')" :title="t('process.openInConsole')"
+            @click="actions.openInXmlaConsole(preview!.xmla); close()" />
+        </span>
       </div>
       <pre class="process-xmla">{{ loadingPreview ? '…' : preview?.xmla || '—' }}</pre>
 

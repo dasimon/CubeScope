@@ -209,6 +209,68 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 12;
                 """);
         }
+
+        if (version < 13)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS XmlaLog (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Server TEXT NOT NULL, Catalog TEXT NULL, Script TEXT NOT NULL,
+                    IsProduction INTEGER NOT NULL, DurationMs INTEGER NOT NULL, Success INTEGER NOT NULL,
+                    Error TEXT NULL, ExecutedUtc TEXT NOT NULL
+                );
+                """);
+            // Idempotent like the CREATE … IF NOT EXISTS above: SQLite has no ADD COLUMN IF NOT EXISTS.
+            if (Convert.ToInt64(Scalar("SELECT COUNT(*) FROM pragma_table_info('Snippet') WHERE name = 'Language'")) == 0)
+                Exec("ALTER TABLE Snippet ADD COLUMN Language TEXT NOT NULL DEFAULT 'mdx'");
+            Exec("PRAGMA user_version = 13");
+        }
+    }
+
+    // --- XMLA console log (v13): every script sent or refused. A script over 1 MB is cut: the
+    // log is there to say what was run, not to archive backups' ObjectDefinitions.
+
+    private const int MaxLoggedScript = 1_000_000;
+    // Fewer entries than the other logs: one can weigh up to 1 MB (1000 × 1 MB would be 1 GB).
+    private const int KeepXmlaLog = 200;
+    private const int XmlaLogPreview = 500;
+
+    public void AddXmlaLog(string server, string? catalog, string script, bool isProduction,
+        long durationMs, bool success, string? error)
+    {
+        string text = script.Length > MaxLoggedScript ? script[..MaxLoggedScript] + "\n<!-- … tronqué -->" : script;
+        Exec("""
+            INSERT INTO XmlaLog (Server, Catalog, Script, IsProduction, DurationMs, Success, Error, ExecutedUtc)
+            VALUES ($s, $c, $x, $p, $d, $ok, $e, $t)
+            """,
+            ("$s", server), ("$c", (object?)catalog ?? DBNull.Value), ("$x", text), ("$p", isProduction ? 1 : 0),
+            ("$d", durationMs), ("$ok", success ? 1 : 0), ("$e", (object?)error ?? DBNull.Value),
+            ("$t", DateTime.UtcNow.ToString("O")));
+        Prune("XmlaLog", Math.Min(_keepDeployLog, KeepXmlaLog));
+    }
+
+    /// <summary>The log list carries the first 500 characters of each script; <see cref="GetXmlaScript"/> the whole text.</summary>
+    public IReadOnlyList<XmlaLogEntry> GetXmlaLog(int limit = 100)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Server, Catalog, substr(Script, 1, $p), IsProduction, DurationMs, Success, Error, ExecutedUtc
+                FROM XmlaLog ORDER BY Id DESC LIMIT $n
+                """;
+            cmd.Parameters.AddWithValue("$n", limit);
+            cmd.Parameters.AddWithValue("$p", XmlaLogPreview);
+            using var r = cmd.ExecuteReader();
+            var list = new List<XmlaLogEntry>();
+            while (r.Read())
+                list.Add(new XmlaLogEntry(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2),
+                    r.GetString(3), r.GetInt64(4) != 0, r.GetInt64(5), r.GetInt64(6) != 0,
+                    r.IsDBNull(7) ? null : r.GetString(7),
+                    DateTime.Parse(r.GetString(8), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime()));
+            return list;
+        }
     }
 
     // --- Processing log (v12): every processing attempt from the State panel, refused or not.
@@ -564,15 +626,22 @@ public sealed class StateStore : IDisposable
     /// <summary>Inserts a snippet and returns its generated Id. INSERT + last_insert_rowid() under
     /// the same lock (and the same SQLite connection, never pooled) to prevent a concurrent
     /// write from slipping in between the two calls.</summary>
-    public long AddSnippet(string name, string mdx)
+    public string? GetXmlaScript(long id) =>
+        Scalar("SELECT Script FROM XmlaLog WHERE Id = $id", ("$id", id)) as string;
+
+    /// <param name="mdx">The snippet text (column kept from v3: MDX or, since v13, XMLA).</param>
+    /// <param name="language"><c>mdx</c> or <c>xmla</c> (v13): each editor lists its own.</param>
+    public long AddSnippet(string name, string mdx, string language = "mdx")
     {
+        if (language is not ("mdx" or "xmla")) throw new ArgumentException($"Langage de snippet inconnu : {language}");
         lock (_lock)
         {
             using (var insert = _db.CreateCommand())
             {
-                insert.CommandText = "INSERT INTO Snippet (Name, Mdx, CreatedUtc) VALUES ($n, $m, $t)";
+                insert.CommandText = "INSERT INTO Snippet (Name, Mdx, CreatedUtc, Language) VALUES ($n, $m, $t, $l)";
                 insert.Parameters.AddWithValue("$n", name);
                 insert.Parameters.AddWithValue("$m", mdx);
+                insert.Parameters.AddWithValue("$l", language);
                 insert.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                 insert.ExecuteNonQuery();
             }
@@ -587,12 +656,12 @@ public sealed class StateStore : IDisposable
         lock (_lock)
         {
             using var cmd = _db.CreateCommand();
-            cmd.CommandText = "SELECT Id, Name, Mdx, CreatedUtc FROM Snippet ORDER BY Name COLLATE NOCASE";
+            cmd.CommandText = "SELECT Id, Name, Mdx, CreatedUtc, Language FROM Snippet ORDER BY Name COLLATE NOCASE";
             using var r = cmd.ExecuteReader();
             var list = new List<Snippet>();
             while (r.Read())
                 list.Add(new Snippet(r.GetInt64(0), r.GetString(1), r.GetString(2),
-                    DateTime.Parse(r.GetString(3)).ToUniversalTime()));
+                    DateTime.Parse(r.GetString(3)).ToUniversalTime(), r.GetString(4)));
             return list;
         }
     }

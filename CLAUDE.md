@@ -69,6 +69,13 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   source and doubles the data. **ProcessClear is not offered either**: it empties the object and
   leaves it unqueryable, with no daily use (owner's decisions, 2026-10-26 — the XMLA console
   covers the rare real need, and refuses a Clear in production).
+  **XMLA console** (lot 5): same rule — every script on a non-dev server needs the server name
+  typed again — and, in production, refused whatever the confirmation: Delete, Restore, Detach,
+  Synchronize (owner's list), plus ClearCache, MergePartitions (deletes the source partitions),
+  Attach and ImageLoad (restore-like), Create/Alter of a whole Database, ProcessClear on any
+  object, ProcessFull/ProcessData on any object carrying a DimensionID. Detected by parsing the
+  XML, never by text search. Accepted limit: a `<Statement>` is opaque (an MDX/DMX statement
+  that writes only needs the confirmation).
 
 ## Deferred / forbidden for the MVP
 
@@ -167,6 +174,19 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   not**: only the stored form `1900-04-11T00:00:00` is found — `11/04/1900`, `1900-04-11`,
   `19000411` give null. Behaviour under another `MdxMissingMemberMode` or dimension security: not
   observed (a failed batch is logged and falls back member by member).
+- **Monaco keybindings across editors**: `editor.addCommand(keybinding, handler)` registers a
+  keybinding on the ONE standalone keybinding service shared by every editor, with no condition
+  (monaco 0.57 `standaloneCodeEditor.addCommand` → `addDynamicKeybinding`): the last editor to
+  register wins and the binding outlives `dispose`. With two editors (MDX + XMLA console), F5 in
+  the MDX editor ran the XMLA script. Use `editor.addAction({ id, keybindings, run })`, scoped to
+  its editor. Checked for real: F5 in each editor runs its own content only.
+- **XMLA through AMO `Server.Execute`** (observed on 17.0.25.218 dev): the script is wrapped in
+  `Execute/Command`, so a `<Discover>` is refused by the server; a `<Statement>` with a DMV
+  query returns an XSD schema followed by `<row>` elements in the `…:xml-analysis:rowset`
+  namespace (a fragment without a single root); an MDX `<Statement>` returns an
+  `…:mddataset` cellset; a `<Statement>` runs on the connection's `Initial Catalog`.
+- SQLite migrations must stay **re-runnable**: tests rewind `user_version` to replay a step,
+  and SQLite has no `ADD COLUMN IF NOT EXISTS` — check `pragma_table_info` first (v13).
 - **E2E drag and drop**: Playwright's `dragTo` fires `dragstart` but **no** `dragover`/`drop`
   in this harness (not even on the editor, which works by hand). Test HTML5 drops by
   dispatching `DragEvent`s that share one `new DataTransfer()` (dragstart on the source,
@@ -563,7 +583,22 @@ client), `ProductionActionGuard` (see settled decisions), `POST /api/processing/
 `/run` (403 `productionRefused`), `GET /log`; SQLite `ProcessLog` (schema **v12**, every
 attempt including refusals, with the targeted IDs). Verified on the dev server: preview
 without execution, ProcessFull of one small partition from the UI and from the tests.
-Next lot (XMLA console) is planned but not started.
+
+**Admin tools, lot 5 — XMLA console: DONE (2026-10-26)**, branch `feat/console-xmla` (on top
+of `feat/traitement`). "XMLA console" panel (tab next to MDX/Script) with its own Monaco editor
+(XML colouring: only `languages/definitions/xml/register` added to `monaco-core.ts` — main
+bundle +10 KB, grammar lazy chunk 1.9 KB), Ctrl+Enter/F5, server name to retype on a non-dev
+server, XMLA snippets (same SQLite library, `Snippet.Language` mdx|xmla), log (SQLite `XmlaLog`,
+schema **v13**, 200 entries, 1 MB per script, preview in the list), "Open in the XMLA console"
+from the processing dialog. `XmlaScriptAnalyzer` (Core, pure) parses the script with XDocument
+before anything is sent: invalid XML, `Discover` and unknown elements inside a Batch refused;
+commands found only at structural positions (root, Batch, Parallel), by local name whatever the
+namespace; the PARSED script is what is sent. Production refusals: see settled decisions.
+`XmlaConsoleService`: AMO `Server.Execute` on a short connection with `Initial Catalog`
+(connection-string builder), messages/warnings/errors, a DMV rowset in `ResultsGrid` (capped at
+10,000 rows), an MDX cellset only reported (the MDX editor is for queries). Verified on the dev
+server: DMV in the grid, invalid XML refused, snippet save/load/delete, open-in-console then run,
+log, F5 isolation between the two editors.
 
 **SSDT project mode: DONE (2026-07-24)** — opening/editing the
 `.cube` file of an SSDT Multidimensional project (`CubeProjectService`,
