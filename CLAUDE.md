@@ -64,7 +64,8 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
 ## Dev environment
 
 - Windows only. Targets a real SSAS **Multidimensional** (tested on
-  SSAS 2022, default instance on port 2383, plus a named instance on a fixed
+  SSAS 2022 until mid-2026, on **SSAS 2025 (17.0.25.218)** since — dev and prod
+  servers alike; no 2022 server left to compare against), default instance on port 2383, plus a named instance on a fixed
   port — the `host\instance` syntax does not work if SQL Browser (UDP 2382) is
   closed, use `Data Source=host:port`). For anything that clears the cache:
   target a **dev** catalog (ClearCache is scoped to the `DatabaseID`, prod
@@ -97,7 +98,33 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
 - An **unprocessed cube disappears from `MDSCHEMA_CUBES`** (no more
   `CUBE_SOURCE=1` row; the `$` dimensions are still listed) — symptom: "empty
   database" although the catalog exists. Check `LAST_DATA_UPDATE` with the spike's
-  `--discover` mode (observed on a redeployed, unprocessed catalog).
+  `--discover` mode (observed on a redeployed, unprocessed catalog). AMO still
+  sees it: the **State panel** (`ProcessingStateService`) lists it in red —
+  re-checked on SSAS 17.0.25.218 with AMO 19.84.1 by an integration test.
+- **Processing state through AMO** (`ProcessingStateService`, read-only probes on
+  SSAS 17.0.25.218, dev and prod, 2026-10-26 — observed, not assumed):
+  - `Database.LastProcessed` is **not** updated by a cube process (database at
+    May, its cubes at last night) → never show it as "last processing".
+  - A measure group's `LastProcessed` = its newest partition (or a few seconds
+    later), a cube's = its newest measure group, after a cube-level process
+    (0 partition out of 118 newer than its measure group). What a **partition-only**
+    process does to the parents is NOT observed yet → freshness is computed from
+    the partitions (oldest/newest), never from the parent's own date.
+  - An **Unprocessed object keeps a non-null `LastProcessed`** (the date of its
+    last state change) → the state wins over the date.
+  - `LastProcessed` comes back as `DateTimeKind.Local` → `ToUniversalTime()` in Core.
+    Client and server share a time zone here: a different one is untested.
+  - `EstimatedSize`: measure group = Σ of its partitions, values differ between
+    dev and prod → reported by the server. Whether a process refreshes it is
+    not proven yet (needs two reads around a process).
+  - `EstimatedRows` is the **design-time** estimate (SSDT): identical in dev and prod,
+    measure group ≠ Σ partitions, many zeros → shown only as a tooltip, flagged as such.
+  - Without Read Definition, the database is assumed to be absent from
+    `Server.Databases` (`FindByName` → null → "Unavailable"): **not verified**,
+    no account without the permission was available.
+  - First AMO `Connect` of a fresh PowerShell process took **42 s** once (60-180 ms
+    afterwards, ~1 s for the whole read of 2 cubes / 118 partitions / 51 dimensions
+    from CubeScope). Cause not elucidated; not reproduced in `cubescope.exe`.
 - ADOMD rowsets → `DataTable.Load`: rowsets (DMVs as well as schema rowsets)
   declare uniqueness constraints that their own data violate
   (`ConstraintException "Failed to enable constraints"`). Always load the
@@ -175,6 +202,11 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   default, which requires `@primeuix/styled` ^1.0 (incompatible with `@primevue/themes` 4.x)
   and ships an unaudited `license-manager`. Permanent dark mode: class
   `p-dark` on `<html>` + `darkModeSelector: '.p-dark'` (`':root'` does not work).
+- PrimeVue `InputNumber` updates its `v-model` **only on blur** (observed with real
+  keystrokes): a button disabled while "unchanged" stays disabled during typing, and an
+  `@keydown.enter` handler saves the previous value. Read the value from its `@input`
+  event (`{ value }`) — see `ProcessingPanel.vue`. In E2E tests, Playwright `fill()`
+  bypasses its key handlers: type key by key.
 - monaco-editor ≥ 0.56: exports map `"./*" → "./esm/vs/*.js"` — import
   `monaco-editor/editor/editor.worker?worker`, never again the `esm/vs/…` path
   (Vite/Rolldown no longer resolves it). Monaco uses EditContext: no more
@@ -422,6 +454,22 @@ Delivered afterwards (v0.2 → v0.10), by theme:
   (profile)" backed by the real figures of the execution profile (FE/SE, subcubes,
   hits), **NL → MDX** generation grounded in the cube metadata, and
   **alternative OpenAI-compatible providers** in addition to the Anthropic API.
+
+**Admin tools, lot 1 — "State" panel: DONE (2026-10-26)**, branch
+`feat/etat-cube`. Read-only processing state of the current database through a
+short AMO connection (`ProcessingStateService`, separate from the ADOMD session):
+cubes → measure groups → partitions, plus dimensions, with state, last processing,
+freshness range from the partitions, storage mode, server-reported size, slice,
+aggregation design. Pure verdict in `ProcessingStateEvaluator` (Unprocessed wins
+over the date; Stale beyond a threshold, default 24 h, stored in SQLite —
+`Setting` table, schema **v10**). Red/orange badges, summary in the status bar
+(click opens the panel), `GET /api/processing/state`, `PUT /api/processing/threshold`.
+Read once per catalog selection and on Refresh — never polled. Accepted limits:
+on a cube whose history partitions are never reprocessed, they all show as stale;
+ROLAP partitions and linked measure groups get no special rule (none on the test
+database); the threshold can only be edited once a catalog is selected.
+Verified for real against the dev server (SSAS 17.0.25.218, AMO 19.84.1).
+Next lots (constructor, pasted lists, processing, XMLA console) are planned but not started.
 
 **SSDT project mode: DONE (2026-07-24)** — opening/editing the
 `.cube` file of an SSDT Multidimensional project (`CubeProjectService`,

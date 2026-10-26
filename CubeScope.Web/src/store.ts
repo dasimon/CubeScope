@@ -8,6 +8,7 @@ import {
   type CounterDelta,
   type CubeMeta,
   type HistoryEntry,
+  type ProcessingState,
   type ProfileRun,
   type QueryProfile,
   type QueryResult,
@@ -101,6 +102,14 @@ export const store = reactive({
   profilerStatus: null as StatsStatus | null,
   profilerHistory: [] as ProfileRun[],
 
+  // Processing state (State panel + status bar). Read once per catalog and on Refresh:
+  // never polled, each read is an AMO connection to the server.
+  processing: null as ProcessingState | null,
+  /** Read Definition permission missing: message from the server, shown instead of the tree. */
+  processingUnavailable: '',
+  processingError: '',
+  processingLoading: false,
+
   // AI panel
   aiConfigured: null as boolean | null,
   aiModel: 'claude-opus-4-8', // active model (Anthropic by default, or a configured OpenAI-compatible LLM)
@@ -121,6 +130,7 @@ let abort: AbortController | null = null
 let aiAbort: AbortController | null = null
 let resultSeq = 0 // monotonic counter of result tabs (no Date.now/Math.random)
 let metaSeq = 0 // latest metadata request: older responses are ignored
+let processingSeq = 0 // same, for the processing state
 let pendingProfileMdx: string | null = null // MDX of the last query sent (its profile comes by SignalR)
 
 let saveMdxTimer: ReturnType<typeof setTimeout> | undefined
@@ -173,8 +183,37 @@ export const actions = {
       store.stats = []
       store.profile = null
       store.profileMdx = null
+      processingSeq++
+      store.processing = null
+      store.processingUnavailable = ''
+      store.processingError = ''
+      store.processingLoading = false
     }
     void import('./mdx-completion').then((m) => m.resetCompletionCache())
+  },
+
+  async loadProcessing(): Promise<void> {
+    if (!store.connected || !store.catalog) return
+    const seq = ++processingSeq
+    store.processingLoading = true
+    try {
+      const r = await api.processingState()
+      if (seq !== processingSeq) return
+      store.processingError = ''
+      if (r.status === 'Ok') {
+        store.processing = r.state
+        store.processingUnavailable = ''
+      } else {
+        store.processing = null
+        store.processingUnavailable = r.detail
+      }
+    } catch (e) {
+      if (seq !== processingSeq) return
+      store.processing = null
+      store.processingError = e instanceof Error ? e.message : String(e)
+    } finally {
+      if (seq === processingSeq) store.processingLoading = false
+    }
   },
 
   async connect(server: string): Promise<boolean> {
@@ -205,6 +244,7 @@ export const actions = {
     actions.resetContext('catalog')
     store.catalog = catalog
     void actions.loadMetadata()
+    void actions.loadProcessing()
   },
 
   async loadMetadata(refresh = false): Promise<void> {

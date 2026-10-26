@@ -66,6 +66,7 @@ builder.Services.AddSingleton<ScriptDeployService>();
 builder.Services.AddSingleton<PerfmonService>();
 builder.Services.AddSingleton<ProfilerService>();
 builder.Services.AddSingleton<SessionsService>();
+builder.Services.AddSingleton<ProcessingStateService>();
 builder.Services.AddSingleton<CatalogComparisonService>();
 builder.Services.AddSingleton<StateStore>(_ => new StateStore());
 // Automatic shutdown when the browser closes — inactive in dev/tests (--no-browser),
@@ -730,6 +731,27 @@ api.MapPost("/sessions/{spid:int}/cancel", async (int spid, SessionsService sess
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Processing state of the current database (AMO, read-only). Missing Read Definition
+// permission = "Unavailable" state for the UI, not an error (same stance as the Profiler).
+api.MapGet("/processing/state", async (ProcessingStateService processing, CancellationToken ct) =>
+{
+    try { return Results.Ok(new { status = "Ok", state = await processing.ReadAsync(ct) }); }
+    catch (ProcessingStateUnavailableException ex) { return Results.Ok(new { status = "Unavailable", detail = ex.Message }); }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
+// Staleness threshold of the State panel, in hours (stored in SQLite).
+api.MapPut("/processing/threshold", (ThresholdRequest req, StateStore store) =>
+{
+    try
+    {
+        store.SetStaleThresholdHours(req.Hours);
+        return Results.Ok(new { hours = store.GetStaleThresholdHours() });
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
 // Page departure beacon (navigator.sendBeacon on `pagehide`): tells a close
 // or a reload — short shutdown delay — apart from a mere transport drop, where the client
 // will reconnect on its own and where shutting down quickly would kill the server under a live page.
@@ -799,6 +821,7 @@ internal sealed record CalcPropRequest(
     string Path, string Reference, string? FormatString, string? DisplayFolder, string? Description);
 internal sealed record RenameRequest(string Script, string OldName, string NewName);
 internal sealed record ImpactRequest(string OldScript, string NewScript);
+internal sealed record ThresholdRequest(int Hours);
 
 /// <summary>
 /// Hub with no client→server method: server push only ("queryStats").

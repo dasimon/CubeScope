@@ -301,7 +301,89 @@ export const api = {
   // cancelled = false: the session had already gone (the displayed list gets stale)
   cancelSession: (spid: number) =>
     request<{ spid: number; cancelled: boolean }>('POST', `/api/sessions/${spid}/cancel`),
+
+  // Processing state of the current database (AMO, read-only)
+  processingState: () => request<ProcessingStateResponse>('GET', '/api/processing/state'),
+  setProcessingThreshold: (hours: number) =>
+    request<{ hours: number }>('PUT', '/api/processing/threshold', { hours }),
 }
+
+export type ObjectState = 'Processed' | 'PartiallyProcessed' | 'Unprocessed'
+/** Unprocessed always wins over Stale: an unprocessed object keeps a meaningless date. */
+export type FreshnessStatus = 'Ok' | 'Stale' | 'Unprocessed'
+
+export interface PartitionNode {
+  name: string
+  id: string
+  state: ObjectState
+  lastProcessedUtc: string | null
+  storageMode: string
+  slice: string | null
+  aggregationDesign: string | null
+  estimatedSize: number
+  /** Design-time estimate (SSDT): NOT updated by processing (observed). */
+  estimatedRows: number
+  status: FreshnessStatus
+}
+
+export interface MeasureGroupNode {
+  name: string
+  id: string
+  state: ObjectState
+  lastProcessedUtc: string | null
+  oldestPartitionUtc: string | null
+  newestPartitionUtc: string | null
+  estimatedSize: number
+  status: FreshnessStatus
+  staleCount: number
+  unprocessedCount: number
+  partitions: PartitionNode[]
+}
+
+export interface CubeNode {
+  name: string
+  id: string
+  state: ObjectState
+  lastProcessedUtc: string | null
+  oldestPartitionUtc: string | null
+  newestPartitionUtc: string | null
+  status: FreshnessStatus
+  staleCount: number
+  unprocessedCount: number
+  measureGroups: MeasureGroupNode[]
+}
+
+export interface DimensionNode {
+  name: string
+  id: string
+  state: ObjectState
+  lastProcessedUtc: string | null
+  status: FreshnessStatus
+}
+
+export interface ProcessingSummary {
+  unprocessedCubes: number
+  unprocessedPartitions: number
+  unprocessedDimensions: number
+  staleObjects: number
+  /** Newest partition of the database: "did last night's processing run?" */
+  newestProcessedUtc: string | null
+}
+
+export interface ProcessingState {
+  server: string
+  catalog: string
+  readAtUtc: string
+  thresholdHours: number
+  databaseState: ObjectState
+  cubes: CubeNode[]
+  dimensions: DimensionNode[]
+  summary: ProcessingSummary
+}
+
+export type ProcessingStateResponse =
+  | { status: 'Ok'; state: ProcessingState }
+  | { status: 'Unavailable'; detail: string }
 
 /** A cell that differs between the two catalogs (expected = left, actual = right). */
 export interface CellDiff {

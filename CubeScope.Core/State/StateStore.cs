@@ -171,6 +171,45 @@ public sealed class StateStore : IDisposable
                 PRAGMA user_version = 9;
                 """);
         }
+
+        if (version < 10)
+        {
+            Exec("""
+                CREATE TABLE IF NOT EXISTS Setting (
+                    Key   TEXT PRIMARY KEY,
+                    Value TEXT NOT NULL
+                );
+                PRAGMA user_version = 10;
+                """);
+        }
+    }
+
+    // --- Settings (v10): single values, key → text.
+
+    public const int DefaultStaleThresholdHours = 24;
+    public const int MaxStaleThresholdHours = 8760;
+    private const string StaleThresholdKey = "ProcessingStaleThresholdHours";
+
+    /// <summary>
+    /// Age beyond which a processed object is flagged as stale in the State panel.
+    /// A missing or unreadable value falls back to the default rather than breaking the panel.
+    /// </summary>
+    public int GetStaleThresholdHours()
+    {
+        var raw = Scalar("SELECT Value FROM Setting WHERE Key = $k", ("$k", StaleThresholdKey)) as string;
+        return int.TryParse(raw, out int h) && h is >= 1 and <= MaxStaleThresholdHours
+            ? h
+            : DefaultStaleThresholdHours;
+    }
+
+    public void SetStaleThresholdHours(int hours)
+    {
+        if (hours is < 1 or > MaxStaleThresholdHours)
+            // No paramName: the message reaches the UI as is, without the "(Parameter 'hours')" suffix.
+            throw new ArgumentOutOfRangeException(null,
+                $"Le seuil doit être compris entre 1 et {MaxStaleThresholdHours} heures.");
+        Exec("INSERT INTO Setting (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v",
+            ("$k", StaleThresholdKey), ("$v", hours.ToString(System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     // --- Development servers (v9): EXPLICIT list of the servers where a script deployment
@@ -599,12 +638,13 @@ public sealed class StateStore : IDisposable
         }
     }
 
-    private object? Scalar(string sql)
+    private object? Scalar(string sql, params (string Name, object Value)[] args)
     {
         lock (_lock)
         {
             using var cmd = _db.CreateCommand();
             cmd.CommandText = sql;
+            foreach (var (name, value) in args) cmd.Parameters.AddWithValue(name, value);
             return cmd.ExecuteScalar();
         }
     }

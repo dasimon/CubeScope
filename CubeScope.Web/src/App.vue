@@ -25,6 +25,7 @@ import AiPanel from './components/AiPanel.vue'
 import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
+import ProcessingPanel from './components/ProcessingPanel.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
@@ -32,6 +33,7 @@ import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
 import RegressionDialog from './components/RegressionDialog.vue'
 import { startStatsHub } from './stats'
 import { actions, isDevServer, store } from './store'
+import { age, nowUtc } from './processing'
 
 const { t, locale } = useI18n()
 const toast = useToast()
@@ -76,6 +78,7 @@ const panelComponents: Record<string, VueComponent> = {
   script: ScriptPanel as VueComponent,
   profiler: ProfilerPanel as VueComponent,
   sessions: SessionsPanel as VueComponent,
+  processing: ProcessingPanel as VueComponent,
 }
 
 // (panel id, title translation key) — to re-title panels when the language changes.
@@ -89,6 +92,7 @@ const PANELS = [
   ['ai', 'panel.ai'],
   ['script', 'panel.script'],
   ['sessions', 'panel.sessions'],
+  ['processing', 'panel.processing'],
 ] as const
 
 const dvApi = shallowRef<DockviewApi>()
@@ -98,7 +102,7 @@ type Anchor = [referencePanel: PanelId, direction: 'left' | 'right' | 'below' | 
 
 // Where each panel goes: the first anchor panel still present wins. Used for the initial
 // layout AND to reopen a closed panel (its usual neighbours may be closed too).
-const BOTTOM_GROUP: PanelId[] = ['results', 'history', 'stats', 'profiler', 'sessions']
+const BOTTOM_GROUP: PanelId[] = ['results', 'history', 'stats', 'profiler', 'sessions', 'processing']
 function bottomAnchors(id: PanelId): Anchor[] {
   return [
     ...BOTTOM_GROUP.filter((p) => p !== id).map((p): Anchor => [p, 'within']),
@@ -114,6 +118,7 @@ const PLACEMENT: Record<PanelId, { anchors: Anchor[]; initialWidth?: number }> =
   stats: { anchors: bottomAnchors('stats') },
   profiler: { anchors: bottomAnchors('profiler') },
   sessions: { anchors: bottomAnchors('sessions') },
+  processing: { anchors: bottomAnchors('processing') },
   ai: { anchors: [['editor', 'right'], ['script', 'right']], initialWidth: 420 },
   script: { anchors: [['editor', 'within']] },
 }
@@ -195,6 +200,30 @@ function showPanel(id: PanelId) {
 watch(locale, () => {
   for (const [id, key] of PANELS) dvApi.value?.getPanel(id)?.api.setTitle(t(key))
 })
+
+// Processing summary in the status bar: problems first (red / orange), then the age of the
+// newest partition — "did last night's processing run?". Click = open the State panel.
+const processingParts = computed(() => {
+  const s = store.processing
+  if (!s) return []
+  const m = s.summary
+  const parts: { text: string; level: 'danger' | 'warn' | '' }[] = []
+  if (m.unprocessedCubes) parts.push({ text: t('status.unprocessedCubes', { n: m.unprocessedCubes }), level: 'danger' })
+  if (m.unprocessedPartitions)
+    parts.push({ text: t('status.unprocessedPartitions', { n: m.unprocessedPartitions }), level: 'danger' })
+  if (m.unprocessedDimensions)
+    parts.push({ text: t('status.unprocessedDimensions', { n: m.unprocessedDimensions }), level: 'danger' })
+  if (m.staleObjects) parts.push({ text: t('status.staleObjects', { n: m.staleObjects }), level: 'warn' })
+  // The verdict (colours) stays the server's, as of the read; only the age follows the clock.
+  if (m.newestProcessedUtc)
+    parts.push({ text: t('status.lastProcessed', { age: age(m.newestProcessedUtc, nowUtc.value) }), level: '' })
+  return parts
+})
+const processingTitle = computed(() =>
+  store.processing
+    ? `${t('status.openProcessing')} — ${t('processing.readAt', { time: new Date(store.processing.readAtUtc).toLocaleString() })}`
+    : '',
+)
 
 // "Go to definition": the layout belongs to this shell, navigation within the script
 // belongs to ScriptPanel — each one reacts to the same signal on its own side.
@@ -345,6 +374,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <footer class="statusbar">
       <span v-if="store.connected">{{ store.server }} · {{ store.catalog ?? '—' }}</span>
       <span v-else>{{ t('status.notConnected') }}</span>
+      <button
+        v-if="processingParts.length"
+        type="button"
+        class="status-processing"
+        :title="processingTitle"
+        @click="showPanel('processing')"
+      >
+        <span v-for="(p, i) in processingParts" :key="i" :class="p.level && `status-${p.level}`">{{ p.text }}</span>
+      </button>
       <span class="toolbar-spacer" />
       <template v-if="store.result">
         <span>{{ t('status.cells', { cells: store.result.cellCount, axes: store.result.axesCount }) }}</span>
@@ -418,6 +456,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .status-duration {
   font-weight: 600;
   color: var(--p-primary-color);
+}
+.status-processing {
+  display: inline-flex;
+  gap: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.status-processing:hover,
+.status-processing:focus-visible {
+  text-decoration: underline dotted;
+}
+.status-danger {
+  color: var(--p-red-400);
+  font-weight: 600;
+}
+.status-warn {
+  color: var(--p-orange-400);
+  font-weight: 600;
 }
 .clear-result {
   font-size: 0.85rem;
