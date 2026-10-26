@@ -26,6 +26,7 @@ import ScriptPanel from './components/ScriptPanel.vue'
 import ProfilerPanel from './components/ProfilerPanel.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
 import ProcessingPanel from './components/ProcessingPanel.vue'
+import BuilderPanel from './components/BuilderPanel.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
@@ -79,12 +80,14 @@ const panelComponents: Record<string, VueComponent> = {
   profiler: ProfilerPanel as VueComponent,
   sessions: SessionsPanel as VueComponent,
   processing: ProcessingPanel as VueComponent,
+  builder: BuilderPanel as VueComponent,
 }
 
 // (panel id, title translation key) — to re-title panels when the language changes.
 const PANELS = [
   ['editor', 'panel.mdx'],
   ['explorer', 'panel.explorer'],
+  ['builder', 'panel.builder'],
   ['results', 'panel.results'],
   ['history', 'panel.history'],
   ['stats', 'panel.stats'],
@@ -113,6 +116,8 @@ function bottomAnchors(id: PanelId): Anchor[] {
 const PLACEMENT: Record<PanelId, { anchors: Anchor[]; initialWidth?: number }> = {
   editor: { anchors: [['script', 'within']] },
   explorer: { anchors: [['editor', 'left'], ['script', 'left']], initialWidth: 300 },
+  // Below the explorer, never in its group: items are dragged from one to the other.
+  builder: { anchors: [['explorer', 'below'], ['editor', 'left'], ['script', 'left']], initialWidth: 300 },
   results: { anchors: bottomAnchors('results') },
   history: { anchors: bottomAnchors('history') },
   stats: { anchors: bottomAnchors('stats') },

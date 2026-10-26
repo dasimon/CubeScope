@@ -15,7 +15,10 @@ public sealed record DimensionMeta(string Name, string UniqueName, IReadOnlyList
 
 public sealed record HierarchyMeta(string Name, string UniqueName, IReadOnlyList<LevelMeta> Levels, string Description = "");
 
-public sealed record LevelMeta(string Name, string UniqueName, int Number);
+/// <param name="IsAll">The (All) level: LEVEL_TYPE = 1 (ADOMD <c>LevelTypeEnum.All</c>; an exact value,
+/// not a bit — GeoContinent = 8193 has the same low bit). Not always level 0: a non-aggregatable
+/// hierarchy has none.</param>
+public sealed record LevelMeta(string Name, string UniqueName, int Number, bool IsAll = false);
 
 public sealed record MemberMeta(string Caption, string UniqueName);
 

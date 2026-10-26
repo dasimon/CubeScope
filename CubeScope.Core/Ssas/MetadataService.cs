@@ -57,7 +57,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
                 WHERE [CUBE_NAME] = '{quoted}' AND [HIERARCHY_IS_VISIBLE]
                 """, ct);
             var levels = SsasSession.ExecuteDmv(conn, $"""
-                SELECT [HIERARCHY_UNIQUE_NAME], [LEVEL_NAME], [LEVEL_UNIQUE_NAME], [LEVEL_NUMBER]
+                SELECT [HIERARCHY_UNIQUE_NAME], [LEVEL_NAME], [LEVEL_UNIQUE_NAME], [LEVEL_NUMBER], [LEVEL_TYPE]
                 FROM $SYSTEM.MDSCHEMA_LEVELS
                 WHERE [CUBE_NAME] = '{quoted}' AND [LEVEL_IS_VISIBLE]
                 """, ct);
@@ -313,6 +313,12 @@ public sealed class MetadataService(SsasSession session, StateStore store)
     }
 
     /// <summary>Pure construction of the DTO from the rowsets (testable without a server).</summary>
+    /// <summary>LEVEL_TYPE = 1 is the (All) level (checked on SSAS 17.0.25.218: level 0 of every
+    /// aggregatable hierarchy, never below). Missing column (older rowsets, tests) = not All.</summary>
+    private static bool IsAllLevel(DataRow r)
+        => r.Table.Columns.Contains("LEVEL_TYPE") && r["LEVEL_TYPE"] is not DBNull
+           && Convert.ToInt32(r["LEVEL_TYPE"]) == 1;
+
     internal static CubeMeta Build(string cube, DataTable measures, DataTable dimensions,
         DataTable hierarchies, DataTable levels)
     {
@@ -331,7 +337,7 @@ public sealed class MetadataService(SsasSession session, StateStore store)
                 g => g.Key,
                 g => (IReadOnlyList<LevelMeta>)g
                     .Select(r => new LevelMeta((string)r["LEVEL_NAME"], (string)r["LEVEL_UNIQUE_NAME"],
-                        Convert.ToInt32(r["LEVEL_NUMBER"])))
+                        Convert.ToInt32(r["LEVEL_NUMBER"]), IsAllLevel(r)))
                     .OrderBy(l => l.Number).ToList());
 
         var hiersByDim = hierarchies.Rows.Cast<DataRow>()

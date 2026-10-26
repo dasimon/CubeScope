@@ -46,6 +46,8 @@ export interface LevelMeta {
   name: string
   uniqueName: string
   number: number
+  /** The (All) level (LEVEL_TYPE = 1). A non-aggregatable hierarchy has none. */
+  isAll: boolean
 }
 export interface HierarchyMeta {
   name: string
@@ -302,10 +304,38 @@ export const api = {
   cancelSession: (spid: number) =>
     request<{ spid: number; cancelled: boolean }>('POST', `/api/sessions/${spid}/cancel`),
 
+  // Graphical builder: model → MDX, generated server-side (the front never assembles MDX)
+  builderMdx: (model: BuilderModel) => request<{ mdx: string }>('POST', '/api/builder/mdx', model),
+
   // Processing state of the current database (AMO, read-only)
   processingState: () => request<ProcessingStateResponse>('GET', '/api/processing/state'),
   setProcessingThreshold: (hours: number) =>
     request<{ hours: number }>('PUT', '/api/processing/threshold', { hours }),
+}
+
+export interface BuilderRank {
+  measure: string
+  /** null = ORDER, a number = TOPCOUNT. */
+  topCount: number | null
+  descending: boolean
+}
+
+export interface BuilderAxisItem {
+  hierarchy: string
+  level: string | null
+  /** Chosen members: take precedence over the level when non-empty. */
+  members: string[] | null
+  rank: BuilderRank | null
+}
+
+export interface BuilderModel {
+  cube: string
+  measures: string[]
+  columns: BuilderAxisItem[]
+  rows: BuilderAxisItem[]
+  filters: { hierarchy: string; members: string[] }[]
+  nonEmptyColumns: boolean
+  nonEmptyRows: boolean
 }
 
 export type ObjectState = 'Processed' | 'PartiallyProcessed' | 'Unprocessed'

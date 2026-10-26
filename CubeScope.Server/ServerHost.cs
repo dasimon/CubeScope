@@ -741,6 +741,15 @@ api.MapGet("/processing/state", async (ProcessingStateService processing, Cancel
     catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
 });
 
+// Graphical builder: model → MDX (pure, no SSAS call). The front never assembles MDX itself.
+api.MapPost("/builder/mdx", (BuilderModel model) =>
+{
+    try { return Results.Ok(new { mdx = MdxQueryBuilder.Build(model) }); }
+    catch (MdxBuilderException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    // A list missing from the JSON comes in as null despite the non-nullable type.
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.GetBaseException().Message }); }
+});
+
 // Staleness threshold of the State panel, in hours (stored in SQLite).
 api.MapPut("/processing/threshold", (ThresholdRequest req, StateStore store) =>
 {

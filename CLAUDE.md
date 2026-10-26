@@ -125,6 +125,17 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   - First AMO `Connect` of a fresh PowerShell process took **42 s** once (60-180 ms
     afterwards, ~1 s for the whole read of 2 cubes / 118 partitions / 51 dimensions
     from CubeScope). Cause not elucidated; not reproduced in `cubescope.exe`.
+- **(All) level**: `MDSCHEMA_LEVELS.LEVEL_TYPE = 1` (ADOMD `LevelTypeEnum.All`, official
+  docs) — an exact value, not a bit (`GeoContinent` = 8193 shares the low bit). Observed on
+  17.0.25.218: level 0 of all 99 non-measure hierarchies of the dev cube, never below; time
+  levels come back as 20/68/132/516 (`TimeYears`…). Exposed as `LevelMeta.IsAll`; the builder's
+  default level is the first non-All one (a non-aggregatable hierarchy has no All — none on the
+  test cube, so that case rests on the docs only).
+- **E2E drag and drop**: Playwright's `dragTo` fires `dragstart` but **no** `dragover`/`drop`
+  in this harness (not even on the editor, which works by hand). Test HTML5 drops by
+  dispatching `DragEvent`s that share one `new DataTransfer()` (dragstart on the source,
+  dragover + drop on the target): the app's own handlers fill and read it. During `dragover`
+  only `dataTransfer.types` is readable, never `getData`.
 - ADOMD rowsets → `DataTable.Load`: rowsets (DMVs as well as schema rowsets)
   declare uniqueness constraints that their own data violate
   (`ConstraintException "Failed to enable constraints"`). Always load the
@@ -469,7 +480,26 @@ on a cube whose history partitions are never reprocessed, they all show as stale
 ROLAP partitions and linked measure groups get no special rule (none on the test
 database); the threshold can only be edited once a catalog is selected.
 Verified for real against the dev server (SSAS 17.0.25.218, AMO 19.84.1).
-Next lots (constructor, pasted lists, processing, XMLA console) are planned but not started.
+
+**Admin tools, lot 2 — graphical query builder: DONE (2026-10-26)**, branch
+`feat/constructeur` (on top of `feat/etat-cube`). "Builder" panel (below the explorer):
+Measures / Columns / Rows / Filters zones fed by dragging from the explorer, which now
+adds `application/x-cubescope-item` (`{kind, uniqueName, hierarchyUniqueName, caption}`)
+next to the unchanged `text/plain`. One direction only: model → MDX, generated in Core by
+the pure `MdxQueryBuilder` (`POST /api/builder/mdx`) and written into the editor
+(`store.mdx`, `mdxRevision++`, undoable with Ctrl+Z; a toast says so when a hand-typed
+query is replaced; filters alone never write). Rules: measures innermost on COLUMNS;
+NON EMPTY **per axis** (an MDX axis keyword — per item would need `NonEmpty()`, different
+semantics); one entry per hierarchy and per zone, dropping on the other axis moves it;
+item = whole level (`.Members`) or chosen members (lazy member picker), optional
+`TOPCOUNT`/`ORDER … BDESC|BASC` on a measure, evaluated per hierarchy set before the
+crossjoin; filters: one member → WHERE, several (or a hierarchy also on an axis) → nested
+sub-selects; rows without columns → `{[Measures].DefaultMember}` on COLUMNS. Unique names
+are passed verbatim after a strict check (bracketed segments only), the cube name is
+bracketed (`]`→`]]`); no string literal, so `'` needs no doubling. State persisted in
+`localStorage` (versioned), dropped when server|catalog|cube differs from the saved one;
+the last cube chosen per server+catalog is remembered so a restart reopens it.
+Next lots (pasted lists, processing, XMLA console) are planned but not started.
 
 **SSDT project mode: DONE (2026-07-24)** — opening/editing the
 `.cube` file of an SSDT Multidimensional project (`CubeProjectService`,

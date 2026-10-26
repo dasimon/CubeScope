@@ -131,6 +131,30 @@ let aiAbort: AbortController | null = null
 let resultSeq = 0 // monotonic counter of result tabs (no Date.now/Math.random)
 let metaSeq = 0 // latest metadata request: older responses are ignored
 let processingSeq = 0 // same, for the processing state
+
+// Last cube chosen per server + catalog: a catalog with several cubes reopens on the one in use,
+// not on the first of the list (the builder state belongs to that cube). Per-machine convenience.
+const LAST_CUBE_KEY = 'cubescope.lastCube'
+function lastCubeKey(): string {
+  return `${store.server.toLowerCase()}|${store.catalog ?? ''}`
+}
+function rememberCube(cube: string): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(LAST_CUBE_KEY) ?? '{}') as Record<string, string>
+    all[lastCubeKey()] = cube
+    localStorage.setItem(LAST_CUBE_KEY, JSON.stringify(all))
+  } catch {
+    /* storage unavailable: the first cube is chosen, as before */
+  }
+}
+function lastCube(cubes: string[]): string | null {
+  try {
+    const c = (JSON.parse(localStorage.getItem(LAST_CUBE_KEY) ?? '{}') as Record<string, string>)[lastCubeKey()]
+    return c && cubes.includes(c) ? c : null
+  } catch {
+    return null
+  }
+}
 let pendingProfileMdx: string | null = null // MDX of the last query sent (its profile comes by SignalR)
 
 let saveMdxTimer: ReturnType<typeof setTimeout> | undefined
@@ -256,7 +280,7 @@ export const actions = {
       const cubes = await api.cubes()
       if (seq !== metaSeq) return
       store.cubes = cubes
-      store.cube = cubes[0] ?? null
+      store.cube = lastCube(cubes) ?? cubes[0] ?? null
       const meta = store.cube ? await api.cubeMeta(store.cube, refresh) : null
       if (seq !== metaSeq) return
       store.cubeMeta = meta
@@ -272,6 +296,7 @@ export const actions = {
     if (cube !== store.cube) actions.resetContext('cube')
     const seq = ++metaSeq
     store.cube = cube
+    rememberCube(cube)
     store.metaLoading = true
     try {
       const meta = await api.cubeMeta(cube, refresh)

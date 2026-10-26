@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Metadata explorer: measures (by folder) + dimensions → hierarchies → levels,
 // and under each hierarchy a "Members" folder that goes down to the leaves (SSMS-style).
-// Double-click or drag to the editor: inserts the UniqueName.
+// Double-click or drag to the editor: inserts the UniqueName. Drag to the Builder panel: adds the item.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tree from 'primevue/tree'
@@ -11,6 +11,7 @@ import { useToast } from 'primevue/usetoast'
 import type { TreeNode } from 'primevue/treenode'
 import { api, type MemberNode } from '../api'
 import { actions, store } from '../store'
+import { ITEM_MIME, type DragItem } from '../builder'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -43,7 +44,7 @@ async function onSelectCube(cube: string, refresh = false) {
 }
 
 /** Recursively builds the already-loaded subtree under a key. */
-function buildMembers(key: string, parentCount: number): TreeNode[] {
+function buildMembers(key: string, parentCount: number, hierarchy: string): TreeNode[] {
   const cran = loaded.value.get(key)
   if (!cran) return []
 
@@ -53,11 +54,12 @@ function buildMembers(key: string, parentCount: number): TreeNode[] {
     icon: 'pi pi-circle-fill',
     data: m.uniqueName,
     title: m.uniqueName,
+    dragItem: { kind: 'member', uniqueName: m.uniqueName, hierarchyUniqueName: hierarchy, caption: m.caption } satisfies DragItem,
     // childrenCount === 0: true leaf, no arrow. -1: unknown, keep it expandable
     // rather than wrongly declaring it a leaf and making it silent.
     leaf: m.childrenCount === 0,
     loading: pending.value.has(`m:${m.uniqueName}`),
-    children: buildMembers(`m:${m.uniqueName}`, m.childrenCount),
+    children: buildMembers(`m:${m.uniqueName}`, m.childrenCount, hierarchy),
   }))
 
   if (cran.hasMore) {
@@ -119,6 +121,7 @@ const nodes = computed<TreeNode[]>(() => {
       icon: 'pi pi-calculator',
       data: m.uniqueName,
       title: m.description || undefined,
+      dragItem: { kind: 'measure', uniqueName: m.uniqueName, hierarchyUniqueName: '[Measures]', caption: m.name } satisfies DragItem,
       leaf: true,
     })),
   }))
@@ -144,6 +147,7 @@ const nodes = computed<TreeNode[]>(() => {
       label: h.name,
       icon: 'pi pi-sitemap',
       data: h.uniqueName,
+      dragItem: { kind: 'hierarchy', uniqueName: h.uniqueName, hierarchyUniqueName: h.uniqueName, caption: h.name } satisfies DragItem,
       children: [
         // The "Members" folder is ADDED to the levels, it does not replace them: that is the
         // SSMS layout, and the levels remain useful for inserting into the editor.
@@ -157,13 +161,14 @@ const nodes = computed<TreeNode[]>(() => {
           leaf: false,
           loading: pending.value.has(`mb:${h.uniqueName}`),
           // -1: at the first level there is no parent cardinality to announce.
-          children: buildMembers(`mb:${h.uniqueName}`, -1),
+          children: buildMembers(`mb:${h.uniqueName}`, -1, h.uniqueName),
         },
         ...h.levels.map((l) => ({
           key: l.uniqueName,
           label: l.name,
           icon: 'pi pi-minus',
           data: l.uniqueName,
+          dragItem: { kind: 'level', uniqueName: l.uniqueName, hierarchyUniqueName: h.uniqueName, caption: l.name } satisfies DragItem,
           leaf: true,
         })),
       ],
@@ -183,10 +188,13 @@ function onNodeDblClick(node: TreeNode) {
 /**
  * Dragging carries the UniqueName as plain text: the editor drops it where it is released,
  * whereas double-click inserts at the current cursor. Both gestures remain useful.
+ * Measures, hierarchies, levels and members also carry a typed payload for the Builder panel
+ * (dimensions do not: a dimension is not a builder item).
  */
 function onDragStart(e: DragEvent, node: TreeNode) {
   if (typeof node.data !== 'string' || !e.dataTransfer) return
   e.dataTransfer.setData('text/plain', node.data)
+  if (node.dragItem) e.dataTransfer.setData(ITEM_MIME, JSON.stringify(node.dragItem))
   e.dataTransfer.effectAllowed = 'copy'
 }
 </script>
