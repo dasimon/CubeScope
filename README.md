@@ -32,9 +32,20 @@ if that runtime isn't present — no server component to deploy, no cloud.
 - **Regression harness** — capture queries with their current results as a
   baseline, then re-run them after a script change and flag any changed value
   (per-cell diff) — "did my calculation change silently break a value?".
-- **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed);
-  double-click inserts at the cursor. Measure descriptions surface as hover
-  tooltips and in the MDX autocomplete documentation.
+- **Metadata explorer** — filterable tree of measures and dimensions (DMV-backed),
+  down to the members of each hierarchy; double-click inserts at the cursor, drag
+  drops where you release it (in the editor or the query builder). Measure
+  descriptions surface as hover tooltips and in the MDX autocomplete documentation.
+- **Query builder** — Measures / Columns / Rows / Filters zones fed by dragging
+  from the explorer; the MDX is generated into the editor (undoable with
+  `Ctrl+Z`). Whole levels or picked members, `NON EMPTY` per axis, `TOPCOUNT` /
+  `ORDER` on a measure, filters as `WHERE` or sub-selects.
+- **Pasted key lists** — paste keys (from Excel, a mail…) into the builder's Rows
+  or Filters zone: each key is looked up on the chosen level and reported as
+  found, missing or failed, and only found members enter the query. Save a list
+  under a name to reuse it.
+- **Catalog comparison** — run the current query against another catalog of the
+  same server and compare the results cell by cell.
 - **Query profiler** — per-query **Formula Engine vs Storage Engine** split from
   SSAS traces, `Query Subcube` breakdown (readable text), cache and aggregation
   hits, plus a persisted run history with before/after comparison of two runs.
@@ -65,8 +76,28 @@ if that runtime isn't present — no server component to deploy, no cloud.
   injected into the context. Can also target any **OpenAI-compatible** endpoint
   (local Ollama / LM Studio for on-prem confidentiality, OpenAI, Mistral,
   OpenRouter, Groq…) — see Prerequisites. *(Requires an API key — see Prerequisites.)*
-- **Cache management** — clear the SSAS cache of a catalog (explicit confirmation).
+- **Processing state** — the State panel lists cubes → measure groups →
+  partitions, and dimensions, with their state, last processing, freshness range,
+  storage mode, size and slice. Unprocessed objects show in red, stale ones in
+  orange (threshold configurable, 24 h by default), with a summary in the status
+  bar. Read once per catalog and on Refresh, never polled.
+- **Processing** — right-click an object in the State panel: Default, Full, Data
+  (or Update for a dimension), with the XMLA preview, the measure groups a
+  dimension process would leave unprocessed, elapsed time and server messages.
+  Every attempt is logged locally. See
+  [Development and production servers](#development-and-production-servers).
+- **XMLA console** — its own editor with XML highlighting, `F5` / `Ctrl+Enter`,
+  XMLA snippets and a log. A DMV `<Statement>` shows its rows in the results
+  grid. The script is parsed before it is sent: invalid XML and `<Discover>` are
+  refused.
+- **Sessions** — list the server's sessions and running commands, and cancel
+  one after a detailed confirmation (the list includes other users' and jobs'
+  sessions).
+- **Cache management** — clear the SSAS cache of a catalog, on a server declared
+  as a development server only (explicit confirmation).
 - **History** — every query stored locally (SQLite), filterable, reloadable.
+- **About** — version, commit, runtime and connected server, with "Copy details"
+  for bug reports.
 - **Bilingual UI** — French (default) and English, switchable at runtime.
 
 | Metadata explorer & MDX Script | Query profiler |
@@ -88,8 +119,10 @@ if that runtime isn't present — no server component to deploy, no cloud.
 - **Network access** to an SSAS **Multidimensional** instance. All connections
   use **Windows Integrated Security** — no credentials are stored anywhere.
 - **SSAS administrator rights** on the target instance are required for the
-  **Query Profiler** (it creates a server-side trace). The rest of the app works
-  without them.
+  **Query Profiler** (it creates a server-side trace) and the **Sessions** panel.
+  The **State** panel needs permission to read the database definition, and
+  **Processing** permission to process it; what the **XMLA console** needs depends
+  on the script. Querying, the explorer and the builder work without any of them.
 - **"Performance Monitor Users" group** membership on the SSAS server, plus the
   **Remote Registry** service running, are required for the **Perfmon stats**
   panel when profiling a remote server.
@@ -139,6 +172,29 @@ runtime isn't available, or when passed `--force-browser`. Connect to your
 SSAS server (a hostname, or `host:port` for a named instance on a fixed port),
 pick a catalog, and start writing MDX.
 
+### Development and production servers
+
+In the connection dialog, tick **Development server** for the servers where a
+mistake is cheap. The list is stored locally and is empty on first launch:
+until you declare a server, it counts as production.
+
+- **Development servers only** (refused elsewhere): clearing the cache and
+  deploying the MDX Script.
+- **On a production server**, processing and the XMLA console require the
+  server name to be typed again before anything is sent.
+- **Refused on a production server**, whatever the confirmation: Full or Data
+  processing of a dimension (it leaves the dependent measure groups
+  unprocessed); in the XMLA console, also `Delete`, `Restore`, `Detach`,
+  `Synchronize`, `ClearCache`, `MergePartitions`, `Attach`, `ImageLoad`,
+  `Create` / `Alter` of a whole database and `ProcessClear`.
+- The processing dialog offers neither `ProcessAdd` (without its own source
+  query it reads the partition source again and doubles the data) nor
+  `ProcessClear`.
+
+These checks run in the local server, before any connection to the target, so
+calling the API directly does not bypass them. Limit: a `<Statement>` is opaque —
+an MDX or DMX statement that writes only needs the confirmation.
+
 ---
 
 ## Build from source
@@ -185,7 +241,7 @@ which is no longer the published project; it builds the Vue SPA and embeds
 `EmbeddedResource` under the `spa/` prefix, served at runtime by
 `EmbeddedSpaFileProvider` (not extracted to a `wwwroot` folder on disk).
 This produces a single self-contained `publish/cubescope.exe`
-(~200 MB — it bundles the .NET runtime). Each GitHub Release also ships
+(~216 MB — it bundles the .NET runtime). Each GitHub Release also ships
 `cubescope.exe.sha256` to verify the download (`Get-FileHash cubescope.exe`).
 
 ---
@@ -210,13 +266,15 @@ default browser when the WebView2 runtime is unavailable, or when passed
 Key technical choices:
 
 - **SSAS connectivity** via `Microsoft.AnalysisServices.AdomdClient.NetCore`
-  (ADOMD.NET Core) for queries and DMVs, and AMO (`.NetCore` variant) only to
-  read the MDX Script and resolve object IDs.
+  (ADOMD.NET Core) for queries and DMVs, and AMO (`.NetCore` variant) on short,
+  separate connections to read the MDX Script and the processing state, resolve
+  object IDs, process objects and run XMLA scripts.
 - **Metadata** from `$SYSTEM.MDSCHEMA_*` DMVs, members lazy-loaded and cached.
 - **Profiler** built on SSAS traces (`QueryEnd`, `QuerySubcube` /
   `QuerySubcubeVerbose`, cache/aggregation events), streamed to the UI over
   SignalR.
-- **Local state** in a single SQLite file (history, recent connections, layouts).
+- **Local state** in a single SQLite file (history, recent connections, snippets,
+  development servers, named lists, processing and XMLA logs, settings).
 - **MDX parsing** is a pragmatic tokenizer (no full AST) — it powers highlighting,
   reference detection and the dependency graph.
 
