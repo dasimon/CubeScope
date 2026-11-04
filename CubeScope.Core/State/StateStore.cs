@@ -391,6 +391,17 @@ public sealed class StateStore : IDisposable
             ("$k", StaleThresholdKey), ("$v", hours.ToString(System.Globalization.CultureInfo.InvariantCulture)));
     }
 
+    private const string UpdateAutoCheckKey = "UpdateAutoCheck";
+
+    /// <summary>Whether the built-in update looks for a new release by itself (on by default, as in
+    /// Lucarne). Off stops the automatic checks only: About → Check for updates still works.</summary>
+    public bool GetUpdateAutoCheck() =>
+        Scalar("SELECT Value FROM Setting WHERE Key = $k", ("$k", UpdateAutoCheckKey)) as string != "0";
+
+    public void SetUpdateAutoCheck(bool enabled) =>
+        Exec("INSERT INTO Setting (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v",
+            ("$k", UpdateAutoCheckKey), ("$v", enabled ? "1" : "0"));
+
     // --- Development servers (v9): EXPLICIT list of the servers where a script deployment
     // is allowed. The catalog name no longer tells anything apart since dev got its
     // own server and carries the same catalog name as production.

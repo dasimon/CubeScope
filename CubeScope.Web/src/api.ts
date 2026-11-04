@@ -206,12 +206,33 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
   return (await res.json()) as T
 }
 
+/** Built-in update (UpdateService). Dates are UTC ISO strings. */
+export type UpdatePhase = 'Idle' | 'Checking' | 'Downloading' | 'Installing'
+export interface UpdateStatus {
+  canUpdate: boolean
+  currentVersion: string | null
+  available: { version: string; pageUrl: string; size: number } | null
+  lastCheckUtc: string | null
+  lastError: string | null
+  phase: UpdatePhase
+  progress: number
+}
+export interface UpdateView {
+  status: UpdateStatus
+  autoCheck: boolean
+  lastOutcome: { kind: 'restarting' | 'savedToDownloads' | 'failed'; detail: string | null } | null
+}
+
 export const api = {
   connect: (server: string) =>
     request<{ server: string; catalogs: string[] }>('POST', '/api/connection', { server, lang: currentLocale() }),
   setCatalog: (catalog: string) => request<void>('PUT', '/api/connection/catalog', { catalog }),
   recent: () => request<RecentConnection[]>('GET', '/api/connection/recent'),
   about: () => request<AboutInfo>('GET', '/api/about'),
+  update: () => request<UpdateView>('GET', '/api/update'),
+  updateCheck: () => request<UpdateView>('POST', '/api/update/check'),
+  updateInstall: () => request<UpdateView>('POST', '/api/update/install'),
+  updateAuto: (enabled: boolean) => request<UpdateView>('PUT', '/api/update/auto', { enabled }),
   query: (mdx: string, signal: AbortSignal) => request<QueryResult>('POST', '/api/query', { mdx }, signal),
   drillthrough: (mdx: string, maxRows: number, signal: AbortSignal) =>
     request<QueryResult>('POST', '/api/drillthrough', { mdx, maxRows }, signal),

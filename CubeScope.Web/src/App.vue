@@ -34,6 +34,8 @@ import ScopeMark from './components/ScopeMark.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
 import RegressionDialog from './components/RegressionDialog.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
+import { startUpdatePolling, update, updateActions } from './update'
 import { startStatsHub } from './stats'
 import { actions, isDevServer, store } from './store'
 import { age, nowUtc } from './processing'
@@ -317,6 +319,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   void actions.loadHistory()
   startStatsHub()
+  startUpdatePolling()
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -444,6 +447,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <span v-for="(p, i) in processingParts" :key="i" :class="p.level && `status-${p.level}`">{{ p.text }}</span>
       </button>
       <span class="toolbar-spacer" />
+      <button
+        v-if="update.view?.status.available && update.view.lastOutcome?.kind !== 'restarting'"
+        type="button"
+        class="status-update"
+        :title="t('update.pillTitle')"
+        @click="updateActions.open()"
+      >
+        <i class="pi pi-arrow-circle-up" />
+        {{ t('update.pill', { version: update.view.status.available.version }) }}
+      </button>
       <template v-if="store.result">
         <span>{{ t('status.cells', { cells: store.result.cellCount, axes: store.result.axesCount }) }}</span>
         <span class="status-duration mono">{{ store.result.durationMs }} ms</span>
@@ -451,6 +464,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </footer>
 
     <ConnectDialog />
+    <UpdateDialog />
     <Toast position="bottom-right" />
     <ConfirmDialog :style="{ width: '30rem' }" />
 
@@ -701,6 +715,26 @@ button.target-seg:hover,
 .status-processing:hover,
 .status-processing:focus-visible {
   text-decoration: underline dotted;
+}
+/* A new release: the only emerald element of the status bar besides the duration. */
+.status-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 9px;
+  border: 1px solid var(--scope-face-right);
+  border-radius: 10px;
+  background: var(--scope-face-glow);
+  color: var(--scope-face-top);
+  font: inherit;
+  cursor: pointer;
+}
+.status-update .pi {
+  font-size: 11px;
+}
+.status-update:hover,
+.status-update:focus-visible {
+  background: rgba(52, 211, 153, 0.24);
 }
 .clear-result {
   font-size: 0.85rem;

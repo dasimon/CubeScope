@@ -15,6 +15,11 @@ public partial class App : Application
     private WebApplication? _serveur;
     private bool _basculeNavigateur;
 
+    /// <summary>Set by a built-in update: the executable on disk is the new version, start it once
+    /// this process has let go of the server (SSAS trace dropped, port released).</summary>
+    private bool _relancer;
+    private string[] _args = [];
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -48,12 +53,13 @@ public partial class App : Application
         // The runtime presence check is static: it does not depend on the URL, so
         // it runs BEFORE starting Kestrel — which allows passing the right browserLifetime
         // value the first time, without mutating it afterwards.
+        _args = e.Args;
         var mode = LaunchModeDecider.Decide(
             runtimeDisponible: RuntimeWebView2Disponible(),
             forceBrowser: e.Args.Contains("--force-browser"));
 
         var (app, url) = await ServerHost.StartAsync(
-            e.Args, browserLifetime: mode == LaunchMode.Browser);
+            e.Args, browserLifetime: mode == LaunchMode.Browser, restarter: new ShellRestarter(this));
         _serveur = app;
 
         if (mode == LaunchMode.Browser)
@@ -187,7 +193,48 @@ public partial class App : Application
         catch { /* we are stopping anyway */ }
         finally
         {
+            if (_relancer) Relancer();
             Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// Built-in update installed (UpdateService swapped cubescope.exe): close the way the user
+    /// would, so that the unsaved-script question still gets asked. If the user keeps the window,
+    /// the flag stays set and the new version starts when the window is finally closed.
+    /// In the browser fallback there is no window: the server stops and the new exe opens a tab.
+    /// </summary>
+    internal void RedemarrerApresMiseAJour()
+    {
+        _relancer = true;
+        if (!_basculeNavigateur && MainWindow is MainWindow fenetre) fenetre.Close();
+        else _ = ArreterServeurAsync();
+    }
+
+    /// <summary>Starts the executable now on disk, with the arguments this one received
+    /// (--force-browser survives the update). A failure is shown, never swallowed: the user
+    /// would otherwise see CubeScope vanish after "restarting".</summary>
+    private void Relancer()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath!;
+            var info = new ProcessStartInfo(exe)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = System.IO.Path.GetDirectoryName(exe)!,
+            };
+            foreach (var arg in _args) info.ArgumentList.Add(arg);
+            using var _ = Process.Start(info);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "La mise à jour est installée, mais CubeScope n'a pas pu redémarrer (" + ex.Message + ").\n\n"
+                + "Relancez cubescope.exe à la main.",
+                "CubeScope",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 

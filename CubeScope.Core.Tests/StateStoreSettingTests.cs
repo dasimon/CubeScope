@@ -23,6 +23,23 @@ public class StateStoreSettingTests
         Assert.Equal(72, reopened.GetStaleThresholdHours());
     }
 
+    [Fact]
+    public void Update_auto_check_is_on_by_default_and_remembered()
+    {
+        string path = NewPath();
+        using (var store = new StateStore(path))
+        {
+            Assert.True(store.GetUpdateAutoCheck());
+            store.SetUpdateAutoCheck(false);
+        }
+        using (var reopened = new StateStore(path))
+        {
+            Assert.False(reopened.GetUpdateAutoCheck());
+            reopened.SetUpdateAutoCheck(true);
+            Assert.True(reopened.GetUpdateAutoCheck());
+        }
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

@@ -42,7 +42,30 @@ jobs:
         run: >
           dotnet publish CubeScope.Shell -c Release -r win-x64
           --self-contained true -p:PublishSingleFile=true -p:EmbedSpa=true
-          -p:Version=${GITHUB_REF_NAME#v} -o publish
+          -p:Version=${GITHUB_REF_NAME#v} -p:UpdateChannel=release -o publish
+
+      # UpdateChannel=release is what makes the shipped exe look for updates (UpdateBuild). Without
+      # it the users of this release would never be offered the next one, and nothing would say
+      # so: the attribute AssemblyMetadata("UpdateChannel", "release") is stored as a fixed byte
+      # blob (prolog 01 00, length-prefixed strings, no named arguments 00 00), looked for in the
+      # entry assembly the publish bundled.
+      - name: Refuse to ship an exe that is not on the release channel
+        shell: pwsh
+        run: |
+          [byte[]] $blob = @(1, 0, 13) + [Text.Encoding]::UTF8.GetBytes('UpdateChannel') +
+                           @(7) + [Text.Encoding]::UTF8.GetBytes('release') + @(0, 0)
+          $latin1 = [Text.Encoding]::Latin1
+          $assembly = "$PWD/CubeScope.Shell/obj/Release/net10.0-windows/win-x64/cubescope.dll"
+          if (-not (Test-Path $assembly)) {
+            Write-Host "::error::$assembly not found: the update-channel check cannot read the bundled assembly."
+            exit 1
+          }
+          $dll = $latin1.GetString([IO.File]::ReadAllBytes($assembly))
+          if ($dll.IndexOf($latin1.GetString($blob), [StringComparison]::Ordinal) -lt 0) {
+            Write-Host '::error::cubescope.dll does not carry AssemblyMetadata("UpdateChannel", "release"): the exe would never look for an update.'
+            exit 1
+          }
+          Write-Host 'The bundled cubescope.dll carries the release update channel.'
 
       - name: Compute SHA256
         shell: bash
