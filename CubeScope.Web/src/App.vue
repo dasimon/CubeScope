@@ -30,6 +30,7 @@ import BuilderPanel from './components/BuilderPanel.vue'
 import XmlaConsolePanel from './components/XmlaConsolePanel.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ConnectDialog from './components/ConnectDialog.vue'
+import ScopeMark from './components/ScopeMark.vue'
 import SnippetsMenu from './components/SnippetsMenu.vue'
 import MemberScaffoldDialog from './components/MemberScaffoldDialog.vue'
 import RegressionDialog from './components/RegressionDialog.vue'
@@ -68,6 +69,19 @@ const LANGS = [
 ]
 
 const drillthroughMaxRows = ref(1000)
+
+// The target capsule: where the next query goes, and whether that server counts as
+// production (same rule as ProductionActionGuard — a server not declared as dev is prod).
+const markState = computed<'cube' | 'prod' | 'off'>(() =>
+  !store.connected ? 'off' : isDevServer(store.server) ? 'cube' : 'prod',
+)
+const envTitle = computed(() =>
+  markState.value === 'off'
+    ? t('toolbar.envOffTitle')
+    : markState.value === 'cube'
+      ? t('toolbar.envDevTitle')
+      : t('toolbar.envProdTitle'),
+)
 
 // Cast required: typed SFCs do not satisfy the generic VueComponent index (TS variance)
 const panelComponents: Record<string, VueComponent> = {
@@ -228,6 +242,13 @@ const processingParts = computed(() => {
     parts.push({ text: t('status.lastProcessed', { age: age(m.newestProcessedUtc, nowUtc.value) }), level: '' })
   return parts
 })
+const processingLevel = computed(() =>
+  processingParts.value.some((p) => p.level === 'danger')
+    ? 'danger'
+    : processingParts.value.some((p) => p.level === 'warn')
+      ? 'warn'
+      : '',
+)
 const processingTitle = computed(() =>
   store.processing
     ? `${t('status.openProcessing')} — ${t('processing.readAt', { time: new Date(store.processing.readAtUtc).toLocaleString() })}`
@@ -303,45 +324,55 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div class="app-shell">
     <header class="toolbar">
-      <span class="app-title">CubeScope</span>
-      <Button
-        :label="store.connected ? store.server : t('toolbar.connecting')"
-        :icon="store.connected ? 'pi pi-server' : 'pi pi-link'"
-        size="small"
-        :severity="store.connected ? 'secondary' : 'primary'"
-        @click="store.showConnect = true"
-      />
-      <Select
-        v-if="store.connected"
-        :model-value="store.catalog"
-        :options="store.catalogs"
-        size="small"
-        :placeholder="t('toolbar.catalog')"
-        :disabled="store.running"
-        @update:model-value="onCatalogChange"
-      />
+      <span class="wordmark"><ScopeMark :state="markState" /><b>CubeScope</b></span>
+      <span class="toolbar-sep" />
+      <span class="target" :class="markState">
+        <button type="button" class="target-env" :title="envTitle" @click="store.showConnect = true">
+          {{ markState === 'cube' ? t('toolbar.envDev') : t('toolbar.envProd') }}
+        </button>
+        <button type="button" class="target-seg" :title="t('connect.title')" @click="store.showConnect = true">
+          <i :class="store.connected ? 'pi pi-server' : 'pi pi-link'" />
+          {{ store.connected ? store.server : t('toolbar.connecting') }}
+        </button>
+        <Select
+          v-if="store.connected"
+          :model-value="store.catalog"
+          :options="store.catalogs"
+          size="small"
+          class="target-select"
+          :placeholder="t('toolbar.catalog')"
+          :disabled="store.running"
+          @update:model-value="onCatalogChange"
+        />
+        <span v-if="store.connected && store.cube" class="target-seg target-cube" :title="t('toolbar.cubeTitle')">{{ store.cube }}</span>
+      </span>
       <Button
         v-if="store.connected && store.catalog"
         icon="pi pi-eraser"
         size="small"
         severity="secondary"
+        text
         :title="t('toolbar.clearCacheTitle', { catalog: store.catalog })"
+        :aria-label="t('toolbar.clearCacheTitle', { catalog: store.catalog })"
         @click="confirmClear = true"
       />
-      <SnippetsMenu />
-      <MemberScaffoldDialog />
-      <RegressionDialog />
-      <Button
-        icon="pi pi-th-large"
-        size="small"
-        severity="secondary"
-        :label="t('panels.menu')"
-        :title="t('panels.menuTitle')"
-        @click="(e: Event) => panelsMenu?.toggle(e)"
-      />
-      <Menu ref="panelsMenu" :model="panelMenuItems" popup />
-      <AboutDialog />
       <span class="toolbar-spacer" />
+      <span class="toolbar-tools">
+        <SnippetsMenu />
+        <MemberScaffoldDialog />
+        <RegressionDialog />
+        <Button
+          icon="pi pi-th-large"
+          size="small"
+          severity="secondary"
+          text
+          :title="t('panels.menuTitle')"
+          :aria-label="t('panels.menu')"
+          @click="(e: Event) => panelsMenu?.toggle(e)"
+        />
+        <Menu ref="panelsMenu" :model="panelMenuItems" popup />
+        <AboutDialog />
+      </span>
       <Select
         :model-value="locale"
         :options="LANGS"
@@ -351,34 +382,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         class="lang-select"
         @update:model-value="(l: Locale) => setLocale(l)"
       />
+      <span class="toolbar-sep" />
+      <span class="drill-cluster" :title="t('results.drillthroughHint')">
+        <span class="drill-label">{{ t('results.drillthrough') }}</span>
+        <InputNumber
+          v-model="drillthroughMaxRows"
+          :min="1"
+          :max="100000"
+          :use-grouping="false"
+          size="small"
+          class="max-rows-input"
+          :title="t('results.maxRows')"
+        />
+        <Button
+          icon="pi pi-arrow-down-right"
+          size="small"
+          severity="secondary"
+          text
+          :disabled="!store.connected || !store.catalog || store.running"
+          :aria-label="t('results.drillthrough')"
+          @click="actions.runDrillthrough(drillthroughMaxRows ?? 1000)"
+        />
+      </span>
       <Button
         v-if="!store.running"
-        :label="t('toolbar.execute')"
-        icon="pi pi-play"
         size="small"
+        class="run-btn"
         :disabled="!store.connected || !store.catalog"
         :title="t('toolbar.executeTitle')"
         @click="actions.run()"
-      />
-      <Button v-else :label="t('common.cancel')" icon="pi pi-stop" size="small" severity="danger" @click="actions.cancel()" />
-      <InputNumber
-        v-model="drillthroughMaxRows"
-        :min="1"
-        :max="100000"
-        :use-grouping="false"
-        size="small"
-        class="max-rows-input"
-        :title="t('results.maxRows')"
-      />
-      <Button
-        :label="t('results.drillthrough')"
-        icon="pi pi-arrow-down-right"
-        size="small"
-        severity="secondary"
-        :disabled="!store.connected || !store.catalog || store.running"
-        :title="t('results.drillthroughHint')"
-        @click="actions.runDrillthrough(drillthroughMaxRows ?? 1000)"
-      />
+      >
+        <i class="pi pi-play" />
+        <span>{{ t('toolbar.execute') }}</span>
+        <kbd>F5</kbd>
+      </Button>
+      <Button v-else :label="t('common.cancel')" icon="pi pi-stop" size="small" severity="danger" class="run-btn" @click="actions.cancel()" />
     </header>
 
     <!-- Wrapper required: DockviewVue is multi-root (portals), scoped CSS does not
@@ -393,12 +431,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </div>
 
     <footer class="statusbar">
-      <span v-if="store.connected">{{ store.server }} · {{ store.catalog ?? '—' }}</span>
+      <span v-if="store.connected" class="mono">{{ store.server }} · {{ store.catalog ?? '—' }}</span>
       <span v-else>{{ t('status.notConnected') }}</span>
       <button
         v-if="processingParts.length"
         type="button"
         class="status-processing"
+        :class="processingLevel && `status-${processingLevel}`"
         :title="processingTitle"
         @click="showPanel('processing')"
       >
@@ -407,7 +446,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <span class="toolbar-spacer" />
       <template v-if="store.result">
         <span>{{ t('status.cells', { cells: store.result.cellCount, axes: store.result.axesCount }) }}</span>
-        <span class="status-duration">{{ store.result.durationMs }} ms</span>
+        <span class="status-duration mono">{{ store.result.durationMs }} ms</span>
       </template>
     </footer>
 
@@ -441,64 +480,227 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   overflow: hidden;
 }
 .toolbar {
+  height: 44px;
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid var(--p-surface-700);
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--scope-bg-1);
+  border-bottom: 1px solid var(--scope-line);
 }
-.app-title {
-  font-weight: 700;
-  margin-right: 0.75rem;
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  font-variation-settings:
+    'CASL' 0.35,
+    'wght' 560;
+}
+.wordmark b {
+  font-weight: inherit;
+}
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--scope-line-2);
+  margin: 0 2px;
 }
 .toolbar-spacer {
   flex: 1;
 }
+.toolbar-tools {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* Target capsule: environment tag › server › catalog › cube. Amber all over when the
+   target counts as production. */
+.target {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--scope-line-2);
+  border-radius: 6px;
+  background: var(--scope-bg);
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.target.prod {
+  border-color: rgba(240, 179, 62, 0.55);
+  background: var(--scope-prod-dim);
+}
+.target-env,
+.target-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--scope-text);
+  white-space: nowrap;
+}
+.target-env {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--scope-face-top);
+  padding: 0 8px;
+  cursor: pointer;
+}
+.target.prod .target-env {
+  color: var(--scope-prod);
+}
+.target.off .target-env {
+  display: none;
+}
+.target-seg {
+  border-left: 1px solid var(--scope-line);
+}
+.target.off .target-seg {
+  border-left: 0;
+}
+button.target-seg {
+  cursor: pointer;
+}
+button.target-seg:hover,
+.target-env:hover {
+  background: var(--scope-bg-2);
+}
+.target-seg .pi {
+  font-size: 12px;
+  color: var(--scope-text-3);
+}
+.target-cube {
+  font-weight: 560;
+}
+.target :deep(.target-select.p-select) {
+  border: 0;
+  border-left: 1px solid var(--scope-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.target :deep(.target-select .p-select-label) {
+  padding: 0 4px 0 10px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+}
+.target :deep(.target-select .p-select-dropdown) {
+  width: 1.6rem;
+  color: var(--scope-text-3);
+}
+
 .lang-select {
-  width: 5rem;
+  width: 4.9rem;
 }
-.max-rows-input {
-  width: 5rem;
+.lang-select :deep(.p-select-label) {
+  font-size: 12px;
 }
+
+/* Drillthrough: the row cap and its button, one object. */
+.drill-cluster {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--scope-line-2);
+  border-radius: 6px;
+  background: var(--scope-bg);
+  overflow: hidden;
+}
+.drill-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px 0 10px;
+  font-size: 11px;
+  color: var(--scope-text-3);
+  white-space: nowrap;
+}
+.drill-cluster :deep(.p-inputnumber-input) {
+  width: 4.4rem;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--scope-line);
+  border-right: 1px solid var(--scope-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: right;
+  font-variation-settings: 'MONO' 1;
+}
+.drill-cluster :deep(.p-button) {
+  border: 0;
+  border-radius: 0;
+  height: 100%;
+}
+
+.run-btn {
+  height: 28px;
+  gap: 6px;
+  font-weight: 600;
+}
+.run-btn kbd {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: transparent;
+  color: inherit;
+}
+
 .dock-host {
   flex: 1;
   min-height: 0;
   position: relative;
 }
+
 .statusbar {
+  height: 26px;
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.85rem;
-  border-top: 1px solid var(--p-surface-700);
-  color: var(--p-text-muted-color);
+  gap: 14px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  background: var(--scope-bg-1);
+  border-top: 1px solid var(--scope-line);
+  color: var(--scope-text-2);
 }
 .status-duration {
   font-weight: 600;
-  color: var(--p-primary-color);
+  color: var(--scope-face-top);
 }
 .status-processing {
   display: inline-flex;
-  gap: 0.75rem;
-  padding: 0;
+  align-items: center;
+  gap: 0;
+  padding: 1px 9px;
   border: 0;
-  background: none;
+  border-radius: 10px;
+  background: var(--scope-bg-3);
   font: inherit;
   color: inherit;
   cursor: pointer;
 }
+.status-processing > span + span::before {
+  content: '·';
+  margin: 0 5px;
+}
+.status-processing.status-warn {
+  background: var(--scope-prod-dim);
+  color: var(--scope-prod);
+}
+.status-processing.status-danger {
+  background: var(--scope-danger-dim);
+  color: var(--scope-danger);
+}
+.status-processing.status-danger .status-warn {
+  color: var(--scope-prod);
+}
 .status-processing:hover,
 .status-processing:focus-visible {
   text-decoration: underline dotted;
-}
-.status-danger {
-  color: var(--p-red-400);
-  font-weight: 600;
-}
-.status-warn {
-  color: var(--p-orange-400);
-  font-weight: 600;
 }
 .clear-result {
   font-size: 0.85rem;

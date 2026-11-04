@@ -149,19 +149,19 @@ function closeTab(e: MouseEvent, id: number) {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--p-content-border-color);
-  border-bottom: none;
+  padding: 0.25rem 0.6rem;
   border-radius: 4px 4px 0 0;
   cursor: pointer;
   color: var(--p-text-muted-color);
   white-space: nowrap;
   font-size: 0.85rem;
 }
+.results-tab:hover {
+  color: var(--p-text-color);
+}
 .results-tab.active {
   color: var(--p-text-color);
-  background: var(--p-content-background);
-  border-color: var(--p-content-border-color);
+  background: var(--scope-bg-2);
 }
 .results-tab-close {
   display: inline-flex;

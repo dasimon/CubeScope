@@ -125,7 +125,7 @@ function localTime(utc: string): string {
   color: var(--p-red-400);
 }
 .history-mdx {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
 }
 </style>

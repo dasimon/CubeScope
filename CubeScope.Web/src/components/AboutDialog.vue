@@ -57,7 +57,7 @@ async function copy() {
 </script>
 
 <template>
-  <Button icon="pi pi-info-circle" size="small" severity="secondary" :title="t('about.title')" :aria-label="t('about.title')" @click="open" />
+  <Button icon="pi pi-info-circle" size="small" severity="secondary" text :title="t('about.title')" :aria-label="t('about.title')" @click="open" />
   <Dialog v-model:visible="visible" modal :header="t('about.title')" :style="{ width: '32rem' }">
     <p v-if="error" class="about-error">{{ error }}</p>
     <template v-else-if="about">

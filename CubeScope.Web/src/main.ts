@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import ConfirmationService from 'primevue/confirmationservice'
-import Aura from '@primeuix/themes/aura'
+import { ScopePreset } from './theme'
 
 import 'dockview-vue/dist/styles/dockview.css'
 import 'primeicons/primeicons.css'
@@ -15,7 +15,7 @@ const app = createApp(App)
 app.use(i18n)
 app.use(PrimeVue, {
   theme: {
-    preset: Aura,
+    preset: ScopePreset,
     // Dev tool: permanent dark theme (class set on <html> in index.html)
     options: { darkModeSelector: '.p-dark' },
   },

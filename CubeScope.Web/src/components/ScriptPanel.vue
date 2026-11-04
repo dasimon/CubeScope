@@ -1175,7 +1175,7 @@ onBeforeUnmount(() => {
 }
 .script-list i {
   margin-right: 0.4rem;
-  color: var(--p-primary-color);
+  color: var(--scope-text-3);
 }
 .script-group {
   font-weight: 600;
