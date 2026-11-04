@@ -9,6 +9,12 @@ export default {
     clearCacheTitle: 'Vider le cache SSAS du catalogue {catalog}',
     execute: 'Exécuter',
     executeTitle: 'F5 / Ctrl+Entrée',
+    envDev: 'dev',
+    envProd: 'prod',
+    envDevTitle: "Serveur déclaré comme développement : déploiement de script, vidage du cache et traitement autorisés après confirmation simple.",
+    envProdTitle: "Serveur non déclaré comme développement : traité comme production, le nom du serveur sera redemandé avant toute action qui le modifie.",
+    envOffTitle: 'Non connecté',
+    cubeTitle: "Cube courant (choisi dans l'explorateur)",
   },
   panel: {
     mdx: 'MDX',

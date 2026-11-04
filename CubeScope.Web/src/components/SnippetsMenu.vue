@@ -86,7 +86,7 @@ async function doRemove(id: number) {
 </script>
 
 <template>
-  <Button icon="pi pi-bookmark" size="small" severity="secondary" :label="t('snippets.title')" @click="toggle" />
+  <Button icon="pi pi-bookmark" size="small" severity="secondary" text :title="t('snippets.title')" :aria-label="t('snippets.title')" @click="toggle" />
 
   <Popover ref="popover">
     <div class="snippets-popover">

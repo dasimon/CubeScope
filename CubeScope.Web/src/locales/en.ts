@@ -11,6 +11,12 @@ const en: typeof fr = {
     clearCacheTitle: 'Clear the SSAS cache of catalog {catalog}',
     execute: 'Execute',
     executeTitle: 'F5 / Ctrl+Enter',
+    envDev: 'dev',
+    envProd: 'prod',
+    envDevTitle: "Server declared as development: script deployment, cache clearing and processing allowed after a simple confirmation.",
+    envProdTitle: "Server not declared as development: treated as production, its name is asked again before any action that modifies it.",
+    envOffTitle: 'Not connected',
+    cubeTitle: "Current cube (chosen in the explorer)",
   },
   panel: {
     mdx: 'MDX',

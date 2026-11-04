@@ -447,8 +447,9 @@ function remove(zone: Zone, index: number) {
   padding: 0 0.5rem 0.5rem;
 }
 .zone {
-  border: 1px dashed var(--p-surface-600);
-  border-radius: 0.4rem;
+  border: 1px solid var(--scope-line);
+  background: var(--scope-bg-1);
+  border-radius: 6px;
   padding: 0.3rem;
   min-height: 3.2rem;
 }
@@ -465,8 +466,7 @@ function remove(zone: Zone, index: number) {
 .zone-title {
   font-weight: 600;
   font-size: 0.8rem;
-  text-transform: uppercase;
-  color: var(--p-text-muted-color);
+  color: var(--p-text-color);
 }
 .zone-paste {
   margin-left: auto;
@@ -485,8 +485,12 @@ function remove(zone: Zone, index: number) {
   padding: 0.1rem 0.2rem;
   border-radius: 0.3rem;
 }
+.entry {
+  background: var(--scope-bg-2);
+  margin: 0 0.1rem 0.25rem;
+}
 .entry:hover {
-  background: var(--p-surface-800);
+  background: var(--scope-bg-3);
 }
 .entry.incomplete .entry-label {
   color: var(--p-orange-400);

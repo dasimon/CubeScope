@@ -99,7 +99,7 @@ function firstLine(mdx: string) {
 </script>
 
 <template>
-  <Button icon="pi pi-check-square" size="small" severity="secondary" :label="t('regression.title')" @click="open" />
+  <Button icon="pi pi-check-square" size="small" severity="secondary" text :title="t('regression.title')" :aria-label="t('regression.title')" @click="open" />
 
   <Dialog v-model:visible="visible" modal :header="t('regression.title')" :style="{ width: '44rem' }">
     <div class="reg-save">

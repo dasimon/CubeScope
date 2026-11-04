@@ -1,6 +1,41 @@
-/* CubeScope base — most of the styling comes from PrimeVue (dark Aura theme). */
+/* CubeScope base. Component styling comes from PrimeVue (Aura + the Scope preset in
+   theme.ts); this file holds the shared tokens, the typeface and the parts PrimeVue does
+   not reach (dockview, hand-written markup). */
+
+/* Recursive, variable: one family for the interface AND the unique names (MONO axis),
+   bundled so the exe never touches the network. Cascadia stays inside Monaco. */
+@import '@fontsource-variable/recursive/full.css';
+
+:root {
+  --scope-bg: #0e1517;
+  --scope-bg-1: #131c1f;
+  --scope-bg-2: #1a2529;
+  --scope-bg-3: #243237;
+  --scope-line: #243237;
+  --scope-line-2: #34454b;
+  --scope-text: #e4ecee;
+  --scope-text-2: #9db0b5;
+  --scope-text-3: #647a80;
+  --scope-face-top: #34d399;
+  --scope-face-left: #10b981;
+  --scope-face-right: #047857;
+  --scope-face-glow: rgba(52, 211, 153, 0.14);
+  --scope-prod: #f0b33e;
+  --scope-prod-dim: rgba(240, 179, 62, 0.14);
+  --scope-danger: #f2766b;
+  --scope-danger-dim: rgba(242, 118, 107, 0.14);
+  --font-ui:
+    'Recursive Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
+}
+
+html {
+  /* PrimeVue sizes in rem: 15 px root gives a dense tool without touching every token. */
+  font-size: 15px;
 }
 
 html,
@@ -12,12 +47,89 @@ body,
 }
 
 body {
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
-  background: var(--p-surface-900);
-  color: var(--p-surface-0);
+  font-family: var(--font-ui);
+  font-variation-settings:
+    'MONO' 0,
+    'CASL' 0;
+  font-size: 13px;
+  line-height: 1.4;
+  background: var(--scope-bg);
+  color: var(--scope-text);
   overflow: hidden;
+}
+
+/* Unique names, keys, addresses, durations: same family, monospaced axis. */
+.mono {
+  font-variation-settings: 'MONO' 1;
+  font-feature-settings: 'tnum';
+}
+
+kbd {
+  font: inherit;
+  font-size: 10.5px;
+  font-variation-settings: 'MONO' 1;
+  line-height: 1.3;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--scope-bg-3);
+  border: 1px solid var(--scope-line-2);
+  color: var(--scope-text-2);
+}
+
+/* ---------- dockview ---------- */
+.dockview-theme-dark {
+  --dv-group-view-background-color: var(--scope-bg);
+  --dv-tabs-and-actions-container-background-color: var(--scope-bg-1);
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-font-size: 12.5px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--scope-bg-1);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--scope-bg-1);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--scope-bg-1);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--scope-bg-1);
+  --dv-tab-divider-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--scope-text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--scope-text-2);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--scope-text);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--scope-text-2);
+  --dv-separator-border: var(--scope-line);
+  --dv-paneview-active-outline-color: var(--scope-face-right);
+  --dv-edge-dock-indicator-color: rgba(52, 211, 153, 0.55);
+  --dv-drag-over-background-color: rgba(52, 211, 153, 0.12);
+  --dv-icon-hover-background-color: var(--scope-bg-3);
+  --dv-tabs-container-scrollbar-color: var(--scope-line-2);
+}
+.dockview-theme-dark .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--scope-line);
+  padding: 0 4px;
+}
+.dockview-theme-dark .dv-tab {
+  padding: 0 12px;
+}
+.dockview-theme-dark .dv-tab:hover {
+  color: var(--scope-text);
+}
+/* The active tab is underlined by the cube's top face in the active group, by a plain
+   rule in the others: the underline also tells which group has the focus. */
+.dockview-theme-dark .dv-tab.dv-active-tab .dv-default-tab::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--scope-line-2);
+}
+.dockview-theme-dark .dv-active-group .dv-tab.dv-active-tab .dv-default-tab::after {
+  background: var(--scope-face-top);
+}
+.dockview-theme-dark .dv-tab .dv-default-tab .dv-default-tab-action {
+  color: var(--scope-text-3);
+  font-size: 11px;
+}
+
+/* ---------- scrollbars ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scope-line-2) transparent;
 }

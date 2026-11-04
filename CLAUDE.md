@@ -77,6 +77,20 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   XML, never by text search. Accepted limit: a `<Statement>` is opaque (an MDX/DMX statement
   that writes only needs the confirmation).
 
+- **Visual language ("Scope", shared with PivotScope, 2026-11-04)**: one chromatic family, the
+  three faces of the favicon cube (emerald); amber only for "production / late / warning", coral
+  only for errors; backgrounds are a cool teal-slate, never neutral grey. Tokens live in
+  `CubeScope.Web/src/theme.ts` (PrimeVue preset: surfaces, primary, and the `green`/`orange`/`red`
+  ramps redefined so every severity follows the palette) and as `--scope-*` variables in
+  `style.css` for what PrimeVue does not reach (dockview, hand-written markup). Typeface:
+  Recursive (variable, bundled through `@fontsource-variable/recursive`, no network); the MONO
+  axis (`.mono`) marks unique names, keys and durations, Cascadia stays inside Monaco. The cube
+  mark (`ScopeMark`) is an instrument, not a logo: emerald on a declared dev server, amber on any
+  other server — the same rule as `ProductionActionGuard` — and outlined while disconnected; the
+  toolbar's target capsule (env › server › catalog › cube) carries the same colour. Spend the
+  accent in one place: Execute, active tab underline, selection, durations; text buttons are grey
+  by design. No ALL-CAPS labels.
+
 ## Deferred / forbidden for the MVP
 
 Deterministic formatter, interactive graphical map (the tree view

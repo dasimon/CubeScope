@@ -50,7 +50,7 @@ function insert() {
 </script>
 
 <template>
-  <Button icon="pi pi-plus-circle" size="small" severity="secondary" :label="t('member.title')" @click="open" />
+  <Button icon="pi pi-plus-circle" size="small" severity="secondary" text :title="t('member.title')" :aria-label="t('member.title')" @click="open" />
 
   <Dialog v-model:visible="visible" modal :header="t('member.title')" :style="{ width: '32rem' }">
     <div class="member-form">
