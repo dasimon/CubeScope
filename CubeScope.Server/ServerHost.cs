@@ -43,8 +43,10 @@ public static class ServerHost
     /// caller decides on the display surface.
     /// The caller is responsible for the StopAsync + DisposeAsync pair (see task 3).
     /// </summary>
+    /// <param name="restarter">How to restart after a built-in update (the Shell's window); none
+    /// in the dev loop, where the update is never offered anyway.</param>
     public static async Task<(WebApplication App, string Url)> StartAsync(
-        string[] args, bool browserLifetime)
+        string[] args, bool browserLifetime, IAppRestarter? restarter = null)
     {
     try { Console.Title = "CubeScope"; } catch { /* no console (service, redirection) */ }
 
@@ -77,6 +79,10 @@ builder.Services.AddSingleton(sp => new BrowserLifetime(
     sp.GetRequiredService<IHostApplicationLifetime>(),
     sp.GetRequiredService<ILogger<BrowserLifetime>>(),
     enabled: browserLifetime));
+// Built-in update (after Lucarne): silent unless the exe is a release build named cubescope.exe.
+builder.Services.AddSingleton(restarter ?? new NoAppRestarter());
+builder.Services.AddSingleton<UpdateService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateService>());
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -147,6 +153,18 @@ api.MapGet("/connection/recent", (StateStore store) => Results.Ok(store.GetRecen
 // About dialog: application version (from the assembly) and the connected SSAS server
 api.MapGet("/about", (SsasSession session) =>
     Results.Ok(AboutInfo.Build(session.Server, session.ServerVersion)));
+
+// Built-in update: status, check on demand, install (background; the SPA polls the phase),
+// automatic check on/off. GitHub is only ever reached from here, never from the SPA.
+api.MapGet("/update", (UpdateService updates) => Results.Ok(updates.View));
+api.MapPost("/update/check", async (UpdateService updates, CancellationToken ct) =>
+    Results.Ok(await updates.CheckAsync(ct)));
+api.MapPost("/update/install", (UpdateService updates) =>
+    updates.StartInstall()
+        ? Results.Accepted(value: updates.View)
+        : Results.Conflict(new { error = "Aucune mise à jour à installer, ou une opération est déjà en cours." }));
+api.MapPut("/update/auto", (UpdateAutoRequest req, UpdateService updates) =>
+    Results.Ok(updates.SetAutoCheck(req.Enabled)));
 
 // MDX execution — cancellation goes through aborting the HTTP request (fetch abort on the SPA side)
 api.MapPost("/query", async (QueryRequest req, SsasSession session, QueryService queries, StateStore store,
@@ -882,6 +900,7 @@ app.MapFallbackToFile("index.html", SpaFiles());
 }
 
 internal sealed record ConnectRequest(string Server, string? Lang);
+internal sealed record UpdateAutoRequest(bool Enabled);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
 internal sealed record CompareRequest(string Mdx, string Catalog);

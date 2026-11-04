@@ -26,4 +26,13 @@
     <ProjectReference Include="..\CubeScope.Server\CubeScope.Server.csproj" />
   </ItemGroup>
 
+  <!-- The update channel, fixed when the executable is built (after Lucarne). The built-in update
+       looks for a newer release only if this assembly — the entry assembly — carries
+       AssemblyMetadata("UpdateChannel", "release"). Only .github/workflows/release.yml passes
+       -p:UpdateChannel=release (a test holds it there); a source build, the dev loop and CI carry
+       no stamp, so a developer's binary is never overwritten by a release. Read by UpdateBuild. -->
+  <ItemGroup Condition="'$(UpdateChannel)' != ''">
+    <AssemblyMetadata Include="UpdateChannel" Value="$(UpdateChannel)" />
+  </ItemGroup>
+
 </Project>

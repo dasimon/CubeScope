@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // About: application version (read from the assembly, stamped from the release tag), runtime,
-// local data folder and the connected SSAS server — what a bug report needs. No update check:
-// it would call GitHub on every launch; the Releases link does the job on demand.
+// local data folder and the connected SSAS server — what a bug report needs. The update check
+// itself lives in UpdateDialog (server-side, GitHub only); About just opens it.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import { api, type AboutInfo } from '../api'
+import { updateActions } from '../update'
 
 const REPO = 'https://github.com/dasimon/CubeScope'
 
@@ -35,6 +36,11 @@ async function open() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
+}
+
+function openUpdate() {
+  visible.value = false
+  updateActions.open()
 }
 
 async function copy() {
@@ -74,6 +80,10 @@ async function copy() {
         <dd class="about-path">{{ about.dataFolder }}</dd>
         <dt>{{ t('about.license') }}</dt>
         <dd>MIT</dd>
+        <dt>{{ t('update.aboutLabel') }}</dt>
+        <dd>
+          <Button :label="t('update.aboutOpen')" link size="small" class="about-update" @click="openUpdate" />
+        </dd>
       </dl>
       <p class="about-links">
         <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -126,6 +136,10 @@ async function copy() {
 }
 .about-links a {
   color: var(--p-primary-color);
+}
+.about-update {
+  padding: 0;
+  height: auto;
 }
 .about-error {
   color: var(--p-red-400);

@@ -195,6 +195,37 @@ These checks run in the local server, before any connection to the target, so
 calling the API directly does not bypass them. Limit: a `<Statement>` is opaque —
 an MDX or DMX statement that writes only needs the confirmation.
 
+### Built-in update
+
+From v0.19.0, CubeScope looks for a newer release itself, so that the unsigned
+executable does not have to be fetched and checked by hand each time. It talks
+to GitHub, and only GitHub.
+
+- **What it asks.** Ten seconds after start, then once a day, it reads the
+  latest release of `dasimon/CubeScope` from the GitHub API. Only a tag of the
+  form `vMAJOR.MINOR.PATCH` higher than the running version is offered, as a
+  pill in the status bar. *About* → *Check for an update* asks on demand. A
+  build that the release workflow did not stamp (a source build, the dev loop)
+  asks nothing.
+- **What it checks.** It downloads `cubescope.exe` and `cubescope.exe.sha256`
+  over HTTPS, from GitHub's own hosts only, with a size cap on each. The
+  executable is installed only if its SHA-256 matches the `.sha256` file **and**,
+  when GitHub states one, the digest GitHub computed for the asset. Otherwise
+  nothing is touched.
+- **What it does.** It replaces the executable in place, keeping the previous
+  one beside it as `cubescope.exe.old` (removed at the next start), then closes
+  the window — an unsaved MDX Script is asked about first — and starts the new
+  version. If the folder cannot be written (`C:\Program Files`, say, or another
+  CubeScope running from the same file), the verified executable is saved to
+  your *Downloads* folder instead and the folder opens.
+- **How to turn it off.** Untick *Check for updates automatically* in the update
+  dialog. The setting is per user (local SQLite database) and stops the
+  automatic checks only; *Check* still works.
+
+The network work happens in the local server: the page itself never leaves the
+loopback (see the content security policy). The mechanism is the one of
+[Lucarne](https://github.com/dasimon/lucarne), by the same author.
+
 ---
 
 ## Build from source

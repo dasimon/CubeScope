@@ -91,6 +91,22 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   accent in one place: Execute, active tab underline, selection, durations; text buttons are grey
   by design. No ALL-CAPS labels.
 
+- **Built-in update (2026-11-04, after Lucarne)**: `CubeScope.Core/Updates` is Lucarne's update
+  core (same author, MIT), generalised by `UpdateProduct` (repository, asset, checksum file) so
+  that PivotScope shares it through the submodule. GitHub only (`UpdateHosts`, checked on every
+  redirection hop), size caps, SHA-256 against the release's `.sha256` file AND GitHub's asset
+  digest. **Enabled only by the build stamp** `AssemblyMetadata("UpdateChannel", "release")` on the
+  entry assembly, passed by `release.yml` alone (`-p:UpdateChannel=release`, a workflow step checks
+  the bundled `cubescope.dll`, a test checks the workflow) — a source build, the dev loop and CI
+  never ask anything, and the swap also requires the process to be `cubescope.exe` (never
+  `dotnet.exe`). Network work stays in the server (`UpdateService`, a hosted service: 10 s after
+  start, then daily, off switch in the `Setting` table); the SPA only polls `/api/update`. Install
+  = verified download → `UpdateSwap` (copy beside, re-hash, rename running exe to `.old`, move new
+  in) → `IAppRestarter` implemented by the Shell (closes the window through the normal path, so
+  the unsaved-script question is still asked; relaunches the exe with the same arguments after the
+  host is disposed). Folder not writable → verified copy in Downloads (`UpdateDownloads`). No
+  elevation (Lucarne has one): deliberate, one code path less.
+
 ## Deferred / forbidden for the MVP
 
 Deterministic formatter, interactive graphical map (the tree view
@@ -328,6 +344,16 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   evaluates to empty (`CS1508` collision) → go through a qualified intermediate item;
   glob `**\*.*` (not `**\*`, which matches folders). Target active only on
   publish (`_IsPublishing` OR `-p:EmbedSpa=true`).
+- **Built-in update, observed end to end (2026-11-04)**: a local publish stamped
+  `-p:Version=0.17.0 -p:UpdateChannel=release`, copied alone into a blank folder, found v0.18.0 on
+  GitHub at its first check, downloaded the 216 MB exe in ~9 s, verified (~6 s, two hashes of
+  216 MB), swapped and restarted: the new process ran 0.18.0 from the same path, the previous file
+  sat beside it as `cubescope.exe.old`. ⚠️ The OLD process lingered ~10 s after its server had
+  stopped (same slow WPF exit as the Shell task 7 note) — harmless: the new one starts meanwhile,
+  and `.old` is only locked until then (cleaned at the following start). **Not exercised for
+  real**: the Downloads fallback (protected folder) and a restart cancelled by the
+  unsaved-script question. Testing the update needs a release ABOVE the stamped version on
+  `dasimon/CubeScope`: a local `-p:Version` lower than the latest tag is the cheap way.
 - Dev server restarting: always check that no orphaned process
   holds the port or locks the DLLs (leftover `cubescope.exe`) — otherwise
   an outdated binary is served silently (the SPA fallback returns index.html for
