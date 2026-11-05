@@ -54,9 +54,11 @@ jobs:
           dotnet publish CubeScope.Shell -c Release -r win-x64
           --self-contained true -p:PublishSingleFile=true -p:EmbedSpa=true -o publish
 
+      # A publish without the bundled runtime would weigh a few tens of MB. The compressed
+      # single file (EnableCompressionInSingleFile) measured 88 MB on 2026-11-05.
       - name: Check executable
         shell: pwsh
         run: |
           $exe = Get-Item publish/cubescope.exe -ErrorAction Stop
           Write-Host "cubescope.exe: $($exe.Length) bytes"
-          if ($exe.Length -le 100MB) { throw "cubescope.exe is only $($exe.Length) bytes (expected > 100 MB)" }
+          if ($exe.Length -le 60MB) { throw "cubescope.exe is only $($exe.Length) bytes (expected > 60 MB)" }
