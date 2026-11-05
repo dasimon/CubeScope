@@ -16,6 +16,14 @@
     <!-- ALSO embeds the native DLLs (e_sqlite3, msalruntime, WebView2Loader…) in
          the exe and self-extracts them at startup → the exe alone is enough. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Compresses what the single file bundles (after Lucarne). Measured on 2026-11-05, v0.19.0,
+         exe copied alone into a blank folder: 206 MB down to 88 MB; start-up unchanged once the
+         file has been launched before (window ~1.1 s, API ~2.1 s either way; the first launch of
+         a new file takes ~15 s either way); about 84 MB more private memory, since compressed
+         assemblies are inflated into memory instead of being mapped from the file. Halving the
+         download matters twice: once by hand, once for every built-in update. The stamp check in
+         release.yml reads the uncompressed cubescope.dll in obj/ for that reason. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>

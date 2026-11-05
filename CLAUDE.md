@@ -342,7 +342,10 @@ is enough), Extended Events viewer (perfmon first), cross impact analysis
   `BeforeTargets="PrepareForBuild"` (at `CoreCompile` it is too late, 0 resources
   embedded); a `LogicalName` using `%(Filename)` on a self-referencing Include
   evaluates to empty (`CS1508` collision) → go through a qualified intermediate item;
-  glob `**\*.*` (not `**\*`, which matches folders). Target active only on
+  glob `**\*.*` (not `**\*`, which matches folders). `EnableCompressionInSingleFile`
+  (2026-11-05, after Lucarne): 206 → 88 MB, same warm start-up, ~84 MB more private memory;
+  the attribute bytes are no longer readable in the exe, so the release stamp check reads
+  `obj/…/cubescope.dll`. Target active only on
   publish (`_IsPublishing` OR `-p:EmbedSpa=true`).
 - **Built-in update, observed end to end (2026-11-04)**: a local publish stamped
   `-p:Version=0.17.0 -p:UpdateChannel=release`, copied alone into a blank folder, found v0.18.0 on

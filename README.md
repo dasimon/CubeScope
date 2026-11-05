@@ -272,7 +272,7 @@ which is no longer the published project; it builds the Vue SPA and embeds
 `EmbeddedResource` under the `spa/` prefix, served at runtime by
 `EmbeddedSpaFileProvider` (not extracted to a `wwwroot` folder on disk).
 This produces a single self-contained `publish/cubescope.exe`
-(~216 MB — it bundles the .NET runtime). Each GitHub Release also ships
+(~90 MB — it bundles the .NET runtime, compressed). Each GitHub Release also ships
 `cubescope.exe.sha256` to verify the download (`Get-FileHash cubescope.exe`).
 
 ---

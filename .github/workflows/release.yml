@@ -48,7 +48,8 @@ jobs:
       # it the users of this release would never be offered the next one, and nothing would say
       # so: the attribute AssemblyMetadata("UpdateChannel", "release") is stored as a fixed byte
       # blob (prolog 01 00, length-prefixed strings, no named arguments 00 00), looked for in the
-      # entry assembly the publish bundled.
+      # entry assembly the publish bundled — in obj/, because the single file is compressed
+      # (EnableCompressionInSingleFile) and the bytes are not in cubescope.exe as such.
       - name: Refuse to ship an exe that is not on the release channel
         shell: pwsh
         run: |
