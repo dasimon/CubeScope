@@ -19,7 +19,7 @@
     <PackageReference Include="Microsoft.Identity.Client" Version="4.91.1" />
     <!-- Explicit pin: 2.1.11, pulled in transitively, has a known vulnerability (NU1903) -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.13" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="11.0.0" />
   </ItemGroup>
 
 </Project>
