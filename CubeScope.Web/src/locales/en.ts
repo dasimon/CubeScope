@@ -261,6 +261,11 @@ const en: typeof fr = {
     analyzing: 'Analyzing…',
     footer: '{model} · {s} s',
     hint: 'Write (or load) an MDX query, then choose an action.',
+    keySettings: 'Key variable',
+    keyLabel: 'Environment variable holding the Anthropic key',
+    keyHelp: 'Only the name is stored; the key stays in the environment. Empty: ANTHROPIC_API_KEY.',
+    keySave: 'Save',
+    keySaved: 'CubeScope now reads {var}.',
   },
   profiler: {
     unavailable: 'Profiler unavailable: {detail}',
@@ -335,7 +340,7 @@ const en: typeof fr = {
     button: 'Explain this calculation',
     title: 'Calculation explanation',
     loading: 'Analyzing…',
-    needKey: 'ANTHROPIC_API_KEY not configured',
+    needKey: '{var} not configured',
   },
   errors: {
     queryCanceled: 'Query canceled.',

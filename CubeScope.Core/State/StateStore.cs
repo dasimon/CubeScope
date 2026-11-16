@@ -402,6 +402,28 @@ public sealed class StateStore : IDisposable
         Exec("INSERT INTO Setting (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v",
             ("$k", UpdateAutoCheckKey), ("$v", enabled ? "1" : "0"));
 
+    private const string AiKeyVariableKey = "AiKeyVariable";
+
+    /// <summary>Name of the environment variable holding the Anthropic key (the name only, never
+    /// the key). A missing or invalid value falls back to ANTHROPIC_API_KEY.</summary>
+    public string GetAiKeyVariable()
+    {
+        var raw = Scalar("SELECT Value FROM Setting WHERE Key = $k", ("$k", AiKeyVariableKey)) as string;
+        return Ai.AiService.IsValidKeyVariable(raw) ? raw!.Trim() : Ai.AiService.DefaultKeyVariable;
+    }
+
+    /// <summary>Stores the variable name; a blank name goes back to ANTHROPIC_API_KEY.</summary>
+    public string SetAiKeyVariable(string? name)
+    {
+        var value = string.IsNullOrWhiteSpace(name) ? Ai.AiService.DefaultKeyVariable : name.Trim();
+        if (!Ai.AiService.IsValidKeyVariable(value))
+            // No paramName: the message reaches the UI as is.
+            throw new ArgumentException(Ai.AiService.InvalidKeyVariableMessage);
+        Exec("INSERT INTO Setting (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v",
+            ("$k", AiKeyVariableKey), ("$v", value));
+        return value;
+    }
+
     // --- Development servers (v9): EXPLICIT list of the servers where a script deployment
     // is allowed. The catalog name no longer tells anything apart since dev got its
     // own server and carries the same catalog name as production.

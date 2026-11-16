@@ -245,7 +245,7 @@ async function explainCalc() {
   explainError.value = ''
   if (store.aiConfigured === null) await actions.loadAiStatus()
   if (store.aiConfigured === false) {
-    explainError.value = t('explain.needKey')
+    explainError.value = t('explain.needKey', { var: store.aiKeyVariable })
     explainLoading.value = false
     return
   }

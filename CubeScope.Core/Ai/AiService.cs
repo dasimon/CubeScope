@@ -20,8 +20,8 @@ public enum AiAction
 /// <summary>
 /// Built-in AI expert (settled decision): a system prompt per action + the relevant cube
 /// metadata injected into the context.
-/// Default transport: Anthropic API (ANTHROPIC_API_KEY, claude-opus-4-8, adaptive
-/// thinking). Alternative: any OpenAI-compatible endpoint (/v1/chat/completions) if
+/// Default transport: Anthropic API (key read from the environment variable named by
+/// <see cref="KeyVariable"/>, ANTHROPIC_API_KEY by default; claude-opus-4-8, adaptive thinking). Alternative: any OpenAI-compatible endpoint (/v1/chat/completions) if
 /// CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL are set — covers Ollama/LM Studio running
 /// locally (confidentiality) and OpenAI/Mistral/OpenRouter/Groq. Keys in env vars only,
 /// never stored locally (validated 2026-07-23).
@@ -126,7 +126,38 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     private static string? LlmModel => Env("CUBESCOPE_LLM_MODEL");
     private static string? LlmKey => Env("CUBESCOPE_LLM_KEY");
     private static bool UseOpenAiCompat => CurrentProvider == AiProvider.OpenAiCompatible;
-    private static string? AnthropicKey => Env("ANTHROPIC_API_KEY");
+    /// <summary>The variable CubeScope reads when nothing else is chosen: the SDK's own.</summary>
+    public const string DefaultKeyVariable = "ANTHROPIC_API_KEY";
+
+    private static volatile string _keyVariable = DefaultKeyVariable;
+
+    /// <summary>
+    /// Name of the environment variable that holds the Anthropic key. Only the NAME is a setting
+    /// (StateStore); the key itself stays in the environment, never stored. A name of one's own
+    /// keeps the key away from other tools that read ANTHROPIC_API_KEY — Claude Code, for one,
+    /// prefers it to the user's subscription.
+    /// </summary>
+    public static string KeyVariable
+    {
+        get => _keyVariable;
+        set => _keyVariable = IsValidKeyVariable(value)
+            ? value.Trim()
+            : throw new ArgumentException(InvalidKeyVariableMessage);
+    }
+
+    /// <summary>A Windows-portable variable name: letters, digits and underscores, not starting
+    /// with a digit, at most 128 characters.</summary>
+    public static bool IsValidKeyVariable(string? name) =>
+        name is not null && System.Text.RegularExpressions.Regex.IsMatch(name.Trim(), "^[A-Za-z_][A-Za-z0-9_]{0,127}$");
+
+    public const string InvalidKeyVariableMessage =
+        "Nom de variable invalide : lettres, chiffres et _ seulement, sans chiffre en tête (128 caractères au plus).";
+
+    /// <summary>The message shown when no provider is configured, naming the variable in use.</summary>
+    public static string NotConfiguredMessage =>
+        $"IA non configurée : définir la variable d'environnement {KeyVariable}, ou CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL (fournisseur compatible OpenAI), puis relancer CubeScope.";
+
+    private static string? AnthropicKey => Env(KeyVariable);
     private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
     private static AiProvider CurrentProvider => SelectProvider(LlmBaseUrl, LlmModel, AnthropicKey);
 
@@ -160,8 +191,7 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
     public async Task<string> RunAsync(AiAction action, string mdx, string lang = "fr", CancellationToken ct = default)
     {
         if (!IsConfigured)
-            throw new InvalidOperationException(
-                "IA non configurée : définir ANTHROPIC_API_KEY, ou CUBESCOPE_LLM_BASEURL + CUBESCOPE_LLM_MODEL (fournisseur compatible OpenAI), puis relancer CubeScope.");
+            throw new InvalidOperationException(NotConfiguredMessage);
         if (string.IsNullOrWhiteSpace(mdx))
             throw new InvalidOperationException("Aucune requête MDX à analyser.");
 
@@ -216,7 +246,9 @@ public sealed class AiService(MetadataService metadata, SsasSession session)
         if (UseOpenAiCompat)
             return await RunOpenAiCompatAsync($"{SystemBase}\n\n{langInstruction}", userContent, ct);
 
-        AnthropicClient client = new();
+        // The key is passed explicitly: the SDK then reads no credential from the environment,
+        // so an ANTHROPIC_API_KEY set for another tool is never used in place of the chosen one.
+        AnthropicClient client = new() { ApiKey = AnthropicKey! };
         var response = await client.Messages.Create(new MessageCreateParams
         {
             Model = ModelId,

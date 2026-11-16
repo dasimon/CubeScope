@@ -5,6 +5,7 @@ import { currentLocale, t } from './i18n'
 import {
   api,
   type AiAction,
+  type AiStatus,
   type CounterDelta,
   type CubeMeta,
   type HistoryEntry,
@@ -129,6 +130,7 @@ export const store = reactive({
   // AI panel
   aiConfigured: null as boolean | null,
   aiModel: 'claude-opus-4-8', // active model (Anthropic by default, or a configured OpenAI-compatible LLM)
+  aiKeyVariable: 'ANTHROPIC_API_KEY', // environment variable read for the Anthropic key (a setting)
   aiRunning: false,
   aiAction: null as AiAction | null,
   aiResult: '',
@@ -411,12 +413,21 @@ export const actions = {
 
   async loadAiStatus(): Promise<void> {
     try {
-      const s = await api.aiStatus()
-      store.aiConfigured = s.configured
-      if (s.model) store.aiModel = s.model
+      actions.applyAiStatus(await api.aiStatus())
     } catch {
       store.aiConfigured = null
     }
+  },
+
+  applyAiStatus(s: AiStatus): void {
+    store.aiConfigured = s.configured
+    if (s.model) store.aiModel = s.model
+    if (s.keyVariable) store.aiKeyVariable = s.keyVariable
+  },
+
+  /** Stores the variable name and applies the new state; throws the server's message if refused. */
+  async setAiKeyVariable(name: string): Promise<void> {
+    actions.applyAiStatus(await api.aiKeyVariable(name))
   },
 
   async runAi(action: AiAction): Promise<void> {

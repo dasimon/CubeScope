@@ -54,6 +54,11 @@ DAX.** Never introduce a multi-engine abstraction "just in case".
   anti-patterns / format), injecting the relevant cube metadata
   into the context. MDX formatting goes through the AI: **do not write a
   deterministic formatter** (identified effort trap).
+  The Anthropic key stays in the environment; only the NAME of its variable is a setting
+  (`Setting` table, `AiKeyVariable`, default `ANTHROPIC_API_KEY`, edited in the AI panel,
+  2026-11-16). The key is passed to `AnthropicClient` explicitly: the SDK then reads no
+  credential from the environment, so an `ANTHROPIC_API_KEY` set for another tool never
+  stands in for the chosen one.
 
 - **Production rule for actions that modify a server** (2026-10-26, lot 4 — processing; the
   XMLA console follows the same rule): `ProductionActionGuard` (Core), distinct from
