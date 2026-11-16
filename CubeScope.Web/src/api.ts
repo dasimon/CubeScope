@@ -1,6 +1,13 @@
 // CubeScope API client — mirrors the server DTOs (System.Text.Json → camelCase).
 import { t, currentLocale } from './i18n'
 
+/** AI provider state; keyVariable names the environment variable read for the Anthropic key. */
+export interface AiStatus {
+  configured: boolean
+  model: string
+  keyVariable: string
+}
+
 export interface GridColumn {
   field: string
   header: string
@@ -274,7 +281,9 @@ export const api = {
       `/api/script/${encodeURIComponent(cube)}/dependencies?name=${encodeURIComponent(name)}`,
     ),
   docUrl: (cube: string) => `/api/doc/${encodeURIComponent(cube)}`,
-  aiStatus: () => request<{ configured: boolean; model: string }>('GET', '/api/ai/status'),
+  aiStatus: () => request<AiStatus>('GET', '/api/ai/status'),
+  // The NAME of the environment variable holding the Anthropic key — never the key.
+  aiKeyVariable: (name: string) => request<AiStatus>('PUT', '/api/ai/key-variable', { name }),
   ai: (action: AiAction, mdx: string, lang: string, signal: AbortSignal) =>
     request<{ text: string; durationMs: number }>('POST', `/api/ai/${action}`, { mdx, lang }, signal),
   aiOptimizeProfile: (mdx: string, profile: QueryProfile, lang: string, signal: AbortSignal) =>

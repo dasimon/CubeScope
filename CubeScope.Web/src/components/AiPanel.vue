@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // AI panel: explain / optimize / anti-patterns / format the current MDX,
 // with the cube metadata injected on the server side. Markdown rendering (marked + DOMPurify).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -28,6 +28,46 @@ const resultHtml = computed(() => (store.aiResult ? renderMarkdown(store.aiResul
 // A ```mdx block in the response → can be offered to the editor
 const hasApplicableMdx = computed(() => /```(mdx)?\s*\n[\s\S]*?```/i.test(store.aiResult))
 
+// Name of the environment variable read for the Anthropic key (the key itself is never sent
+// here nor stored). Open by itself while the key is missing, otherwise behind the key button.
+const DEFAULT_KEY_VARIABLE = 'ANTHROPIC_API_KEY'
+const showKey = ref(false)
+const keyName = ref('')
+const keyError = ref('')
+const keyNote = ref('')
+const keySaving = ref(false)
+watch(
+  () => store.aiKeyVariable,
+  (v) => (keyName.value = v),
+  { immediate: true },
+)
+const keyOpen = computed(() => showKey.value || store.aiConfigured === false)
+const keyChanged = computed(() => (keyName.value.trim() || DEFAULT_KEY_VARIABLE) !== store.aiKeyVariable)
+
+function toggleKey(): void {
+  showKey.value = !showKey.value
+  keyName.value = store.aiKeyVariable
+  keyError.value = ''
+  keyNote.value = ''
+}
+
+async function saveKey(): Promise<void> {
+  if (!keyChanged.value || keySaving.value) return
+  // Stay open once saved: a key now found would otherwise close the setting before its note shows.
+  showKey.value = true
+  keySaving.value = true
+  keyError.value = ''
+  keyNote.value = ''
+  try {
+    await actions.setAiKeyVariable(keyName.value.trim())
+    keyNote.value = t('ai.keySaved', { var: store.aiKeyVariable })
+  } catch (e) {
+    keyError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    keySaving.value = false
+  }
+}
+
 const runningLabel = computed(() => {
   const a = ACTIONS.find((x) => x.action === store.aiAction)
   return a ? t('ai.running', { action: t(a.labelKey), model: store.aiModel }) : t('ai.analyzing')
@@ -37,7 +77,7 @@ const runningLabel = computed(() => {
 <template>
   <div class="ai-panel">
     <Message v-if="store.aiConfigured === false" severity="warn" class="ai-msg">
-      {{ t('ai.keyMissing', { var: 'ANTHROPIC_API_KEY' }) }}
+      {{ t('ai.keyMissing', { var: store.aiKeyVariable }) }}
     </Message>
 
     <div class="ai-nl">
@@ -80,6 +120,17 @@ const runningLabel = computed(() => {
       />
       <span class="ai-spacer" />
       <Button
+        icon="pi pi-key"
+        size="small"
+        severity="secondary"
+        text
+        :class="{ 'ai-key-on': keyOpen }"
+        :title="t('ai.keySettings')"
+        :aria-label="t('ai.keySettings')"
+        :aria-expanded="keyOpen"
+        @click="toggleKey"
+      />
+      <Button
         v-if="store.aiRunning"
         :label="t('common.cancel')"
         icon="pi pi-stop"
@@ -95,6 +146,31 @@ const runningLabel = computed(() => {
         size="small"
         @click="actions.applyAiMdx()"
       />
+    </div>
+
+    <div v-if="keyOpen" class="ai-key">
+      <label for="ai-key-variable">{{ t('ai.keyLabel') }}</label>
+      <div class="ai-key-row">
+        <InputText
+          id="ai-key-variable"
+          v-model="keyName"
+          size="small"
+          class="mono ai-key-input"
+          spellcheck="false"
+          autocomplete="off"
+          :placeholder="DEFAULT_KEY_VARIABLE"
+          @keydown.enter="saveKey"
+        />
+        <Button
+          :label="t('ai.keySave')"
+          size="small"
+          :disabled="!keyChanged"
+          :loading="keySaving"
+          @click="saveKey"
+        />
+      </div>
+      <small v-if="keyError" class="ai-key-error">{{ keyError }}</small>
+      <small v-else class="ai-key-help">{{ keyNote || t('ai.keyHelp') }}</small>
     </div>
 
     <div class="ai-body">
@@ -142,6 +218,33 @@ const runningLabel = computed(() => {
 }
 .ai-msg {
   margin: 0.5rem 0.75rem 0;
+}
+.ai-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0.5rem 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 2px solid var(--p-primary-color);
+  background: var(--p-content-hover-background);
+  font-size: 0.85rem;
+}
+.ai-key-row {
+  display: flex;
+  gap: 0.35rem;
+}
+.ai-key-input {
+  flex: 1;
+  min-width: 0;
+}
+.ai-key-help {
+  color: var(--p-text-muted-color);
+}
+.ai-key-error {
+  color: var(--p-red-400);
+}
+.ai-key-on {
+  color: var(--p-primary-color);
 }
 .ai-body {
   flex: 1;

@@ -259,6 +259,11 @@ export default {
     analyzing: 'Analyse…',
     footer: '{model} · {s} s',
     hint: 'Écris (ou charge) une requête MDX, puis choisis une action.',
+    keySettings: 'Variable de la clé',
+    keyLabel: "Variable d'environnement de la clé Anthropic",
+    keyHelp: "Seul le nom est enregistré, la clé reste dans l'environnement. Vide : ANTHROPIC_API_KEY.",
+    keySave: 'Enregistrer',
+    keySaved: 'CubeScope lit maintenant {var}.',
   },
   profiler: {
     unavailable: 'Profiler indisponible : {detail}',
@@ -333,7 +338,7 @@ export default {
     button: 'Expliquer ce calcul',
     title: 'Explication du calcul',
     loading: 'Analyse en cours…',
-    needKey: 'Clé ANTHROPIC_API_KEY non configurée',
+    needKey: 'Clé {var} non configurée',
   },
   errors: {
     queryCanceled: 'Requête annulée.',

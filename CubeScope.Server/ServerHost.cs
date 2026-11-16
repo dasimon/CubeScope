@@ -87,6 +87,9 @@ builder.Services.AddSignalR();
 
 var app = builder.Build();
 
+// The Anthropic key's variable name is a setting (the key itself stays in the environment).
+AiService.KeyVariable = app.Services.GetRequiredService<StateStore>().GetAiKeyVariable();
+
 // FIRST in the pipeline: no token on this API, so a request from another web page
 // (DNS rebinding, CSRF, cross-origin WebSocket) must be turned away before reaching
 // static files, endpoints or hubs. See LocalRequestGuard.
@@ -295,7 +298,7 @@ api.MapGet("/script/{cube}/explain", async (string cube, [FromQuery] string name
             return Results.BadRequest(new { error = $"Membre introuvable dans le script : {name}" });
 
         if (!AiService.IsConfigured)
-            return Results.BadRequest(new { error = "Clé API absente : ANTHROPIC_API_KEY non configurée." });
+            return Results.BadRequest(new { error = AiService.NotConfiguredMessage });
 
         var cubeMeta = await meta.GetCubeMetaAsync(cube, ct: ct);
         var graph = DependencyService.Resolve(script, cubeMeta, name);
@@ -564,7 +567,28 @@ api.MapGet("/fs/list", (FileBrowserService fs, [FromQuery] string? path) =>
 });
 
 // AI panel: status (key configured?) and running an action on the current MDX
-api.MapGet("/ai/status", () => Results.Ok(new { configured = AiService.IsConfigured, model = AiService.ActiveModel }));
+api.MapGet("/ai/status", () => Results.Ok(AiStatus()));
+
+// Name of the environment variable holding the Anthropic key — never the key itself.
+api.MapPut("/ai/key-variable", (AiKeyVariableRequest req, StateStore store) =>
+{
+    try
+    {
+        AiService.KeyVariable = store.SetAiKeyVariable(req.Name);
+        return Results.Ok(AiStatus());
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+static object AiStatus() => new
+{
+    configured = AiService.IsConfigured,
+    model = AiService.ActiveModel,
+    keyVariable = AiService.KeyVariable,
+};
 api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, CancellationToken ct) =>
 {
     if (!Enum.TryParse<AiAction>(action, ignoreCase: true, out var aiAction))
@@ -590,7 +614,7 @@ api.MapPost("/ai/{action}", async (string action, AiRequest req, AiService ai, C
 api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiService ai, CancellationToken ct) =>
 {
     if (!AiService.IsConfigured)
-        return Results.BadRequest(new { error = "ANTHROPIC_API_KEY non configurée" });
+        return Results.BadRequest(new { error = AiService.NotConfiguredMessage });
     try
     {
         var p = req.Profile;
@@ -618,7 +642,7 @@ api.MapPost("/ai/optimize-profile", async (AiOptimizeProfileRequest req, AiServi
 api.MapPost("/ai/generate-mdx", async (GenerateMdxRequest req, MetadataService meta, AiService ai, CancellationToken ct) =>
 {
     if (!AiService.IsConfigured)
-        return Results.BadRequest(new { error = "ANTHROPIC_API_KEY non configurée" });
+        return Results.BadRequest(new { error = AiService.NotConfiguredMessage });
     try
     {
         var m = await meta.GetCubeMetaAsync(req.Cube, ct: ct);
@@ -901,6 +925,7 @@ app.MapFallbackToFile("index.html", SpaFiles());
 
 internal sealed record ConnectRequest(string Server, string? Lang);
 internal sealed record UpdateAutoRequest(bool Enabled);
+internal sealed record AiKeyVariableRequest(string? Name);
 internal sealed record CatalogRequest(string Catalog);
 internal sealed record QueryRequest(string Mdx);
 internal sealed record CompareRequest(string Mdx, string Catalog);

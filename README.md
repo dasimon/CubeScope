@@ -129,7 +129,11 @@ if that runtime isn't present — no server component to deploy, no cloud.
 - **`ANTHROPIC_API_KEY`** environment variable for the **AI assistant**. If it
   is absent, the AI panel degrades gracefully with a clear message; everything
   else keeps working. The key is read from the environment only — it is never
-  stored locally. The Anthropic model defaults to `claude-opus-4-8`; set
+  stored locally. The variable's **name** can be changed in the AI panel (key
+  button): keep the key in a variable of your own, such as
+  `CLAUDE_ESSAIS_API_KEY`, so that tools which pick up `ANTHROPIC_API_KEY` (Claude
+  Code prefers it to a subscription) do not bill it. Only the name is stored.
+  The Anthropic model defaults to `claude-opus-4-8`; set
   `CUBESCOPE_ANTHROPIC_MODEL` to use a different Claude model.
   - **Alternative LLM providers (optional).** To use any OpenAI-compatible
     endpoint instead of Anthropic — a **local** model (Ollama, LM Studio) so no
@@ -333,9 +337,11 @@ dotnet run --project CubeScope.Spike -- <server> --profile [--catalog <catalog>]
 
 - All SSAS connections use **Windows Integrated Security**. No credentials are
   read from, or written to, disk or config.
-- The AI API key is read from the environment only (`ANTHROPIC_API_KEY`, or
-  `CUBESCOPE_LLM_KEY` for an OpenAI-compatible provider) — never from, or written
-  to, disk or config.
+- The AI API key is read from the environment only (`ANTHROPIC_API_KEY` or the
+  variable named in the AI panel, or `CUBESCOPE_LLM_KEY` for an OpenAI-compatible
+  provider) — never from, or written to, disk or config. Only the variable's name
+  is stored. The key is handed to the SDK explicitly, so the SDK reads no other
+  credential from the environment.
 - **Transitive advisories (resolved):** the ADOMD.NET Core client used to pull in
   `Microsoft.Identity.Client` 4.56.0, flagged by NU1901/NU1902 (low/moderate).
   CubeScope now pins `Microsoft.Identity.Client` 4.86.1 directly, forcing the
